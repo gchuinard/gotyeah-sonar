@@ -1,0 +1,55 @@
+name: Deploy to Pi
+
+# Déploie Sonar sur le Raspberry Pi à chaque push sur main.
+# Principe : le runner GitHub récupère le code, le synchronise sur le Pi via
+# rsync/SSH, puis (re)construit et relance le conteneur. Le Pi n'a jamais besoin
+# d'accéder lui-même à GitHub — il accepte juste la connexion SSH du runner.
+#
+# Secrets requis (Settings > Secrets and variables > Actions) :
+#   SSH_HOST  hôte/IP du Pi (doit être joignable en SSH depuis Internet)
+#   SSH_USER  utilisateur Linux sur le Pi
+#   SSH_KEY   clé PRIVÉE (id_ed25519, contenu complet avec les lignes BEGIN/END)
+# La clé PUBLIQUE correspondante doit être dans ~/.ssh/authorized_keys du SSH_USER.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # bouton « Run workflow » pour déclencher à la main
+
+# Un seul déploiement à la fois ; on annule un déploiement en cours s'il en arrive un nouveau.
+concurrency:
+  group: deploy-pi
+  cancel-in-progress: true
+
+env:
+  REMOTE_DIR: sonar         # dossier cible sur le Pi (~/sonar)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Préparer la clé SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p 22 -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Synchroniser le code sur le Pi
+        run: |
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='data' \
+            --exclude='__pycache__' \
+            --exclude='*.db' \
+            -e "ssh -i ~/.ssh/id_ed25519 -p 22 -o StrictHostKeyChecking=yes" \
+            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/${REMOTE_DIR}/"
+
+      - name: Construire et relancer le conteneur
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p 22 -o StrictHostKeyChecking=yes \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "cd ~/${REMOTE_DIR} && docker compose up -d --build && docker image prune -f"
