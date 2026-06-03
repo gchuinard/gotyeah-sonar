@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Récupérer le code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Préparer la clé SSH
         run: |
@@ -51,6 +51,9 @@ jobs:
 
       - name: Construire et relancer le conteneur
         run: |
+          # On retire d'abord tout conteneur "sonar" préexistant (ex. ancien déploiement
+          # depuis un autre dossier) : container_name est fixe, donc un orphelin bloquerait
+          # le nom ET le port 8000. Idempotent : || true si rien à supprimer.
           ssh -i ~/.ssh/id_ed25519 -p 22 -o StrictHostKeyChecking=yes \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "cd ${REMOTE_DIR} && docker compose up -d --build && docker image prune -f"
+            "set -e; cd ${REMOTE_DIR}; docker rm -f sonar 2>/dev/null || true; docker compose up -d --build; docker image prune -f"
