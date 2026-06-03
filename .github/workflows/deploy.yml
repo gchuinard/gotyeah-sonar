@@ -58,6 +58,7 @@ jobs:
             --exclude='data' \
             --exclude='__pycache__' \
             --exclude='*.db' \
+            --exclude='.env' \
             --rsync-path="mkdir -p ${REMOTE_DIR} && rsync" \
             -e "ssh -i ~/.ssh/id_ed25519 -p 22 -o StrictHostKeyChecking=yes" \
             ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${REMOTE_DIR}/"
