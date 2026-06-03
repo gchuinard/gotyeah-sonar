@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REMOTE_DIR: sonar         # dossier cible sur le Pi (~/sonar)
+  REMOTE_DIR: /home/pi/sites/gotyeah-sonar   # dossier cible sur le Pi (chemin absolu)
 
 jobs:
   deploy:
@@ -45,11 +45,12 @@ jobs:
             --exclude='data' \
             --exclude='__pycache__' \
             --exclude='*.db' \
+            --rsync-path="mkdir -p ${REMOTE_DIR} && rsync" \
             -e "ssh -i ~/.ssh/id_ed25519 -p 22 -o StrictHostKeyChecking=yes" \
-            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/${REMOTE_DIR}/"
+            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${REMOTE_DIR}/"
 
       - name: Construire et relancer le conteneur
         run: |
           ssh -i ~/.ssh/id_ed25519 -p 22 -o StrictHostKeyChecking=yes \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "cd ~/${REMOTE_DIR} && docker compose up -d --build && docker image prune -f"
+            "cd ${REMOTE_DIR} && docker compose up -d --build && docker image prune -f"
