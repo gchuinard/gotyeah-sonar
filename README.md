@@ -49,14 +49,43 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 | Sous-ressources | scripts/CSS même-origine servis sans `X-Content-Type-Options: nosniff` (échantillon récupéré activement) |
 | Technologies | empreinte serveur / framework / CMS (en-têtes, cookies, balise meta generator) + alerte si une version est exposée |
 
-### Phase 3 — pentest (nuclei)
+### Phase 3 — pentest (nuclei + OWASP ZAP)
 
 | Catégorie | Checks |
 |-----------|--------|
-| Pentest | exécution de **nuclei** sur la cible ; chaque résultat (CVE, mauvaise config, panel exposé…) devient un `Finding`. Réglable par variables d'environnement : `NUCLEI_SEVERITY` (défaut `medium,high,critical`), `NUCLEI_TIMEOUT` (défaut 240 s), `NUCLEI_ARGS` (args bruts en plus), `SONAR_NUCLEI=off` pour le couper. nuclei est installé dans l'image Docker ; sans le binaire (dev local), le check se désactive proprement. |
+| Pentest (nuclei) | exécution de **nuclei** sur la cible ; chaque résultat (CVE, mauvaise config, panel exposé…) devient un `Finding`. Réglable par variables d'environnement : `NUCLEI_SEVERITY` (défaut `medium,high,critical`), `NUCLEI_TIMEOUT` (défaut 240 s), `NUCLEI_ARGS` (args bruts en plus), `SONAR_NUCLEI=off` pour le couper. nuclei est installé dans l'image Docker ; sans le binaire (dev local), le check se désactive proprement. |
+| Pentest (ZAP) | dialogue avec un démon **OWASP ZAP** via son API REST (baseline passif par défaut : accès URL + spider borné + scan passif → alertes). Chaque alerte ZAP devient un `Finding`. Sans démon configuré, le check se désactive proprement. Voir [OWASP ZAP](#owasp-zap-optionnel). |
 
 Chaque finding a une sévérité (critique → conforme). Le score sur 100 et la note (A+ → F)
 se calculent en pénalisant selon la gravité.
+
+#### OWASP ZAP (optionnel)
+
+ZAP est une grosse appli Java : on ne l'embarque pas dans l'image Sonar, on lui parle via
+son API. Lance-le en démon à côté (snippet à ajouter à ton `docker-compose.yml`) :
+
+```yaml
+  zap:
+    image: zaproxy/zap-stable
+    container_name: zap
+    command: >
+      zap.sh -daemon -host 0.0.0.0 -port 8090
+      -config api.key=${ZAP_API_KEY}
+      -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    networks: [default]
+    restart: unless-stopped
+```
+
+puis renseigne, sur le service `sonar`, les variables d'environnement :
+
+| Variable | Rôle | Défaut |
+|----------|------|--------|
+| `ZAP_API_URL` | base de l'API ZAP (ex. `http://zap:8090`) | *(vide → check ignoré)* |
+| `ZAP_API_KEY` | clé d'API ZAP | — |
+| `ZAP_ACTIVE` | `on` pour lancer aussi un scan **actif** (intrusif) | passif |
+| `ZAP_SPIDER_MAX` | nb max de pages explorées par le spider | `10` |
+| `ZAP_TIMEOUT` | délai global du scan ZAP (s) | `240` |
+| `SONAR_ZAP` | `off` pour désactiver même si `ZAP_API_URL` est défini | — |
 
 ---
 
@@ -103,9 +132,9 @@ les en-têtes), `ctx.history` (redirections) et `ctx.client` si tu as besoin de 
 
 - **Phase 2 — actif léger** : ✅ complète — fichiers exposés (`.env`, `.git/HEAD`…), détection
   de technos/versions, contenu mixte, CORS, et en-têtes manquants sur les sous-ressources.
-- **Phase 3 — vrai pentest** : ✅ implémentée — wrapper **nuclei** branché comme un simple check
-  de plus (`scanner/checks/nuclei.py`). Il parse la sortie JSON de l'outil et la convertit en
-  `Finding`. Aucune réécriture de moteur : le dashboard, le score et l'historique marchaient déjà.
-  Piste restante : ajouter OWASP ZAP en mode API sur le même principe.
+- **Phase 3 — vrai pentest** : ✅ implémentée — wrappers **nuclei** (`scanner/checks/nuclei.py`)
+  et **OWASP ZAP** en mode API (`scanner/checks/zap.py`), chacun branché comme un simple check
+  de plus qui convertit la sortie de l'outil en `Finding`. Aucune réécriture de moteur : le
+  dashboard, le score et l'historique marchaient déjà.
 
 Tout ça se branche sans rien casser, parce que ça reste le même format de sortie.

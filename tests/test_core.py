@@ -50,7 +50,7 @@ def test_as_dict():
 def test_real_checks_registered():
     ids = {c.id for c in all_checks()}
     for expected in ("hdr-csp", "cookies", "tls", "dns", "exposed", "cors", "mixed",
-                     "subresources", "tech", "nuclei"):
+                     "subresources", "tech", "nuclei", "zap"):
         assert expected in ids
 
 

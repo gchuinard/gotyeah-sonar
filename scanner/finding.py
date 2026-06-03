@@ -31,6 +31,7 @@ class Category(str, Enum):
     SUBRESOURCE = "subresource"  # Phase 2 — en-têtes de sécurité sur les sous-ressources
     TECH = "tech"           # Phase 2 — technologies/versions détectées
     PENTEST = "pentest"     # Phase 3 — résultats du moteur nuclei
+    ZAP = "zap"             # Phase 3 (bonus) — résultats d'OWASP ZAP (mode API)
     TRANSPORT = "transport"
     INFO = "info"
 
