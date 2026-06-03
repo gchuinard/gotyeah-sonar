@@ -203,6 +203,8 @@
     <svg class="mark"><use href="#radar"/></svg>
     <div class="wordmark"><b>Sonar</b><span>console de reconnaissance</span></div>
     <div class="spacer"></div>
+    <span v-if="me" class="tag-version">{{ me.email }}</span>
+    <button v-if="me" class="tag-version" style="background:none;cursor:pointer" @click="logout">Déconnexion</button>
     <div class="tag-version">v0.1 · phase 1</div>
   </header>
 
@@ -330,7 +332,7 @@ createApp({
       totalChecks: 0, done: 0,
       findings: [], categories: {}, history: [],
       isHistorical: false, historical: null,
-      hidePass: false, es: null,
+      hidePass: false, es: null, me: null,
       CIRC: 2 * Math.PI * 54,
       SEV_ORDER: ['critical', 'high', 'medium', 'low', 'info', 'pass'],
       CAT_ORDER: ['headers', 'cookies', 'tls', 'dns', 'exposure', 'cors', 'content', 'subresource', 'tech', 'pentest', 'zap', 'transport', 'info'],
@@ -367,6 +369,10 @@ createApp({
     startScan() {
       const t = this.target.trim();
       if (!t || this.scanning) return;
+      if (this.me && !this.me.can_scan) {
+        this.errorMsg = "Scan verrouillé : tu dois d'abord vérifier un domaine (bientôt disponible).";
+        return;
+      }
       this.closeEs();
       this.isHistorical = false; this.historical = null; this.errorMsg = '';
       this.findings = []; this.categories = {}; this.done = 0; this.totalChecks = 0;
@@ -402,8 +408,22 @@ createApp({
     },
     finishScan() { this.scanning = false; this.finished = true; this.closeEs(); },
     closeEs() { if (this.es) { this.es.close(); this.es = null; } },
+    async loadMe() {
+      try {
+        const r = await fetch('/api/me');
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        this.me = await r.json();
+      } catch (e) {}
+    },
+    logout() {
+      fetch('/api/auth/logout', { method: 'POST' }).finally(() => { window.location.href = '/login'; });
+    },
     async loadHistory() {
-      try { const r = await fetch('/api/history'); this.history = await r.json(); } catch (e) {}
+      try {
+        const r = await fetch('/api/history');
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        this.history = await r.json();
+      } catch (e) {}
     },
     async openScan(id) {
       try {
@@ -432,7 +452,7 @@ createApp({
       return esc.replace(/`([^`]+)`/g, '<code>$1</code>');
     },
   },
-  mounted() { this.loadHistory(); },
+  mounted() { this.loadMe(); this.loadHistory(); },
 }).mount('#app');
 </script>
 </body>

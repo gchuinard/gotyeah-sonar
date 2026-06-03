@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SONAR — connexion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#070b10; --bg-2:#0b121a; --bg-3:#101a25;
+    --line:rgba(122,160,180,.12); --line-2:rgba(122,160,180,.22);
+    --text:#d6e2ea; --text-dim:#7d8c98; --text-faint:#46535d; --accent:#2ee6a6;
+    --mono:'IBM Plex Mono',ui-monospace,monospace; --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --display:'Chakra Petch',var(--sans);
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14px;
+    display:flex; align-items:center; justify-content:center; min-height:100vh;
+    background-image:
+      radial-gradient(900px 500px at 80% -10%, rgba(46,230,166,.07), transparent 60%),
+      radial-gradient(700px 500px at 0% 0%, rgba(91,141,239,.06), transparent 55%);
+  }
+  .card {
+    width:min(420px,92vw); background:var(--bg-2); border:1px solid var(--line-2);
+    border-radius:14px; padding:30px 26px; box-shadow:0 20px 60px rgba(0,0,0,.4);
+  }
+  .brand { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .mark { width:30px; height:30px; color:var(--accent); }
+  .mark circle { fill:none; stroke:currentColor; }
+  .brand b { font-family:var(--display); font-weight:700; font-size:18px; letter-spacing:.22em; text-transform:uppercase; }
+  .sub { font-family:var(--mono); font-size:12px; color:var(--text-dim); margin:0 0 22px; }
+  label { display:block; font-family:var(--mono); font-size:12px; color:var(--text-dim); margin-bottom:7px; }
+  input {
+    width:100%; background:var(--bg-3); border:1px solid var(--line-2); border-radius:9px;
+    padding:12px 13px; color:var(--text); font-family:var(--mono); font-size:15px; outline:none;
+  }
+  input:focus { border-color:var(--accent); }
+  button {
+    width:100%; margin-top:14px; font-family:var(--display); font-weight:600; letter-spacing:.08em;
+    text-transform:uppercase; font-size:12px; color:var(--bg); background:var(--accent);
+    border:none; border-radius:9px; padding:13px; cursor:pointer; transition:filter .15s,opacity .15s;
+  }
+  button:hover { filter:brightness(1.08); }
+  button:disabled { opacity:.5; cursor:default; }
+  .msg { margin-top:16px; font-size:13px; border-radius:9px; padding:11px 13px; display:none; }
+  .msg.show { display:block; }
+  .msg.ok { background:rgba(46,230,166,.1); border:1px solid var(--line-2); color:var(--text-dim); }
+  .msg.err { background:rgba(255,59,107,.08); border:1px solid rgba(255,59,107,.35); color:#ffb3c4; }
+  .foot { margin-top:18px; font-size:12px; color:var(--text-faint); line-height:1.5; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="17" stroke-width="1.5"/>
+        <circle cx="20" cy="20" r="11" stroke-width="1.5"/>
+        <circle cx="20" cy="20" r="5" stroke-width="1.5"/>
+        <line x1="20" y1="20" x2="35" y2="9" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <b>Sonar</b>
+    </div>
+    <p class="sub">connexion par lien magique — sans mot de passe</p>
+
+    <form id="f" onsubmit="return false">
+      <label for="email">Ton email</label>
+      <input id="email" type="email" autocomplete="email" placeholder="toi@exemple.com" required autofocus />
+      <button id="btn" type="submit">Recevoir un lien</button>
+    </form>
+
+    <div id="msg" class="msg"></div>
+    <p class="foot">On t'envoie un lien à usage unique, valable ~15 minutes. Clique dessus
+      et tu es connecté — pas de mot de passe à retenir.</p>
+  </div>
+
+<script>
+  const form = document.getElementById('f');
+  const btn = document.getElementById('btn');
+  const input = document.getElementById('email');
+  const msg = document.getElementById('msg');
+
+  function show(text, kind) {
+    msg.textContent = text;
+    msg.className = 'msg show ' + kind;
+  }
+
+  // Message si on arrive ici via un lien expiré.
+  if (new URLSearchParams(location.search).get('error')) {
+    show("Ce lien est invalide ou expiré. Redemande-en un.", 'err');
+  }
+
+  form.addEventListener('submit', async () => {
+    const email = input.value.trim();
+    if (!email) return;
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/auth/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const d = await r.json().catch(() => ({}));
+      show(d.message || "Si un compte existe, un lien a été envoyé.", 'ok');
+    } catch (e) {
+      show("Erreur réseau, réessaie.", 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

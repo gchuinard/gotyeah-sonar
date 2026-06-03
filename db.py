@@ -1,4 +1,9 @@
-"""Couche de persistance SQLite pour l'historique des scans de Sonar."""
+"""Couche de persistance SQLite pour l'historique des scans de Sonar.
+
+Depuis l'arrivée de l'auth, chaque scan est rattaché à l'utilisateur qui l'a lancé
+(`user_id`). Les tables d'auth (users/sessions/tokens) vivent dans la même base,
+mais sont gérées par `auth.py`.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ DB_PATH = Path(__file__).resolve().parent / "data" / "scans.db"
 
 
 def init_db() -> None:
-    """Crée le dossier de données et la table `scans` si nécessaire."""
+    """Crée le dossier de données et la table `scans` ; migre les bases existantes."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
@@ -25,22 +30,27 @@ def init_db() -> None:
                 counts TEXT,
                 total INTEGER,
                 findings TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                user_id TEXT
             )
             """
         )
+        # Migration douce : une base d'avant l'auth n'a pas la colonne user_id.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(scans)").fetchall()}
+        if "user_id" not in cols:
+            conn.execute("ALTER TABLE scans ADD COLUMN user_id TEXT")
 
 
-def save_scan(target: str, summary: dict, findings: list[dict]) -> str:
-    """Persiste un scan et retourne son identifiant unique."""
+def save_scan(target: str, summary: dict, findings: list[dict], user_id: str | None = None) -> str:
+    """Persiste un scan (rattaché à `user_id` si fourni) et retourne son identifiant."""
     scan_id = uuid.uuid4().hex
     created_at = datetime.datetime.now().isoformat(timespec="seconds")
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             """
             INSERT INTO scans
-                (id, target, score, grade, counts, total, findings, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, target, score, grade, counts, total, findings, created_at, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 scan_id,
@@ -51,39 +61,53 @@ def save_scan(target: str, summary: dict, findings: list[dict]) -> str:
                 summary.get("total"),
                 json.dumps(findings),
                 created_at,
+                user_id,
             ),
         )
     return scan_id
 
 
-def list_scans() -> list[dict]:
-    """Retourne les 50 scans les plus récents (sans les findings)."""
+def list_scans(user_id: str | None = None) -> list[dict]:
+    """Les 50 scans les plus récents (sans les findings).
+
+    Si `user_id` est fourni, on ne renvoie que les scans de cet utilisateur ; sinon
+    (ex. admin) on renvoie tout l'historique.
+    """
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
-            SELECT id, target, score, grade, created_at
-            FROM scans
-            ORDER BY created_at DESC
-            LIMIT 50
-            """
-        ).fetchall()
+        if user_id is None:
+            rows = conn.execute(
+                "SELECT id, target, score, grade, created_at "
+                "FROM scans ORDER BY created_at DESC LIMIT 50"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, target, score, grade, created_at "
+                "FROM scans WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+                (user_id,),
+            ).fetchall()
     return [dict(row) for row in rows]
 
 
-def get_scan(scan_id: str) -> dict | None:
-    """Retourne un scan complet (counts/findings désérialisés) ou None."""
+def get_scan(scan_id: str, user_id: str | None = None) -> dict | None:
+    """Retourne un scan complet (counts/findings désérialisés) ou None.
+
+    Si `user_id` est fourni, on applique le contrôle de propriété : un scan qui ne
+    lui appartient pas est traité comme introuvable.
+    """
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             """
-            SELECT id, target, score, grade, counts, total, findings, created_at
+            SELECT id, target, score, grade, counts, total, findings, created_at, user_id
             FROM scans
             WHERE id = ?
             """,
             (scan_id,),
         ).fetchone()
     if row is None:
+        return None
+    if user_id is not None and row["user_id"] != user_id:
         return None
     return {
         "id": row["id"],
