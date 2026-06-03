@@ -29,6 +29,7 @@ class Category(str, Enum):
     CORS = "cors"           # Phase 2 — partage de ressources cross-origin
     CONTENT = "content"     # Phase 2 — contenu mixte (ressources http sur page https)
     TECH = "tech"           # Phase 2 — technologies/versions détectées
+    PENTEST = "pentest"     # Phase 3 — résultats du moteur nuclei
     TRANSPORT = "transport"
     INFO = "info"
 

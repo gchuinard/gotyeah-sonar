@@ -48,6 +48,12 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 | Contenu mixte | ressources `http://` (actives vs passives) chargées sur une page `https://` |
 | Technologies | empreinte serveur / framework / CMS (en-têtes, cookies, balise meta generator) + alerte si une version est exposée |
 
+### Phase 3 — pentest (nuclei)
+
+| Catégorie | Checks |
+|-----------|--------|
+| Pentest | exécution de **nuclei** sur la cible ; chaque résultat (CVE, mauvaise config, panel exposé…) devient un `Finding`. Réglable par variables d'environnement : `NUCLEI_SEVERITY` (défaut `medium,high,critical`), `NUCLEI_TIMEOUT` (défaut 240 s), `NUCLEI_ARGS` (args bruts en plus), `SONAR_NUCLEI=off` pour le couper. nuclei est installé dans l'image Docker ; sans le binaire (dev local), le check se désactive proprement. |
+
 Chaque finding a une sévérité (critique → conforme). Le score sur 100 et la note (A+ → F)
 se calculent en pénalisant selon la gravité.
 
@@ -96,8 +102,9 @@ les en-têtes), `ctx.history` (redirections) et `ctx.client` si tu as besoin de 
 
 - **Phase 2 — actif léger** : ✅ implémentée — fichiers exposés (`.env`, `.git/HEAD`…), détection
   de technos/versions, contenu mixte, CORS. Reste : en-têtes manquants sur les sous-ressources.
-- **Phase 3 — vrai pentest** : on wrappe **nuclei** (et éventuellement OWASP ZAP en mode API)
-  comme un simple check de plus. Il parse la sortie de l'outil et la convertit en `Finding`.
-  Pas de réécriture de moteur : le dashboard, le score et l'historique fonctionnent déjà.
+- **Phase 3 — vrai pentest** : ✅ implémentée — wrapper **nuclei** branché comme un simple check
+  de plus (`scanner/checks/nuclei.py`). Il parse la sortie JSON de l'outil et la convertit en
+  `Finding`. Aucune réécriture de moteur : le dashboard, le score et l'historique marchaient déjà.
+  Piste restante : ajouter OWASP ZAP en mode API sur le même principe.
 
 Tout ça se branche sans rien casser, parce que ça reste le même format de sortie.
