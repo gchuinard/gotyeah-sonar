@@ -8,9 +8,39 @@ services:
       # Persiste l'historique des scans (la base SQLite vit dans /app/data)
       - ./data:/app/data
     restart: unless-stopped
+    environment:
+      # ZAP (Phase 3, optionnel). Vide => le check ZAP reste discret ("non configuré").
+      # Renseigne ces variables dans un fichier .env (voir .env.example) pour l'activer.
+      - ZAP_API_URL=${ZAP_API_URL:-}
+      - ZAP_API_KEY=${ZAP_API_KEY:-}
+      # Facultatif : ZAP_ACTIVE / ZAP_SPIDER_MAX / ZAP_TIMEOUT / SONAR_ZAP / NUCLEI_*
     networks:
       - default   # réseau du projet (inchangé)
       - npm       # réseau partagé avec Nginx Proxy Manager
+
+  # OWASP ZAP en démon (Phase 3, optionnel). Lourd (Java, ~1-2 Go RAM) : il ne
+  # démarre QUE si tu l'actives via son profil :  docker compose --profile zap up -d
+  # Pas de `ports:` => jamais exposé hors du réseau Docker ; seul `sonar` lui parle.
+  zap:
+    image: zaproxy/zap-stable
+    container_name: zap
+    profiles: ["zap"]
+    command:
+      - zap.sh
+      - -daemon
+      - -host
+      - "0.0.0.0"
+      - -port
+      - "8090"
+      - -config
+      - "api.key=${ZAP_API_KEY:-}"
+      - -config
+      - "api.addrs.addr.name=.*"      # autorise l'API depuis les autres conteneurs
+      - -config
+      - "api.addrs.addr.regex=true"
+    networks:
+      - default
+    restart: unless-stopped
 
 networks:
   # Réseau par défaut du projet (gotyeah-sonar_default), créé automatiquement.

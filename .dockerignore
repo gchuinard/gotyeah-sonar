@@ -5,6 +5,7 @@ __pycache__/
 .gitignore
 data/
 *.db
+.env
 .venv/
 README.md
 tests/
