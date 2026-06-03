@@ -28,6 +28,34 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 
 ---
 
+## Accès — connexion par lien magique
+
+Sonar est **authentifié** : pas de mot de passe, on se connecte par **lien magique**.
+Tu saisis ton email sur `/login`, tu reçois un lien à usage unique (valable ~15 min),
+le clic ouvre une session longue (cookie). Un compte ne peut **rien scanner** tant qu'il
+n'a pas vérifié un domaine par DNS (ce flow arrive ensuite ; l'admin scanne sans restriction).
+
+**Première connexion / porte de secours.** Définis `SONAR_ADMIN_EMAIL` : au démarrage, un
+lien de login one-time est imprimé dans les logs — récupère-le avec :
+
+```bash
+docker logs sonar | grep -A2 "PORTE DE SECOURS"
+```
+
+Tu l'ouvres dans le navigateur et te voilà connecté en admin, même sans email configuré.
+
+**Emails (Brevo).** Tant que `BREVO_API_KEY` est vide, les liens magiques sont **loggés**
+au lieu d'être envoyés (pratique pour démarrer). Renseigne ta clé Brevo + `SONAR_MAIL_FROM`
+dans le `.env` pour l'envoi réel.
+
+**Inscription.** `SONAR_OPEN_REGISTRATION=true` ouvre l'inscription ; `false` (défaut) =
+sur invitation (un email inconnu ne reçoit pas de lien, mais la réponse reste générique pour
+ne pas divulguer quels comptes existent). ⚠️ Renseigne `SONAR_BASE_URL` (URL publique) pour
+que les liens dans les emails soient corrects derrière le proxy. Tout est dans `.env` (voir
+`.env.example`).
+
+---
+
 ## Ce que ça vérifie
 
 ### Phase 1 — passif (une seule requête)

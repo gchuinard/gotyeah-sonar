@@ -9,11 +9,20 @@ services:
       - ./data:/app/data
     restart: unless-stopped
     environment:
-      # ZAP (Phase 3, optionnel). Vide => le check ZAP reste discret ("non configuré").
-      # Renseigne ces variables dans un fichier .env (voir .env.example) pour l'activer.
+      # Toute la config vient du .env (voir .env.example). Les `:-` rendent
+      # chaque variable optionnelle : l'app démarre même sans .env (valeurs par défaut).
+      # --- Auth & emails (P0) ---
+      - SONAR_BASE_URL=${SONAR_BASE_URL:-}                       # ex. https://sonar.gautierchuinard.com (liens magiques)
+      - SONAR_OPEN_REGISTRATION=${SONAR_OPEN_REGISTRATION:-false}
+      - SONAR_ADMIN_EMAIL=${SONAR_ADMIN_EMAIL:-}
+      - BREVO_API_KEY=${BREVO_API_KEY:-}
+      - SONAR_MAIL_FROM=${SONAR_MAIL_FROM:-}
+      - SONAR_MAIL_FROM_NAME=${SONAR_MAIL_FROM_NAME:-Sonar}
+      # --- ZAP (Phase 3, optionnel) ---
       - ZAP_API_URL=${ZAP_API_URL:-}
       - ZAP_API_KEY=${ZAP_API_KEY:-}
-      # Facultatif : ZAP_ACTIVE / ZAP_SPIDER_MAX / ZAP_TIMEOUT / SONAR_ZAP / NUCLEI_*
+      # Autres réglages possibles (mêmes que le code) : SONAR_MAGIC_TTL_MIN,
+      # SONAR_SESSION_DAYS, SONAR_RATE_EMAIL/IP, ZAP_ACTIVE, NUCLEI_*…
     networks:
       - default   # réseau du projet (inchangé)
       - npm       # réseau partagé avec Nginx Proxy Manager
