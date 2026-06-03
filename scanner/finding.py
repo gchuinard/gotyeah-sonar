@@ -28,6 +28,7 @@ class Category(str, Enum):
     EXPOSURE = "exposure"   # Phase 2 — fichiers/chemins sensibles exposés
     CORS = "cors"           # Phase 2 — partage de ressources cross-origin
     CONTENT = "content"     # Phase 2 — contenu mixte (ressources http sur page https)
+    SUBRESOURCE = "subresource"  # Phase 2 — en-têtes de sécurité sur les sous-ressources
     TECH = "tech"           # Phase 2 — technologies/versions détectées
     PENTEST = "pentest"     # Phase 3 — résultats du moteur nuclei
     TRANSPORT = "transport"

@@ -46,6 +46,7 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 | Exposition | fichiers sensibles exposés (`.env`, `.git/HEAD`, `.git/config`, sauvegardes, `.DS_Store`, `phpinfo`…), avec sonde anti soft-404 et **signature de contenu obligatoire** (jamais sur le seul code 200) |
 | CORS | origine reflétée, `*`, `null`, et combinaison dangereuse avec `Access-Control-Allow-Credentials` |
 | Contenu mixte | ressources `http://` (actives vs passives) chargées sur une page `https://` |
+| Sous-ressources | scripts/CSS même-origine servis sans `X-Content-Type-Options: nosniff` (échantillon récupéré activement) |
 | Technologies | empreinte serveur / framework / CMS (en-têtes, cookies, balise meta generator) + alerte si une version est exposée |
 
 ### Phase 3 — pentest (nuclei)
@@ -100,8 +101,8 @@ les en-têtes), `ctx.history` (redirections) et `ctx.client` si tu as besoin de 
 
 ## Roadmap
 
-- **Phase 2 — actif léger** : ✅ implémentée — fichiers exposés (`.env`, `.git/HEAD`…), détection
-  de technos/versions, contenu mixte, CORS. Reste : en-têtes manquants sur les sous-ressources.
+- **Phase 2 — actif léger** : ✅ complète — fichiers exposés (`.env`, `.git/HEAD`…), détection
+  de technos/versions, contenu mixte, CORS, et en-têtes manquants sur les sous-ressources.
 - **Phase 3 — vrai pentest** : ✅ implémentée — wrapper **nuclei** branché comme un simple check
   de plus (`scanner/checks/nuclei.py`). Il parse la sortie JSON de l'outil et la convertit en
   `Finding`. Aucune réécriture de moteur : le dashboard, le score et l'historique marchaient déjà.

@@ -333,10 +333,10 @@ createApp({
       hidePass: false, es: null,
       CIRC: 2 * Math.PI * 54,
       SEV_ORDER: ['critical', 'high', 'medium', 'low', 'info', 'pass'],
-      CAT_ORDER: ['headers', 'cookies', 'tls', 'dns', 'exposure', 'cors', 'content', 'tech', 'pentest', 'transport', 'info'],
+      CAT_ORDER: ['headers', 'cookies', 'tls', 'dns', 'exposure', 'cors', 'content', 'subresource', 'tech', 'pentest', 'transport', 'info'],
       WEIGHTS: { critical: 25, high: 15, medium: 8, low: 3, info: 0, pass: 0 },
       SEV_LABEL: { critical: 'Critique', high: 'Élevé', medium: 'Moyen', low: 'Faible', info: 'Info', pass: 'Conforme' },
-      CAT_LABEL: { headers: 'En-têtes HTTP', cookies: 'Cookies', tls: 'TLS / Cert', dns: 'DNS', exposure: 'Exposition', cors: 'CORS', content: 'Contenu mixte', tech: 'Technologies', pentest: 'Pentest (nuclei)', transport: 'Transport', info: 'Info' },
+      CAT_LABEL: { headers: 'En-têtes HTTP', cookies: 'Cookies', tls: 'TLS / Cert', dns: 'DNS', exposure: 'Exposition', cors: 'CORS', content: 'Contenu mixte', subresource: 'Sous-ressources', tech: 'Technologies', pentest: 'Pentest (nuclei)', transport: 'Transport', info: 'Info' },
     };
   },
   computed: {
