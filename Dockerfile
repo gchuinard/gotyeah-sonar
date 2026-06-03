@@ -26,8 +26,15 @@ RUN set -eux; \
     rm /tmp/nuclei.zip; \
     nuclei -version
 
-# Pré-télécharge les templates pour éviter le téléchargement au 1er scan (best effort).
-RUN nuclei -update-templates -disable-update-check || true
+# Pré-télécharge les templates nuclei DANS l'image. Sans ça, le 1er scan échoue avec
+# « no templates provided for scan » (le dossier /root/nuclei-templates n'existe pas).
+# On NE passe PAS -disable-update-check ici : ce flag empêche nuclei de résoudre la
+# dernière version des templates, donc -update-templates devient un no-op (c'était le bug).
+# On vérifie ensuite que le dossier n'est pas vide => le build casse si le téléchargement
+# a échoué, au lieu de livrer une image sans templates.
+RUN set -eux; \
+    nuclei -update-templates; \
+    [ -n "$(ls -A /root/nuclei-templates 2>/dev/null)" ]
 
 # Puis le code.
 COPY . .
