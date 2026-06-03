@@ -1,7 +1,8 @@
 name: Deploy to Pi
 
-# Déploie Sonar sur le Raspberry Pi à chaque push sur main.
-# Principe : le runner GitHub récupère le code, le synchronise sur le Pi via
+# CI : à chaque push sur main, on lance d'abord les tests (job "test"), puis on
+# déploie sur le Raspberry Pi (job "deploy") UNIQUEMENT si les tests passent.
+# Principe du deploy : le runner GitHub récupère le code, le synchronise sur le Pi via
 # rsync/SSH, puis (re)construit et relance le conteneur. Le Pi n'a jamais besoin
 # d'accéder lui-même à GitHub — il accepte juste la connexion SSH du runner.
 #
@@ -25,7 +26,19 @@ env:
   REMOTE_DIR: /home/pi/sites/gotyeah-sonar   # dossier cible sur le Pi (chemin absolu)
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v5
+      - name: Lancer la suite de tests (pytest)
+        run: |
+          python3 -m pip install --break-system-packages --upgrade pip
+          python3 -m pip install --break-system-packages -r requirements-dev.txt
+          python3 -m pytest
+
   deploy:
+    needs: test          # le déploiement n'a lieu que si le job "test" est vert
     runs-on: ubuntu-latest
     steps:
       - name: Récupérer le code
