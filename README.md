@@ -28,7 +28,9 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 
 ---
 
-## Ce que ça vérifie (Phase 1 — passif)
+## Ce que ça vérifie
+
+### Phase 1 — passif (une seule requête)
 
 | Catégorie | Checks |
 |-----------|--------|
@@ -36,6 +38,15 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 | Cookies | Secure / HttpOnly / SameSite sur chaque cookie posé |
 | TLS | version négociée (refus < 1.2), validité et expiration du certificat |
 | DNS | SPF, DMARC (+ détection `p=none`), CAA |
+
+### Phase 2 — actif léger (quelques requêtes ciblées)
+
+| Catégorie | Checks |
+|-----------|--------|
+| Exposition | fichiers sensibles exposés (`.env`, `.git/HEAD`, `.git/config`, sauvegardes, `.DS_Store`, `phpinfo`…), avec sonde anti soft-404 et **signature de contenu obligatoire** (jamais sur le seul code 200) |
+| CORS | origine reflétée, `*`, `null`, et combinaison dangereuse avec `Access-Control-Allow-Credentials` |
+| Contenu mixte | ressources `http://` (actives vs passives) chargées sur une page `https://` |
+| Technologies | empreinte serveur / framework / CMS (en-têtes, cookies, balise meta generator) + alerte si une version est exposée |
 
 Chaque finding a une sévérité (critique → conforme). Le score sur 100 et la note (A+ → F)
 se calculent en pénalisant selon la gravité.
@@ -83,8 +94,8 @@ les en-têtes), `ctx.history` (redirections) et `ctx.client` si tu as besoin de 
 
 ## Roadmap
 
-- **Phase 2 — actif léger** : fichiers exposés (`.env`, `.git/HEAD`…), détection de techno/versions,
-  mixed content, CORS, en-têtes manquants sur les sous-ressources.
+- **Phase 2 — actif léger** : ✅ implémentée — fichiers exposés (`.env`, `.git/HEAD`…), détection
+  de technos/versions, contenu mixte, CORS. Reste : en-têtes manquants sur les sous-ressources.
 - **Phase 3 — vrai pentest** : on wrappe **nuclei** (et éventuellement OWASP ZAP en mode API)
   comme un simple check de plus. Il parse la sortie de l'outil et la convertit en `Finding`.
   Pas de réécriture de moteur : le dashboard, le score et l'historique fonctionnent déjà.

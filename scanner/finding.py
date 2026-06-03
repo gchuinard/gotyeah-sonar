@@ -25,6 +25,10 @@ class Category(str, Enum):
     COOKIES = "cookies"
     TLS = "tls"
     DNS = "dns"
+    EXPOSURE = "exposure"   # Phase 2 — fichiers/chemins sensibles exposés
+    CORS = "cors"           # Phase 2 — partage de ressources cross-origin
+    CONTENT = "content"     # Phase 2 — contenu mixte (ressources http sur page https)
+    TECH = "tech"           # Phase 2 — technologies/versions détectées
     TRANSPORT = "transport"
     INFO = "info"
 
