@@ -33,7 +33,7 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 Sonar est **authentifié** : pas de mot de passe, on se connecte par **lien magique**.
 Tu saisis ton email sur `/login`, tu reçois un lien à usage unique (valable ~15 min),
 le clic ouvre une session longue (cookie). Un compte ne peut **rien scanner** tant qu'il
-n'a pas vérifié un domaine par DNS (ce flow arrive ensuite ; l'admin scanne sans restriction).
+n'a pas **vérifié un domaine par DNS** (l'admin, lui, scanne sans restriction).
 
 **Première connexion / porte de secours.** Définis `SONAR_ADMIN_EMAIL` : au démarrage, un
 lien de login one-time est imprimé dans les logs — récupère-le avec :
@@ -53,6 +53,12 @@ sur invitation (un email inconnu ne reçoit pas de lien, mais la réponse reste 
 ne pas divulguer quels comptes existent). ⚠️ Renseigne `SONAR_BASE_URL` (URL publique) pour
 que les liens dans les emails soient corrects derrière le proxy. Tout est dans `.env` (voir
 `.env.example`).
+
+**Vérifier un domaine (débloque le scan).** Dans le dashboard, panneau « Mes domaines »,
+ajoute un domaine : Sonar te donne un enregistrement **TXT** à publier sur ta zone DNS —
+`sonar-verify=<token>` sur l'apex, **ou** `<token>` sur `_sonar-verify.<domaine>`. Clique
+**Vérifier** : si le TXT est trouvé, le domaine **et ses sous-domaines** deviennent
+scannables. (La propagation DNS peut prendre quelques minutes.)
 
 ---
 

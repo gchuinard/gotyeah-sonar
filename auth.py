@@ -19,10 +19,12 @@ dynamiquement pour rester testable (monkeypatch).
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import hashlib
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import uuid
@@ -90,6 +92,11 @@ def init_auth() -> None:
     """Crée les tables d'auth si besoin (dans la même base que les scans)."""
     db.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _conn() as conn:
+        # Pré-migration : l'ancienne table `verified_domains` (déploiement auth
+        # initial, vide) n'a pas les colonnes du flow de vérif -> on la recrée.
+        existing = conn.execute("PRAGMA table_info(verified_domains)").fetchall()
+        if existing and "token" not in {r[1] for r in existing}:
+            conn.execute("DROP TABLE verified_domains")
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -116,8 +123,13 @@ def init_auth() -> None:
                 id          TEXT PRIMARY KEY,
                 user_id     TEXT NOT NULL,
                 domain      TEXT NOT NULL,
-                verified_at TEXT NOT NULL
+                token       TEXT NOT NULL,
+                verified    INTEGER NOT NULL DEFAULT 0,
+                created_at  TEXT NOT NULL,
+                verified_at TEXT
             );
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_domain_user
+                ON verified_domains(user_id, domain);
             CREATE TABLE IF NOT EXISTS auth_rate (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 key        TEXT NOT NULL,
@@ -266,9 +278,30 @@ def destroy_session(raw: str) -> None:
 # --------------------------------------------------------------------------- #
 # Gate « peut scanner » (vérif domaine = vrai garde-fou)
 # --------------------------------------------------------------------------- #
+CHALLENGE_PREFIX = "_sonar-verify"
+_DOMAIN_RE = re.compile(r"(?=.{1,253}$)([a-z0-9](-?[a-z0-9])*\.)+[a-z]{2,}$")
+
+
+def normalize_domain(host: str) -> str:
+    """Minuscule, sans schéma/port/chemin ni `www.` — la forme « propriétaire »."""
+    host = (host or "").strip().lower()
+    if "://" in host:
+        host = host.split("://", 1)[1]
+    host = host.split("/")[0].split(":")[0].strip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def is_valid_domain(domain: str) -> bool:
+    return bool(_DOMAIN_RE.fullmatch(normalize_domain(domain)))
+
+
 def has_verified_domain(user_id: str) -> bool:
     with _conn() as conn:
-        n = conn.execute("SELECT COUNT(*) FROM verified_domains WHERE user_id=?", (user_id,)).fetchone()[0]
+        n = conn.execute(
+            "SELECT COUNT(*) FROM verified_domains WHERE user_id=? AND verified=1",
+            (user_id,)).fetchone()[0]
     return n > 0
 
 
@@ -276,25 +309,144 @@ def user_can_scan(user) -> bool:
     return bool(user) and (bool(user["is_admin"]) or has_verified_domain(user["id"]))
 
 
-def registrable_domain(host: str) -> str:
-    """Domaine « enregistrable » naïf (2 derniers labels). Suffit pour le gate ;
-    la vraie résolution (PSL) viendra avec le flow de vérification DNS."""
-    host = (host or "").strip().lower().split(":")[0]
-    parts = [p for p in host.split(".") if p]
-    return ".".join(parts[-2:]) if len(parts) >= 2 else host
+def _verified_domains_of(user_id: str) -> list[str]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT domain FROM verified_domains WHERE user_id=? AND verified=1",
+            (user_id,)).fetchall()
+    return [r["domain"] for r in rows]
 
 
 def user_can_scan_target(user, host: str) -> bool:
+    """Admin : tout. Sinon : le domaine cible doit être un domaine vérifié de
+    l'utilisateur, ou un sous-domaine de celui-ci."""
     if not user:
         return False
     if user["is_admin"]:
         return True
-    dom = registrable_domain(host)
+    h = normalize_domain(host)
+    for d in _verified_domains_of(user["id"]):
+        if h == d or h.endswith("." + d):
+            return True
+    return False
+
+
+# --------------------------------------------------------------------------- #
+# Vérification de domaine par DNS (TXT)
+# --------------------------------------------------------------------------- #
+def _domain_to_dict(row) -> dict:
+    return {
+        "id": row["id"],
+        "domain": row["domain"],
+        "verified": bool(row["verified"]),
+        "token": row["token"],
+        "created_at": row["created_at"],
+        "verified_at": row["verified_at"],
+        # Enregistrement TXT à publier (apex recommandé, sous-domaine en alternative).
+        "dns": {
+            "apex": {"type": "TXT", "host": row["domain"], "value": f"sonar-verify={row['token']}"},
+            "subdomain": {"type": "TXT", "host": f"{CHALLENGE_PREFIX}.{row['domain']}", "value": row["token"]},
+        },
+    }
+
+
+def get_domain(domain_id: str, user_id: str):
     with _conn() as conn:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM verified_domains WHERE user_id=? AND domain=?",
-            (user["id"], dom)).fetchone()[0]
-    return n > 0
+        row = conn.execute(
+            "SELECT * FROM verified_domains WHERE id=? AND user_id=?", (domain_id, user_id)).fetchone()
+    return _domain_to_dict(row) if row else None
+
+
+def get_domain_by_name(user_id: str, domain: str):
+    domain = normalize_domain(domain)
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM verified_domains WHERE user_id=? AND domain=?", (user_id, domain)).fetchone()
+    return _domain_to_dict(row) if row else None
+
+
+def list_domains(user_id: str) -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM verified_domains WHERE user_id=? ORDER BY created_at DESC", (user_id,)).fetchall()
+    return [_domain_to_dict(r) for r in rows]
+
+
+def add_domain(user_id: str, domain: str):
+    """Crée une revendication de domaine (token de challenge). Idempotent : si le
+    domaine est déjà revendiqué par cet utilisateur, on renvoie l'existant. None si
+    le domaine est invalide."""
+    domain = normalize_domain(domain)
+    if not is_valid_domain(domain):
+        return None
+    existing = get_domain_by_name(user_id, domain)
+    if existing:
+        return existing
+    did = uuid.uuid4().hex
+    token = secrets.token_hex(16)
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO verified_domains (id, user_id, domain, token, verified, created_at, verified_at) "
+            "VALUES (?, ?, ?, ?, 0, ?, NULL)",
+            (did, user_id, domain, token, _iso(_now())),
+        )
+    return get_domain(did, user_id)
+
+
+def delete_domain(domain_id: str, user_id: str) -> None:
+    with _conn() as conn:
+        conn.execute("DELETE FROM verified_domains WHERE id=? AND user_id=?", (domain_id, user_id))
+
+
+def _mark_verified(domain_id: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE verified_domains SET verified=1, verified_at=? WHERE id=?",
+            (_iso(_now()), domain_id))
+
+
+async def _txt_records(name: str) -> list[str]:
+    """Résout les enregistrements TXT (bloquant -> thread). Liste vide si erreur."""
+    import dns.resolver
+
+    def query():
+        try:
+            answer = dns.resolver.resolve(name, "TXT", lifetime=8)
+        except Exception:
+            return []
+        out = []
+        for rdata in answer:
+            try:
+                out.append(b"".join(rdata.strings).decode("utf-8", "replace"))
+            except Exception:
+                out.append(str(rdata).strip('"'))
+        return out
+
+    return await asyncio.to_thread(query)
+
+
+async def verify_domain(domain_id: str, user_id: str):
+    """Vérifie la propriété d'un domaine via son TXT. Renvoie (ok: bool, message: str)."""
+    claim = get_domain(domain_id, user_id)
+    if not claim:
+        return False, "Domaine introuvable."
+    if claim["verified"]:
+        return True, "Domaine déjà vérifié."
+
+    domain, token = claim["domain"], claim["token"]
+
+    # Méthode 1 : TXT sur l'apex contenant `sonar-verify=<token>`.
+    if any(f"sonar-verify={token}" in rec for rec in await _txt_records(domain)):
+        _mark_verified(domain_id)
+        return True, "Domaine vérifié (TXT sur l'apex)."
+
+    # Méthode 2 : TXT sur `_sonar-verify.<domaine>` valant le token.
+    if any(token in rec for rec in await _txt_records(f"{CHALLENGE_PREFIX}.{domain}")):
+        _mark_verified(domain_id)
+        return True, f"Domaine vérifié (TXT sur {CHALLENGE_PREFIX})."
+
+    return False, ("Enregistrement TXT introuvable. Vérifie la valeur, puis patiente : "
+                   "la propagation DNS peut prendre quelques minutes.")
 
 
 # --------------------------------------------------------------------------- #

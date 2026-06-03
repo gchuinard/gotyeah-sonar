@@ -147,6 +147,57 @@ async def api_me(request: Request):
 
 
 # --------------------------------------------------------------------------- #
+# Domaines (vérification DNS — débloque le scan)
+# --------------------------------------------------------------------------- #
+@app.get("/api/domains")
+async def domains_list(request: Request):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    return JSONResponse({"domains": auth.list_domains(user["id"])})
+
+
+@app.post("/api/domains")
+async def domains_add(request: Request):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    domain = body.get("domain", "") if isinstance(body, dict) else ""
+    claim = auth.add_domain(user["id"], domain)
+    if not claim:
+        return JSONResponse({"error": "Domaine invalide."}, status_code=400)
+    return JSONResponse(claim, status_code=201)
+
+
+@app.post("/api/domains/{domain_id}/verify")
+async def domains_verify(request: Request, domain_id: str):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    if auth.get_domain(domain_id, user["id"]) is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    ok, message = await auth.verify_domain(domain_id, user["id"])
+    return JSONResponse({
+        "verified": ok,
+        "message": message,
+        "domain": auth.get_domain(domain_id, user["id"]),
+    })
+
+
+@app.delete("/api/domains/{domain_id}")
+async def domains_delete(request: Request, domain_id: str):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    auth.delete_domain(domain_id, user["id"])
+    return JSONResponse({"ok": True})
+
+
+# --------------------------------------------------------------------------- #
 # Scan + historique (protégés par la session)
 # --------------------------------------------------------------------------- #
 @app.get("/api/scan/stream")

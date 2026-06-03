@@ -181,6 +181,29 @@
   .hist .meta .d { font-size: 11px; color: var(--text-faint); }
   .hist .empty, .feed-empty { color: var(--text-faint); font-size: 13px; }
 
+  /* ---- domaines ---- */
+  .doms { display: flex; flex-direction: column; gap: 9px; }
+  .doms .empty { color: var(--text-faint); font-size: 13px; }
+  .dom { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; }
+  .dom-top { display: flex; align-items: center; gap: 8px; }
+  .dom-name { font-family: var(--mono); font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dom-badge { margin-left: auto; font-family: var(--mono); font-size: 10px; padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+  .dom-badge.ok { color: var(--sev-pass); border: 1px solid var(--sev-pass); }
+  .dom-badge.pending { color: var(--sev-medium); border: 1px solid var(--sev-medium); }
+  .dom-x { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px; padding: 0 2px; }
+  .dom-x:hover { color: var(--sev-critical); }
+  .dom-howto { margin-top: 8px; display: flex; flex-direction: column; gap: 7px; }
+  .dom-hint { font-size: 12px; color: var(--text-dim); }
+  .dom-rec { font-family: var(--mono); font-size: 11px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 8px; word-break: break-all; }
+  .btn-sm { font-family: var(--mono); font-size: 12px; color: var(--bg); background: var(--accent); border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; align-self: flex-start; }
+  .btn-sm:hover { filter: brightness(1.08); }
+  .btn-sm:disabled { opacity: .5; cursor: default; }
+  .dom-add { display: flex; gap: 7px; margin-top: 11px; }
+  .dom-add input { flex: 1; background: var(--bg-3); border: 1px solid var(--line-2); border-radius: 7px; padding: 8px 10px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; }
+  .dom-add input:focus { border-color: var(--accent); }
+  .dom-add .btn-sm { align-self: auto; }
+  .dom-msg { margin-top: 9px; font-size: 12px; color: var(--text-dim); }
+
   .feed-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 60px 20px; }
   .feed-empty .mark { width: 56px; height: 56px; opacity: .5; }
   .feed-empty p { margin: 0; max-width: 360px; }
@@ -248,6 +271,30 @@
         <div class="caption" v-if="scanning">analyse en cours · {{ done }}/{{ totalChecks }}</div>
         <div class="caption" v-else-if="hasResult">{{ issuesCount }} problème(s) · {{ passCount }} conforme(s)</div>
         <div class="caption" v-else>indice de surface d'exposition</div>
+      </div>
+
+      <div class="panel">
+        <h2>Mes domaines</h2>
+        <div class="doms">
+          <div v-if="!domains.length" class="empty">Ajoute un domaine et vérifie-le pour débloquer le scan.</div>
+          <div v-for="d in domains" :key="d.id" class="dom">
+            <div class="dom-top">
+              <span class="dom-name">{{ d.domain }}</span>
+              <span class="dom-badge" :class="d.verified ? 'ok' : 'pending'">{{ d.verified ? '✓ vérifié' : 'en attente' }}</span>
+              <button class="dom-x" @click="deleteDomain(d)" title="Supprimer">✕</button>
+            </div>
+            <div v-if="!d.verified" class="dom-howto">
+              <div class="dom-hint">Publie ce TXT sur ta zone DNS, puis clique Vérifier :</div>
+              <code class="dom-rec">TXT&nbsp;&nbsp;{{ d.dns.apex.host }}&nbsp;&nbsp;→&nbsp;&nbsp;{{ d.dns.apex.value }}</code>
+              <button class="btn-sm" @click="verifyDomain(d)" :disabled="domainBusy">Vérifier</button>
+            </div>
+          </div>
+        </div>
+        <div class="dom-add">
+          <input v-model="newDomain" @keyup.enter="addDomain" placeholder="exemple.com" spellcheck="false" />
+          <button class="btn-sm" @click="addDomain" :disabled="domainBusy || !newDomain.trim()">Ajouter</button>
+        </div>
+        <div v-if="domainMsg" class="dom-msg">{{ domainMsg }}</div>
       </div>
 
       <div class="panel" v-if="hasResult || scanning">
@@ -333,6 +380,7 @@ createApp({
       findings: [], categories: {}, history: [],
       isHistorical: false, historical: null,
       hidePass: false, es: null, me: null,
+      domains: [], newDomain: '', domainBusy: false, domainMsg: '',
       CIRC: 2 * Math.PI * 54,
       SEV_ORDER: ['critical', 'high', 'medium', 'low', 'info', 'pass'],
       CAT_ORDER: ['headers', 'cookies', 'tls', 'dns', 'exposure', 'cors', 'content', 'subresource', 'tech', 'pentest', 'zap', 'transport', 'info'],
@@ -370,7 +418,7 @@ createApp({
       const t = this.target.trim();
       if (!t || this.scanning) return;
       if (this.me && !this.me.can_scan) {
-        this.errorMsg = "Scan verrouillé : tu dois d'abord vérifier un domaine (bientôt disponible).";
+        this.errorMsg = "Scan verrouillé : ajoute et vérifie un domaine dans « Mes domaines ».";
         return;
       }
       this.closeEs();
@@ -418,6 +466,45 @@ createApp({
     logout() {
       fetch('/api/auth/logout', { method: 'POST' }).finally(() => { window.location.href = '/login'; });
     },
+    async loadDomains() {
+      try {
+        const r = await fetch('/api/domains');
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        this.domains = (await r.json()).domains || [];
+      } catch (e) {}
+    },
+    async addDomain() {
+      const dom = this.newDomain.trim();
+      if (!dom || this.domainBusy) return;
+      this.domainBusy = true; this.domainMsg = '';
+      try {
+        const r = await fetch('/api/domains', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: dom }),
+        });
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        if (!r.ok) { this.domainMsg = 'Domaine invalide.'; return; }
+        this.newDomain = '';
+        await this.loadDomains();
+      } catch (e) {} finally { this.domainBusy = false; }
+    },
+    async verifyDomain(d) {
+      this.domainBusy = true; this.domainMsg = '';
+      try {
+        const r = await fetch('/api/domains/' + d.id + '/verify', { method: 'POST' });
+        const res = await r.json().catch(() => ({}));
+        this.domainMsg = res.message || '';
+        await this.loadDomains();
+        if (res.verified) await this.loadMe();   // débloque le scan
+      } catch (e) {} finally { this.domainBusy = false; }
+    },
+    async deleteDomain(d) {
+      try {
+        await fetch('/api/domains/' + d.id, { method: 'DELETE' });
+        await this.loadDomains();
+        await this.loadMe();
+      } catch (e) {}
+    },
     async loadHistory() {
       try {
         const r = await fetch('/api/history');
@@ -452,7 +539,7 @@ createApp({
       return esc.replace(/`([^`]+)`/g, '<code>$1</code>');
     },
   },
-  mounted() { this.loadMe(); this.loadHistory(); },
+  mounted() { this.loadMe(); this.loadDomains(); this.loadHistory(); },
 }).mount('#app');
 </script>
 </body>

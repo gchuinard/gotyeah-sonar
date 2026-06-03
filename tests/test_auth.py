@@ -10,35 +10,7 @@ import db
 import mailer
 
 
-# --------------------------------------------------------------------------- #
-# Fixtures
-# --------------------------------------------------------------------------- #
-@pytest.fixture
-def authdb(tmp_path, monkeypatch):
-    """Base temporaire + tables d'auth, env propre."""
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "sonar.db")
-    for k in ("SONAR_OPEN_REGISTRATION", "SONAR_ADMIN_EMAIL", "BREVO_API_KEY",
-              "SONAR_MAGIC_TTL_MIN", "SONAR_RATE_EMAIL", "SONAR_RATE_IP"):
-        monkeypatch.delenv(k, raising=False)
-    db.init_db()
-    auth.init_auth()
-    return tmp_path
-
-
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    """App réelle via TestClient (le lifespan initialise la base temporaire)."""
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "sonar.db")
-    monkeypatch.setenv("SONAR_COOKIE_SECURE", "false")   # http en test
-    monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "true")
-    monkeypatch.delenv("SONAR_ADMIN_EMAIL", raising=False)
-    monkeypatch.delenv("BREVO_API_KEY", raising=False)
-    from fastapi.testclient import TestClient
-    import app as appmod
-    with TestClient(appmod.app) as c:
-        yield c, appmod
-
-
+# Les fixtures `authdb` et `client` sont dans conftest.py (partagées avec test_domains).
 def _count(path, where, *params):
     return sqlite3.connect(db.DB_PATH).execute(
         f"SELECT COUNT(*) FROM {path} WHERE {where}", params).fetchone()[0]
