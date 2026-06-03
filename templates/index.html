@@ -210,7 +210,7 @@
     <span class="led" :class="{ live: scanning }"></span>
     <span class="prompt">scan&nbsp;~$</span>
     <input ref="input" v-model="target" @keyup.enter="startScan"
-           placeholder="mathildeallaine.yoga" :disabled="scanning" spellcheck="false" autofocus />
+           placeholder="monsite.com" :disabled="scanning" spellcheck="false" autofocus />
     <button class="btn" @click="startScan" :disabled="scanning || !target.trim()">
       {{ scanning ? 'Scan…' : 'Lancer' }}
     </button>
