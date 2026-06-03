@@ -1,0 +1,10 @@
+services:
+  sonar:
+    build: .
+    container_name: sonar
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persiste l'historique des scans (la base SQLite vit dans /app/data)
+      - ./data:/app/data
+    restart: unless-stopped
