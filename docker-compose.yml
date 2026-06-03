@@ -8,3 +8,18 @@ services:
       # Persiste l'historique des scans (la base SQLite vit dans /app/data)
       - ./data:/app/data
     restart: unless-stopped
+    networks:
+      - default   # réseau du projet (inchangé)
+      - npm       # réseau partagé avec Nginx Proxy Manager
+
+networks:
+  # Réseau par défaut du projet (gotyeah-sonar_default), créé automatiquement.
+  default:
+  # Réseau par défaut de Nginx Proxy Manager, déjà partagé par d'autres apps du Pi
+  # (desha-moulin, chatpitre, yoga_app_prod...). NPM y est connecté en permanence
+  # (c'est SON réseau) : sonar l'y rejoint pour que NPM résolve le nom « sonar » sans
+  # connexion manuelle, et que le lien survive à une recréation du conteneur npm.
+  # Externe => le réseau doit préexister (il est géré par la stack NPM).
+  npm:
+    external: true
+    name: nginx-proxy-manager_default
