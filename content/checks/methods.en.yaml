@@ -1,0 +1,39 @@
+# HTTP methods. Placeholders: {methods}.
+
+http-methods:
+  trace-enabled:
+    title: "HTTP TRACE method enabled"
+    detail: "The server responds to the `TRACE` method, which echoes the received request back."
+    explanation: "TRACE is a diagnostic method that returns to the client the request as the server received it (headers included). Combined with other flaws, it enabled the Cross-Site Tracing (XST) attack to exfiltrate sensitive headers (cookies, auth)."
+    why: "TRACE has no use in production and needlessly widens the attack surface. Hardening best practices recommend disabling it."
+    steps:
+      - "Disable the TRACE method on the server / reverse proxy."
+      - "Then verify: `curl -X TRACE -i https://{host}/` must not return 200 with the request echoed."
+    stacks:
+      nginx: "Block non-standard methods: if ($request_method !~ ^(GET|POST|HEAD|OPTIONS)$) { return 405; }"
+      apache: "TraceEnable off"
+      cloudflare: "WAF → rule blocking requests whose method is TRACE."
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) responds to the HTTP TRACE method. Explain the risk (Cross-Site Tracing) and give the exact configuration for {stack} disabling TRACE."
+    refs:
+      - "https://owasp.org/www-community/attacks/Cross_Site_Tracing"
+    a_verifier: false
+  dangerous-methods:
+    title: "Write HTTP methods advertised ({methods})"
+    detail: "The server advertises the {methods} methods via the `Allow` header. To verify: these write methods must be strictly controlled."
+    explanation: "The PUT, DELETE and PATCH methods can modify or delete resources. Advertised on a route, they must absolutely require authentication and authorization; otherwise they open the door to unauthorized content modification."
+    why: "If one of these methods is actually open without access control, an attacker can overwrite files, drop a webshell or delete data. Sonar only observes that they are advertised (read-only): it is up to you to confirm they are properly protected."
+    steps:
+      - "Verify that each advertised write method requires authentication AND authorization at the application level."
+      - "Disable the methods your application does not use (allow only GET/POST/HEAD/OPTIONS if that is enough)."
+      - "Restrict methods at the reverse proxy level if needed."
+    stacks:
+      nginx: "if ($request_method !~ ^(GET|POST|HEAD|OPTIONS)$) { return 405; }"
+      apache: "<LimitExcept GET POST HEAD OPTIONS> Require all denied </LimitExcept>"
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) advertises the write methods {methods}. Explain the risk if they are unprotected, and show how to restrict the allowed methods for {stack} and verify authentication on legitimate write methods."
+    refs:
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+  ok:
+    title: "Healthy HTTP methods"
+    detail: "The server advertises neither TRACE nor uncontrolled write methods."
+    why: "Only standard read methods are exposed: no risky HTTP verb to harden."

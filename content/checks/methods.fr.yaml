@@ -1,0 +1,39 @@
+# Méthodes HTTP. Placeholders : {methods}.
+
+http-methods:
+  trace-enabled:
+    title: "Méthode HTTP TRACE activée"
+    detail: "Le serveur répond à la méthode `TRACE`, qui renvoie la requête reçue en écho."
+    explanation: "TRACE est une méthode de diagnostic qui renvoie au client la requête telle que le serveur l'a reçue (en-têtes compris). Combinée à d'autres failles, elle a permis l'attaque Cross-Site Tracing (XST) pour exfiltrer des en-têtes sensibles (cookies, auth)."
+    why: "TRACE n'a aucune utilité en production et élargit inutilement la surface d'attaque. Les bonnes pratiques de durcissement recommandent de la désactiver."
+    steps:
+      - "Désactive la méthode TRACE côté serveur/reverse proxy."
+      - "Vérifie ensuite : `curl -X TRACE -i https://{host}/` ne doit pas renvoyer 200 avec l'écho de la requête."
+    stacks:
+      nginx: "Bloque les méthodes non standard : if ($request_method !~ ^(GET|POST|HEAD|OPTIONS)$) { return 405; }"
+      apache: "TraceEnable off"
+      cloudflare: "WAF → règle bloquant les requêtes dont la méthode est TRACE."
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) répond à la méthode HTTP TRACE. Explique le risque (Cross-Site Tracing) et donne la configuration exacte pour {stack} désactivant TRACE."
+    refs:
+      - "https://owasp.org/www-community/attacks/Cross_Site_Tracing"
+    a_verifier: false
+  dangerous-methods:
+    title: "Méthodes HTTP d'écriture annoncées ({methods})"
+    detail: "Le serveur annonce les méthodes {methods} via l'en-tête `Allow`. À vérifier : ces méthodes d'écriture doivent être strictement contrôlées."
+    explanation: "Les méthodes PUT, DELETE et PATCH permettent de modifier ou supprimer des ressources. Annoncées sur une route, elles doivent impérativement exiger une authentification et une autorisation ; sinon, elles ouvrent la porte à la modification non autorisée de contenu."
+    why: "Si une de ces méthodes est réellement ouverte sans contrôle d'accès, un attaquant peut écraser des fichiers, déposer un webshell ou supprimer des données. Sonar ne fait que constater leur annonce (lecture seule) : c'est à toi de confirmer qu'elles sont bien protégées."
+    steps:
+      - "Vérifie que chaque méthode d'écriture annoncée exige authentification ET autorisation côté application."
+      - "Désactive les méthodes que ton application n'utilise pas (n'autorise que GET/POST/HEAD/OPTIONS si c'est suffisant)."
+      - "Restreins au besoin les méthodes au niveau du reverse proxy."
+    stacks:
+      nginx: "if ($request_method !~ ^(GET|POST|HEAD|OPTIONS)$) { return 405; }"
+      apache: "<LimitExcept GET POST HEAD OPTIONS> Require all denied </LimitExcept>"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) annonce les méthodes d'écriture {methods}. Explique le risque si elles ne sont pas protégées, et montre comment restreindre les méthodes autorisées pour {stack} et vérifier l'authentification sur les méthodes d'écriture légitimes."
+    refs:
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+  ok:
+    title: "Méthodes HTTP saines"
+    detail: "Le serveur n'annonce ni TRACE ni méthodes d'écriture non maîtrisées."
+    why: "Seules des méthodes standard de lecture sont exposées : pas de verbe HTTP à risque à durcir."

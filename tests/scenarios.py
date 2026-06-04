@@ -64,6 +64,7 @@ async def _collect():
     from scanner.checks import tls as TLS
     from scanner.checks import dns as DNS
     from scanner.checks import leaks as LK
+    from scanner.checks import methods as MM
     from scanner.checks import ports as PORTS
     from scanner.checks import takeover as TK
     from scanner.checks import nuclei as NU
@@ -445,6 +446,23 @@ async def _collect():
     page_c = mkresp(200, {"content-type": HTML}, "<html>no scripts</html>", url="https://x/")
     await run("leaks_clean", LK.leaks(mkctx(response=page_c, url="https://x/", host="x",
                                             client=_LeakFake({}, {}))))
+
+    # ---- HTTP-METHODS (fake client .request) ----
+    class _MethFake:
+        def __init__(self, allow="", trace=None):
+            self.allow = allow
+            self.trace = trace
+
+        async def request(self, method, url, **kw):
+            if method == "OPTIONS":
+                return mkresp(200, {"allow": self.allow})
+            if method == "TRACE":
+                return self.trace if self.trace is not None else mkresp(405)
+            return mkresp(200)
+
+    await run("methods_trace", MM.methods(mkctx(url="https://x/", client=_MethFake("GET, POST, TRACE"))))
+    await run("methods_dangerous", MM.methods(mkctx(url="https://x/", client=_MethFake("GET, POST, PUT, DELETE"))))
+    await run("methods_ok", MM.methods(mkctx(url="https://x/", client=_MethFake("GET, POST, HEAD, OPTIONS"))))
 
     return out
 
