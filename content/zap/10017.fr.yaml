@@ -1,5 +1,5 @@
 # Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
-# pluginId 10017 — Cross-Domain JavaScript Source File Inclusion. a_verifier: true (à relire).
+# pluginId 10017 — Cross-Domain JavaScript Source File Inclusion. relu (a_verifier: false).
 
 alert:
   title: "Inclusion de script JavaScript depuis un domaine tiers"
@@ -14,6 +14,6 @@ alert:
     html: "Sur la balise <script src=\"https://cdn.exemple.com/lib.js\"></script>, ajoute integrity=\"sha384-...\" et crossorigin=\"anonymous\" pour figer la version chargée."
   ai_prompt: "Tu es un expert en sécurité web. La page de {host} (servie par {stack}) inclut un ou plusieurs scripts JavaScript depuis des domaines tiers. Explique le risque lié à un tiers compromis, puis pour chaque script tiers légitime montre comment ajouter un attribut `integrity` (Subresource Integrity) et `crossorigin=\"anonymous\"` dans le HTML, et comment vérifier que les sources de script ne sont pas contrôlables par les utilisateurs. N'invente pas de hash : laisse un emplacement à calculer pour chaque ressource."
   refs:
-    - "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
+    - "https://developer.mozilla.org/fr/docs/Web/Security/Subresource_Integrity"
     - "https://cwe.mitre.org/data/definitions/829.html"
-  a_verifier: true
+  a_verifier: false

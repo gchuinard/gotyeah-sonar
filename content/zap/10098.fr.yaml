@@ -1,5 +1,5 @@
 # Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
-# pluginId 10098 — Cross-Domain Misconfiguration (CORS). a_verifier: true (à relire).
+# pluginId 10098 — Cross-Domain Misconfiguration (CORS). relu (a_verifier: false).
 
 alert:
   title: "Mauvaise configuration CORS (partage de ressources inter-origine trop permissif)"
@@ -19,6 +19,6 @@ alert:
     fastapi: "CORSMiddleware(allow_origins=[\"https://app.exemple.com\"]) — liste explicite, jamais [\"*\"] avec allow_credentials=True."
   ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), la configuration CORS est trop permissive : `Access-Control-Allow-Origin` autorise des origines tierces arbitraires. Explique le risque de lecture de données inter-domaines, puis montre comment restreindre `Access-Control-Allow-Origin` à une liste explicite de domaines de confiance pour {stack} (ou comment retirer les en-têtes CORS si aucun partage inter-origine n'est requis). Ne propose pas `*` pour des API authentifiées ; laisse un emplacement à compléter pour les origines réellement autorisées."
   refs:
-    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+    - "https://developer.mozilla.org/fr/docs/Web/HTTP/CORS"
     - "https://cwe.mitre.org/data/definitions/264.html"
-  a_verifier: true
+  a_verifier: false

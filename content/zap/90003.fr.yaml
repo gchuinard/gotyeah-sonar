@@ -1,5 +1,5 @@
 # Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
-# pluginId 90003 — Sub Resource Integrity Attribute Missing. a_verifier: true (à relire).
+# pluginId 90003 — Sub Resource Integrity Attribute Missing. relu (a_verifier: false).
 
 alert:
   title: "Attribut d'intégrité (SRI) manquant"
@@ -15,6 +15,6 @@ alert:
     html: "Balise <script>: <script src=\"https://cdn.exemple.com/lib.js\" integrity=\"sha384-...\" crossorigin=\"anonymous\"></script>"
   ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), une balise `<script>` ou `<link>` chargée depuis un serveur externe n'a pas d'attribut `integrity` (SRI). Explique le risque d'injection via un serveur tiers compromis, puis montre comment ajouter un attribut `integrity` valide et `crossorigin=\"anonymous\"` dans le HTML, et comment calculer l'empreinte pour la version exacte utilisée. N'invente pas de hash : laisse un emplacement à calculer."
   refs:
-    - "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
+    - "https://developer.mozilla.org/fr/docs/Web/Security/Subresource_Integrity"
     - "https://cwe.mitre.org/data/definitions/345.html"
-  a_verifier: true
+  a_verifier: false

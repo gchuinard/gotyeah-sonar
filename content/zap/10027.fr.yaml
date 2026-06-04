@@ -12,4 +12,4 @@ alert:
   ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) expose des commentaires suspects (TODO, FIXME, password, admin…) dans le code livré au navigateur. Aide-moi à les repérer, à retirer ceux qui révèlent des informations sensibles, à traiter le problème de fond qu'ils signalent, et à configurer la minification pour qu'aucun commentaire ne parte en production."
   refs:
     - "https://cwe.mitre.org/data/definitions/200.html"
-  a_verifier: true
+  a_verifier: false

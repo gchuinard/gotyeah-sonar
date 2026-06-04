@@ -20,4 +20,4 @@ alert:
     - "https://owasp.org/www-community/attacks/SQL_Injection"
     - "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
     - "https://cwe.mitre.org/data/definitions/89.html"
-  a_verifier: true
+  a_verifier: false

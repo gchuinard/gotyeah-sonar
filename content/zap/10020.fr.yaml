@@ -17,6 +17,6 @@ alert:
     nextjs: "next.config.js → headers(): { key: 'X-Frame-Options', value: 'DENY' }"
   ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne se protège pas contre le clickjacking. Explique le risque, puis donne la configuration exacte pour {stack} ajoutant la directive frame-ancestors 'none' (CSP) et l'en-tête X-Frame-Options: DENY, en couvrant toutes les pages."
   refs:
-    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options"
+    - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/X-Frame-Options"
     - "https://cwe.mitre.org/data/definitions/1021.html"
-  a_verifier: true
+  a_verifier: false

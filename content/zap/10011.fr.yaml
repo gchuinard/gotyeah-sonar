@@ -1,5 +1,5 @@
 # Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
-# pluginId 10011 — Cookie Without Secure Flag. a_verifier: true (à relire).
+# pluginId 10011 — Cookie Without Secure Flag. relu (a_verifier: false).
 
 alert:
   title: "Cookie sans drapeau Secure"
@@ -20,4 +20,4 @@ alert:
   refs:
     - "https://owasp.org/www-community/controls/SecureCookieAttribute"
     - "https://cwe.mitre.org/data/definitions/614.html"
-  a_verifier: true
+  a_verifier: false

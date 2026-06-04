@@ -1,5 +1,5 @@
 # Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
-# pluginId 10054 — Cookie Without SameSite Attribute. a_verifier: true (à relire).
+# pluginId 10054 — Cookie Without SameSite Attribute. relu (a_verifier: false).
 
 alert:
   title: "Cookie sans attribut SameSite"
@@ -18,6 +18,6 @@ alert:
     apache: "Header always edit Set-Cookie ^(.*)$ \"$1; SameSite=Strict\""
   ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), un ou plusieurs cookies sont posés sans attribut SameSite. Explique le risque de CSRF/inclusion inter-site, puis montre comment poser `SameSite=Strict` (ou `Lax` à défaut) sur les cookies — d'abord à l'émission côté application, sinon via réécriture de l'en-tête Set-Cookie pour {stack}. Rappelle que `SameSite=None` impose l'attribut `Secure`."
   refs:
-    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
+    - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
     - "https://cwe.mitre.org/data/definitions/1275.html"
-  a_verifier: true
+  a_verifier: false

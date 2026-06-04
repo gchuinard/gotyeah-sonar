@@ -20,4 +20,4 @@ alert:
     - "https://owasp.org/www-community/attacks/xss/"
     - "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
     - "https://cwe.mitre.org/data/definitions/79.html"
-  a_verifier: true
+  a_verifier: false

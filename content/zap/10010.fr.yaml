@@ -1,5 +1,5 @@
 # Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
-# pluginId 10010 — Cookie No HttpOnly Flag. a_verifier: true (à relire).
+# pluginId 10010 — Cookie No HttpOnly Flag. relu (a_verifier: false).
 
 alert:
   title: "Cookie sans drapeau HttpOnly"
@@ -20,4 +20,4 @@ alert:
   refs:
     - "https://owasp.org/www-community/HttpOnly"
     - "https://cwe.mitre.org/data/definitions/1004.html"
-  a_verifier: true
+  a_verifier: false

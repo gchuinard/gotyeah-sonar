@@ -107,7 +107,16 @@
     "apache": "Apache",
     "nextjs": "Next.js",
     "express": "Express",
+    "fastapi": "FastAPI",
+    "django": "Django",
+    "laravel": "Laravel",
+    "rails": "Rails",
+    "php": "PHP",
+    "java": "Java",
     "caddy": "Caddy",
+    "html": "HTML",
+    "app": "Application",
+    "csp": "CSP",
     "generic": "Générique"
   },
 

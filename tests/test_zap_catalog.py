@@ -29,11 +29,13 @@ def test_all_curated_plugins_have_fr_entry():
     assert not missing, f"pluginIds ZAP sans entrée FR : {missing}"
 
 
-def test_generated_entries_flagged_a_verifier():
+def test_zap_entries_have_explicit_a_verifier():
+    # Chaque entrée porte un drapeau a_verifier booléen explicite (true = à relire,
+    # false = relu). Les 20 entrées curées sont relues → a_verifier: false.
     cat = loader.content_catalog("fr")
-    not_flagged = [pid for pid in PLUGIN_IDS
-                   if not cat[("zap", pid, "alert")].get("a_verifier")]
-    assert not not_flagged, f"entrées générées non marquées a_verifier : {not_flagged}"
+    bad = [pid for pid in PLUGIN_IDS
+           if not isinstance(cat[("zap", pid, "alert")].get("a_verifier"), bool)]
+    assert not bad, f"entrées ZAP sans a_verifier booléen explicite : {bad}"
 
 
 def test_known_plugin_renders_fr_not_source_text():

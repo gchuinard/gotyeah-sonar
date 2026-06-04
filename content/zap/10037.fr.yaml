@@ -18,4 +18,4 @@ alert:
   refs:
     - "https://owasp.org/www-project-web-security-testing-guide/"
     - "https://cwe.mitre.org/data/definitions/200.html"
-  a_verifier: true
+  a_verifier: false

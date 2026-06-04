@@ -12,4 +12,4 @@ alert:
   ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) renvoie des horodatages Unix dans le corps de ses réponses. Aide-moi à localiser ces horodatages dans le code, à juger s'ils sont sensibles (jetons, sessions, valeurs dérivées d'une date), et à les retirer ou les remplacer par une valeur non exploitable lorsqu'ils n'ont pas à être exposés."
   refs:
     - "https://cwe.mitre.org/data/definitions/200.html"
-  a_verifier: true
+  a_verifier: false

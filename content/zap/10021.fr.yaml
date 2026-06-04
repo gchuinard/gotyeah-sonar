@@ -15,6 +15,6 @@ alert:
     nextjs: "next.config.js → headers(): { key: 'X-Content-Type-Options', value: 'nosniff' }"
   ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) n'envoie pas l'en-tête X-Content-Type-Options: nosniff. Explique le MIME sniffing et son risque, puis donne la configuration exacte pour {stack} appliquant nosniff à toutes les réponses, en t'assurant que le Content-Type est correct."
   refs:
-    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/X-Content-Type-Options"
     - "https://cwe.mitre.org/data/definitions/693.html"
-  a_verifier: true
+  a_verifier: false

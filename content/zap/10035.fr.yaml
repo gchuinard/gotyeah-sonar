@@ -19,4 +19,4 @@ alert:
   refs:
     - "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html"
     - "https://cwe.mitre.org/data/definitions/319.html"
-  a_verifier: true
+  a_verifier: false

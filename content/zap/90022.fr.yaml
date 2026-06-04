@@ -18,4 +18,4 @@ alert:
   ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) divulgue des messages d'erreur applicatifs (traces, chemins de fichiers) à l'utilisateur. Aide-moi à mettre en place des pages d'erreur personnalisées, à couper l'affichage des traces en production, et à renvoyer un identifiant d'erreur unique au navigateur tout en journalisant les détails complets côté serveur. Montre la configuration exacte pour {stack}."
   refs:
     - "https://cwe.mitre.org/data/definitions/550.html"
-  a_verifier: true
+  a_verifier: false
