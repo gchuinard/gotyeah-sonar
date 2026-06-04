@@ -1,0 +1,227 @@
+# En-têtes de sécurité HTTP — catalogue de présentation FR.
+# `title` / `detail` / `recommendation` reproduisent EXACTEMENT le texte historique
+# (garde anti-régression : tests/test_regression_fr.py). Le reste (explanation, why,
+# steps, stacks, ai_prompt, refs) est le contenu de remédiation façon GTmetrix.
+# Placeholders : {items} (CSP permissive), {maxage} (HSTS). {stack} est rempli côté UI.
+
+hdr-csp:
+  absent:
+    title: "Content-Security-Policy absent"
+    detail: "Aucune CSP n'est envoyée : la première ligne de défense contre le XSS et l'injection de contenu manque."
+    recommendation: "Définis une CSP, même restrictive au départ (`default-src 'self'`), puis affine."
+    explanation: "La Content-Security-Policy est une liste blanche que le navigateur applique : elle déclare d'où le code, les styles, les images et les connexions ont le droit de venir. Tout ce qui n'est pas explicitement autorisé est bloqué."
+    why: "Sans CSP, une faille XSS s'exploite sans aucun garde-fou : un script injecté s'exécute, exfiltre les cookies/sessions et pivote sur l'API. La CSP transforme une XSS critique en tentative bloquée."
+    steps:
+      - "Commence en mode observation avec `Content-Security-Policy-Report-Only` pour repérer ce qui casserait, sans rien bloquer."
+      - "Pose une base stricte : `default-src 'self'`, puis ajoute UNIQUEMENT les origines réellement utilisées (CDN, analytics, polices)."
+      - "Bannis `unsafe-inline`/`unsafe-eval` : passe aux nonces (`'nonce-...'`) ou aux hash pour tes scripts/styles inline."
+      - "Une fois aucune violation rapportée, bascule l'en-tête en `Content-Security-Policy` (mode bloquant)."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"default-src 'self'; object-src 'none'; base-uri 'self'\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration : add_header Content-Security-Policy \"default-src 'self'\" always;"
+      cloudflare: "Rules → Transform Rules → Modify Response Header → Set static : Content-Security-Policy = default-src 'self'"
+      apache: "Header always set Content-Security-Policy \"default-src 'self'; object-src 'none'\""
+      nextjs: "next.config.js → headers(): { key: 'Content-Security-Policy', value: \"default-src 'self'\" }"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) n'envoie aucun en-tête Content-Security-Policy. Propose une CSP stricte mais fonctionnelle partant de `default-src 'self'`, explique comment la déployer d'abord en Report-Only puis en bloquant, et montre la configuration exacte pour {stack}. N'invente pas d'origines : laisse des emplacements à compléter pour les domaines tiers."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy"
+      - "https://content-security-policy.com/"
+    a_verifier: false
+  weak:
+    title: "CSP présente mais permissive"
+    detail: "La CSP autorise {items}, ce qui réduit fortement sa protection."
+    recommendation: "Supprime ces directives en passant aux nonces/hashes pour tes scripts."
+    explanation: "`unsafe-inline` autorise le JS/CSS écrit directement dans la page et `unsafe-eval` autorise `eval()` et consorts. Or c'est précisément ce qu'une attaque XSS injecte : avec ces directives, la CSP laisse passer l'attaque qu'elle est censée bloquer."
+    why: "Une CSP qui contient `unsafe-inline` offre une fausse impression de sécurité : un script injecté s'exécute quand même. La protection réelle ne commence qu'une fois ces directives retirées."
+    steps:
+      - "Identifie les scripts/styles inline légitimes de la page."
+      - "Remplace-les par des fichiers externes servis depuis ton origine, ou marque-les avec un nonce (`<script nonce=\"...\">`) régénéré à chaque réponse."
+      - "Retire `unsafe-inline` et `unsafe-eval` de la directive `script-src`/`style-src`."
+      - "Re-teste en Report-Only pour confirmer qu'aucune ressource légitime n'est bloquée."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'nonce-$request_id'\" always;"
+      cloudflare: "Transform Rules → ajuste la valeur de Content-Security-Policy pour retirer 'unsafe-inline' / 'unsafe-eval'."
+      nextjs: "Génère un nonce par requête (middleware) et injecte-le dans la CSP et les balises <script>."
+    ai_prompt: "Tu es un expert en sécurité web. La CSP de {host} (servi par {stack}) autorise {items}. Explique le risque, puis montre comment migrer vers une CSP à base de nonces/hash pour supprimer ces directives, avec la configuration exacte pour {stack}."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy/script-src"
+    a_verifier: false
+  ok:
+    title: "Content-Security-Policy présente"
+    detail: "Une CSP est définie, sans directive notoirement dangereuse."
+    why: "Une CSP stricte est en place : c'est la principale défense en profondeur contre le XSS et l'injection de contenu."
+
+hdr-hsts:
+  absent:
+    title: "HSTS absent"
+    detail: "Sans HSTS, un visiteur peut être rétrogradé en HTTP par un attaquant réseau."
+    recommendation: "Ajoute `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`."
+    explanation: "HTTP Strict Transport Security ordonne au navigateur de ne plus JAMAIS contacter le site en clair : une fois l'en-tête vu, toutes les requêtes passent en HTTPS, y compris si l'utilisateur tape `http://` ou clique un vieux lien."
+    why: "Sans HSTS, la toute première requête (ou un lien en http://) peut être interceptée et bloquée en clair par un attaquant réseau (Wi-Fi public, proxy hostile) qui rejoue alors un faux site (SSL stripping)."
+    steps:
+      - "Assure-toi que TOUT le site est servi en HTTPS valide et que http→https redirige déjà (sinon HSTS rendrait le site inaccessible)."
+      - "Ajoute l'en-tête `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`."
+      - "Vérifie que tous les sous-domaines sont bien en HTTPS avant d'activer `includeSubDomains`."
+      - "Optionnel : soumets le domaine sur hstspreload.org pour un câblage en dur dans les navigateurs."
+    stacks:
+      nginx: "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      npm: "Proxy Host → SSL → coche « HSTS Enabled » (et « HSTS Subdomains » si tous tes sous-domaines sont en HTTPS)."
+      cloudflare: "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable."
+      apache: "Header always set Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\""
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) n'envoie pas d'en-tête HSTS. Explique le risque de SSL stripping, les prérequis (HTTPS partout, redirection), puis donne la configuration exacte pour {stack} avec un max-age de 2 ans, includeSubDomains et preload."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      - "https://hstspreload.org/"
+    a_verifier: false
+  ok:
+    title: "HSTS présent"
+    detail: "L'en-tête Strict-Transport-Security est envoyé."
+    why: "Le navigateur forcera l'HTTPS pour ce domaine : la rétrogradation en clair est neutralisée."
+
+hdr-hsts-maxage:
+  low:
+    title: "HSTS max-age faible"
+    detail: "max-age={maxage} s, en dessous du seuil recommandé (~6 mois)."
+    recommendation: "Monte max-age à 63072000 (2 ans) une fois sûr de ton HTTPS."
+    explanation: "Le `max-age` est la durée (en secondes) pendant laquelle le navigateur retient l'ordre « HTTPS uniquement ». Trop court, la protection expire vite et la fenêtre de rétrogradation se rouvre régulièrement."
+    why: "Un max-age faible affaiblit HSTS : si l'utilisateur ne revient pas avant l'expiration, sa prochaine visite peut repartir en clair et être interceptée."
+    steps:
+      - "Confirme que ton HTTPS est stable et durable (certificat renouvelé automatiquement)."
+      - "Augmente `max-age` à 63072000 (2 ans), valeur attendue notamment pour le preload."
+      - "Conserve `includeSubDomains` si tous tes sous-domaines sont en HTTPS."
+    stacks:
+      nginx: "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      cloudflare: "SSL/TLS → Edge Certificates → HSTS → porte le Max Age à 12 mois ou plus."
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) envoie HSTS avec un max-age de {maxage} secondes, trop court. Explique pourquoi et donne la configuration exacte pour {stack} avec max-age=63072000."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Strict-Transport-Security"
+    a_verifier: false
+
+hdr-xfo:
+  absent:
+    title: "Protection clickjacking absente"
+    detail: "Ni X-Frame-Options ni frame-ancestors : la page peut être embarquée en iframe."
+    recommendation: "Ajoute `X-Frame-Options: DENY` ou `frame-ancestors 'none'` dans la CSP."
+    explanation: "Le clickjacking consiste à charger ton site dans une iframe invisible posée par-dessus une page piège : la victime croit cliquer sur le site piège mais agit en réalité sur le tien (un clic « confirmer », un virement…)."
+    why: "Sans protection anti-framing, un attaquant peut détourner les clics d'un utilisateur authentifié pour lui faire exécuter des actions à son insu sur ton site."
+    steps:
+      - "Décide qui a le droit d'embarquer tes pages (en général personne)."
+      - "Ajoute `Content-Security-Policy: frame-ancestors 'none'` (recommandé, plus fin que X-Frame-Options)."
+      - "Pour la compatibilité avec les vieux navigateurs, ajoute aussi `X-Frame-Options: DENY`."
+      - "Si certaines pages doivent être intégrables, remplace `'none'` par la liste explicite des origines autorisées."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"frame-ancestors 'none'\" always; add_header X-Frame-Options \"DENY\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx : add_header X-Frame-Options \"DENY\" always;"
+      cloudflare: "Transform Rules → Set static : X-Frame-Options = DENY (et frame-ancestors via la CSP)."
+      apache: "Header always set X-Frame-Options \"DENY\""
+      nextjs: "next.config.js → headers(): { key: 'X-Frame-Options', value: 'DENY' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne se protège pas contre le clickjacking. Explique le risque, puis donne la configuration exacte pour {stack} ajoutant `frame-ancestors 'none'` (CSP) et `X-Frame-Options: DENY`."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/X-Frame-Options"
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors"
+    a_verifier: false
+  ok:
+    title: "Protection clickjacking présente"
+    detail: "X-Frame-Options ou CSP frame-ancestors est défini."
+    why: "Tes pages ne peuvent pas être embarquées dans une iframe malveillante : le clickjacking est bloqué."
+
+hdr-nosniff:
+  absent:
+    title: "X-Content-Type-Options absent"
+    detail: "Le MIME sniffing peut transformer un upload anodin en script exécutable."
+    recommendation: "Ajoute `X-Content-Type-Options: nosniff`."
+    explanation: "Sans `nosniff`, le navigateur « devine » le type d'un fichier d'après son contenu plutôt que son en-tête `Content-Type`. Un fichier uploadé en apparence anodin peut alors être réinterprété comme du HTML/JS et exécuté."
+    why: "Le MIME sniffing ouvre la porte à des XSS via des fichiers servis avec un mauvais type : un upload « image » contenant du HTML peut être exécuté par le navigateur."
+    steps:
+      - "Ajoute `X-Content-Type-Options: nosniff` sur TOUTES les réponses (pas seulement la page principale)."
+      - "Configure-le globalement côté serveur/proxy plutôt que route par route."
+      - "Assure-toi que tes fichiers sont servis avec le bon `Content-Type`."
+    stacks:
+      nginx: "add_header X-Content-Type-Options \"nosniff\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx : add_header X-Content-Type-Options \"nosniff\" always;"
+      cloudflare: "Transform Rules → Set static : X-Content-Type-Options = nosniff"
+      apache: "Header always set X-Content-Type-Options \"nosniff\""
+      nextjs: "next.config.js → headers(): { key: 'X-Content-Type-Options', value: 'nosniff' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) n'envoie pas `X-Content-Type-Options: nosniff`. Explique le MIME sniffing et donne la configuration exacte pour {stack} appliquant nosniff à toutes les réponses."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    a_verifier: false
+  ok:
+    title: "X-Content-Type-Options: nosniff"
+    detail: "Le navigateur ne devinera pas le type MIME."
+    why: "Le navigateur respecte le Content-Type déclaré : pas de réinterprétation d'un fichier en script."
+
+hdr-referrer:
+  absent:
+    title: "Referrer-Policy absente"
+    detail: "Sans politique, des URLs internes peuvent fuiter vers des sites tiers."
+    recommendation: "Ajoute `Referrer-Policy: strict-origin-when-cross-origin`."
+    explanation: "L'en-tête `Referer` indique au site de destination d'où vient le visiteur. Sans `Referrer-Policy`, l'URL complète (avec ses éventuels paramètres sensibles) peut être transmise à n'importe quel domaine tiers (lien sortant, image, script)."
+    why: "Des URLs internes — jetons, identifiants de session dans l'URL, chemins privés — peuvent fuiter vers des tiers (analytics, CDN, sites liés), avec un risque de confidentialité."
+    steps:
+      - "Choisis une politique : `strict-origin-when-cross-origin` est un bon défaut (origine seule vers les tiers, URL complète en interne)."
+      - "Ajoute l'en-tête `Referrer-Policy` globalement côté serveur/proxy."
+      - "Pour les liens sortants sensibles, ajoute aussi `rel=\"noreferrer\"`."
+    stacks:
+      nginx: "add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+      cloudflare: "Transform Rules → Set static : Referrer-Policy = strict-origin-when-cross-origin"
+      apache: "Header always set Referrer-Policy \"strict-origin-when-cross-origin\""
+      nextjs: "next.config.js → headers(): { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne définit pas de Referrer-Policy. Explique le risque de fuite d'URL et donne la configuration exacte pour {stack} avec `strict-origin-when-cross-origin`."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Referrer-Policy"
+    a_verifier: false
+  ok:
+    title: "Referrer-Policy présente"
+    detail: "La politique de Referer est définie."
+    why: "La transmission de l'URL d'origine aux tiers est encadrée : pas de fuite d'URL interne."
+
+hdr-permissions:
+  absent:
+    title: "Permissions-Policy absente"
+    detail: "Optionnel mais recommandé pour désactiver les API navigateur inutiles."
+    recommendation: "Ex. `Permissions-Policy: camera=(), microphone=(), geolocation=()`."
+    explanation: "`Permissions-Policy` déclare quelles API puissantes du navigateur (caméra, micro, géolocalisation, paiement…) ta page — et les iframes qu'elle embarque — ont le droit d'utiliser. Désactiver celles dont tu ne te sers pas réduit la surface d'attaque."
+    why: "Sans politique, une iframe tierce ou un script compromis peut tenter d'accéder à des API sensibles (caméra, micro, géoloc). C'est une défense en profondeur peu coûteuse."
+    steps:
+      - "Liste les API navigateur réellement utilisées par ton site."
+      - "Désactive explicitement tout le reste avec une valeur vide, ex. `camera=(), microphone=(), geolocation=()`."
+      - "Autorise une API uniquement pour ta propre origine si besoin, ex. `geolocation=(self)`."
+    stacks:
+      nginx: "add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;"
+      cloudflare: "Transform Rules → Set static : Permissions-Policy = camera=(), microphone=(), geolocation=()"
+      apache: "Header always set Permissions-Policy \"camera=(), microphone=(), geolocation=()\""
+      nextjs: "next.config.js → headers(): { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne définit pas de Permissions-Policy. Propose une politique qui désactive les API navigateur inutiles (caméra, micro, géoloc, paiement) et donne la configuration exacte pour {stack}."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Permissions-Policy"
+    a_verifier: false
+  ok:
+    title: "Permissions-Policy présente"
+    detail: "L'accès aux API navigateur (caméra, micro, géoloc…) est cadré."
+    why: "Les API navigateur sensibles sont explicitement encadrées : surface d'attaque réduite."
+
+hdr-disclosure:
+  leak:
+    title: "Version logicielle exposée"
+    detail: "Des en-têtes révèlent des versions précises, utiles pour cibler des CVE connues."
+    recommendation: "Masque ou raccourcis ces en-têtes (`proxy_hide_header`, `server_tokens off`…)."
+    explanation: "Des en-têtes comme `Server` ou `X-Powered-By` annoncent le logiciel ET sa version exacte. C'est une information de reconnaissance offerte à l'attaquant : il lui suffit de chercher les CVE connues de cette version."
+    why: "Connaître la version précise du serveur/framework permet à un attaquant de cibler directement les failles publiques correspondantes, sans tâtonner. Masquer ces en-têtes ralentit la reconnaissance."
+    steps:
+      - "Retire ou neutralise les en-têtes `Server`, `X-Powered-By`, `X-AspNet-Version`, `X-AspNetMvc-Version`."
+      - "Sur le serveur d'origine, désactive l'affichage de version (`server_tokens off`, `expose_php = Off`…)."
+      - "Sur le reverse proxy, masque les en-têtes remontés par l'amont (`proxy_hide_header`)."
+    stacks:
+      nginx: "server_tokens off; proxy_hide_header X-Powered-By; more_clear_headers Server; (module headers-more)"
+      npm: "Proxy Host → Advanced → Custom Nginx : proxy_hide_header X-Powered-By; proxy_hide_header Server;"
+      cloudflare: "Transform Rules → Modify Response Header → Remove : Server / X-Powered-By"
+      apache: "ServerTokens Prod ; Header always unset X-Powered-By ; Header always unset Server"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) divulgue des versions logicielles via ses en-têtes ({evidence}). Explique le risque de reconnaissance et donne la configuration exacte pour {stack} afin de masquer Server / X-Powered-By et les versions."
+    refs:
+      - "https://owasp.org/www-project-secure-headers/"
+    a_verifier: false
+  ok:
+    title: "Pas de version logicielle évidente"
+    detail: "Aucun en-tête ne divulgue de numéro de version exploitable."
+    why: "Aucune version logicielle exploitable n'est annoncée : la reconnaissance par en-têtes est limitée."

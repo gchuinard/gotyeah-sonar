@@ -1,0 +1,1396 @@
+{
+  "ck_insecure": [
+    {
+      "catalog": null,
+      "category": "cookies",
+      "check_id": "cookie-secure",
+      "code": "",
+      "detail": "Le cookie `sid` n'a pas l'attribut `Secure` : sur une cible HTTPS, il peut être renvoyé en clair lors d'une requête HTTP et intercepté sur le réseau.",
+      "entry_id": null,
+      "evidence": "sid=abc",
+      "params": {},
+      "recommendation": "Ajoute l'attribut `Secure` au cookie `sid`.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Cookie « sid » sans `Secure`"
+    },
+    {
+      "catalog": null,
+      "category": "cookies",
+      "check_id": "cookie-httponly",
+      "code": "",
+      "detail": "Le cookie `sid` est accessible en JavaScript (`document.cookie`) : une faille XSS permettrait de le voler et d'usurper la session.",
+      "entry_id": null,
+      "evidence": "sid=abc",
+      "params": {},
+      "recommendation": "Ajoute l'attribut `HttpOnly` au cookie `sid` (sauf s'il doit réellement être lu côté client).",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Cookie « sid » sans `HttpOnly`"
+    },
+    {
+      "catalog": null,
+      "category": "cookies",
+      "check_id": "cookie-samesite",
+      "code": "",
+      "detail": "Le cookie `sid` n'a pas d'attribut `SameSite` : il est joint aux requêtes cross-site, ce qui ouvre la porte au CSRF.",
+      "entry_id": null,
+      "evidence": "sid=abc",
+      "params": {},
+      "recommendation": "Ajoute `SameSite=Lax` (ou `Strict`) au cookie `sid`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Cookie « sid » sans `SameSite`"
+    }
+  ],
+  "ck_none": [
+    {
+      "catalog": null,
+      "category": "cookies",
+      "check_id": "cookies",
+      "code": "",
+      "detail": "La réponse ne pose aucun en-tête `Set-Cookie` : il n'y a pas de surface d'attaque côté cookies (vol via XSS, fuite réseau, CSRF).",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Aucun cookie posé"
+    }
+  ],
+  "ck_ok": [
+    {
+      "catalog": null,
+      "category": "cookies",
+      "check_id": "cookie-ok",
+      "code": "",
+      "detail": "Le cookie `sid` porte `Secure`, `HttpOnly` et un `SameSite` explicite : configuration conforme.",
+      "entry_id": null,
+      "evidence": "sid=abc; Secure; HttpOnly; SameSite=Lax",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Cookie « sid » correctement protégé"
+    }
+  ],
+  "ck_samesite_none_insecure": [
+    {
+      "catalog": null,
+      "category": "cookies",
+      "check_id": "cookie-secure",
+      "code": "",
+      "detail": "Le cookie `sid` n'a pas l'attribut `Secure` : sur une cible HTTPS, il peut être renvoyé en clair lors d'une requête HTTP et intercepté sur le réseau.",
+      "entry_id": null,
+      "evidence": "sid=abc; HttpOnly; SameSite=None",
+      "params": {},
+      "recommendation": "Ajoute l'attribut `Secure` au cookie `sid`.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Cookie « sid » sans `Secure`"
+    },
+    {
+      "catalog": null,
+      "category": "cookies",
+      "check_id": "cookie-samesite",
+      "code": "",
+      "detail": "Le cookie `sid` est en `SameSite=None` (envoyé cross-site) mais sans `Secure` : les navigateurs récents le rejettent, et il reste exposé au CSRF.",
+      "entry_id": null,
+      "evidence": "sid=abc; HttpOnly; SameSite=None",
+      "params": {},
+      "recommendation": "Passe le cookie `sid` en `SameSite=Lax`/`Strict`, ou conserve `SameSite=None` uniquement avec `Secure`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Cookie « sid » en `SameSite=None` sans `Secure`"
+    }
+  ],
+  "cors_absent": [
+    {
+      "catalog": null,
+      "category": "cors",
+      "check_id": "cors",
+      "code": "",
+      "detail": "Aucun en-tête `Access-Control-Allow-Origin` n'est renvoyé pour une origine tierce : l'API ne s'ouvre pas aux sites cross-origin.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Pas d'exposition CORS"
+    }
+  ],
+  "cors_null": [
+    {
+      "catalog": null,
+      "category": "cors",
+      "check_id": "cors",
+      "code": "",
+      "detail": "`Access-Control-Allow-Origin: null` est usurpable : une page sandboxée, un `data:` URI ou un iframe peut se présenter comme `null` et passer le contrôle.",
+      "entry_id": null,
+      "evidence": "Access-Control-Allow-Origin: null",
+      "params": {},
+      "recommendation": "N'autorise jamais l'origine `null` ; utilise une allowlist de domaines explicites.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Origine `null` autorisée"
+    }
+  ],
+  "cors_reflected": [
+    {
+      "catalog": null,
+      "category": "cors",
+      "check_id": "cors",
+      "code": "",
+      "detail": "Le serveur reflète n'importe quelle valeur d'`Origin` (ici notre sonde bidon) : tout site cross-origin peut lire les réponses, même sans credentials.",
+      "entry_id": null,
+      "evidence": "Access-Control-Allow-Origin: https://sonar-cors-probe.example",
+      "params": {},
+      "recommendation": "Ne reflète pas l'`Origin` reçu ; restreins `Access-Control-Allow-Origin` à une allowlist stricte.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Origine arbitraire reflétée"
+    }
+  ],
+  "cors_reflected_creds": [
+    {
+      "catalog": null,
+      "category": "cors",
+      "check_id": "cors",
+      "code": "",
+      "detail": "Le serveur reflète à l'identique l'`Origin` envoyé tout en répondant `Access-Control-Allow-Credentials: true` : n'importe quel site peut lire les réponses authentifiées (cookies, sessions) de la victime.",
+      "entry_id": null,
+      "evidence": "Access-Control-Allow-Origin: https://sonar-cors-probe.example; Access-Control-Allow-Credentials: true",
+      "params": {},
+      "recommendation": "Ne reflète jamais l'`Origin` reçu avec `Allow-Credentials: true` ; utilise une allowlist stricte de domaines de confiance.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Origine reflétée avec credentials"
+    }
+  ],
+  "cors_restricted": [
+    {
+      "catalog": null,
+      "category": "cors",
+      "check_id": "cors",
+      "code": "",
+      "detail": "L'en-tête `Access-Control-Allow-Origin` renvoyé ne correspond pas à notre origine de sonde : la politique semble restreinte à une allowlist.",
+      "entry_id": null,
+      "evidence": "Access-Control-Allow-Origin: https://trusted.example",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Pas d'exposition CORS"
+    }
+  ],
+  "cors_wildcard": [
+    {
+      "catalog": null,
+      "category": "cors",
+      "check_id": "cors",
+      "code": "",
+      "detail": "`Access-Control-Allow-Origin: *` ouvre l'accès à toutes les origines, mais sans credentials : les réponses authentifiées restent protégées.",
+      "entry_id": null,
+      "evidence": "Access-Control-Allow-Origin: *",
+      "params": {},
+      "recommendation": "Limite l'accès aux origines réellement nécessaires si la ressource n'est pas destinée à être publique.",
+      "severity": "low",
+      "source_text": null,
+      "title": "CORS permissif (wildcard)"
+    }
+  ],
+  "cors_wildcard_creds": [
+    {
+      "catalog": null,
+      "category": "cors",
+      "check_id": "cors",
+      "code": "",
+      "detail": "La combinaison `Access-Control-Allow-Origin: *` et `Access-Control-Allow-Credentials: true` est invalide pour les navigateurs, mais dangereuse selon les implémentations côté serveur/clients non conformes.",
+      "entry_id": null,
+      "evidence": "Access-Control-Allow-Origin: *; Access-Control-Allow-Credentials: true",
+      "params": {},
+      "recommendation": "Remplace le `*` par une allowlist explicite et limite `Allow-Credentials` aux origines de confiance.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Wildcard CORS avec credentials"
+    }
+  ],
+  "dns_all_absent": [
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-spf",
+      "code": "",
+      "detail": "Aucun enregistrement `v=spf1` : un tiers peut usurper l'adresse d'expéditeur du domaine.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Publie un enregistrement TXT SPF, par ex. `v=spf1 include:_spf.exemple.com -all`.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Enregistrement SPF absent"
+    },
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-dmarc",
+      "code": "",
+      "detail": "Aucune politique `v=DMARC1` sur `_dmarc.example.com` : rien n'indique aux destinataires comment traiter les messages échouant SPF/DKIM.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Publie une politique DMARC, par ex. `v=DMARC1; p=quarantine; rua=mailto:dmarc@exemple.com`.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Enregistrement DMARC absent"
+    },
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-caa",
+      "code": "",
+      "detail": "Aucun enregistrement CAA : n'importe quelle autorité de certification peut émettre un certificat pour ce domaine. Optionnel mais recommandé.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Ajoute un enregistrement CAA, par ex. `0 issue \"letsencrypt.org\"`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Enregistrement CAA absent"
+    }
+  ],
+  "dns_all_present": [
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-spf",
+      "code": "",
+      "detail": "Un enregistrement `v=spf1` déclare les serveurs autorisés à envoyer du courrier pour ce domaine.",
+      "entry_id": null,
+      "evidence": "v=spf1 include:_spf.example.com -all",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Enregistrement SPF présent"
+    },
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-dmarc",
+      "code": "",
+      "detail": "La politique DMARC est en `p=reject`, elle est effectivement appliquée.",
+      "entry_id": null,
+      "evidence": "p=reject",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "DMARC appliqué"
+    },
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-caa",
+      "code": "",
+      "detail": "Un enregistrement CAA restreint les autorités de certification autorisées à émettre des certificats pour ce domaine.",
+      "entry_id": null,
+      "evidence": "0 issue \"letsencrypt.org\"",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Enregistrement CAA présent"
+    }
+  ],
+  "dns_dmarc_none": [
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-spf",
+      "code": "",
+      "detail": "Un enregistrement `v=spf1` déclare les serveurs autorisés à envoyer du courrier pour ce domaine.",
+      "entry_id": null,
+      "evidence": "v=spf1 -all",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Enregistrement SPF présent"
+    },
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-dmarc",
+      "code": "",
+      "detail": "La politique DMARC est en `p=none` : les messages frauduleux sont rapportés mais aucune mesure n'est appliquée.",
+      "entry_id": null,
+      "evidence": "p=none",
+      "params": {},
+      "recommendation": "Passe progressivement à `p=quarantine` puis `p=reject` une fois les flux légitimes validés.",
+      "severity": "low",
+      "source_text": null,
+      "title": "DMARC en mode surveillance (`p=none`)"
+    },
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-caa",
+      "code": "",
+      "detail": "Aucun enregistrement CAA : n'importe quelle autorité de certification peut émettre un certificat pour ce domaine. Optionnel mais recommandé.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Ajoute un enregistrement CAA, par ex. `0 issue \"letsencrypt.org\"`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Enregistrement CAA absent"
+    }
+  ],
+  "dns_dmarc_nopolicy": [
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-spf",
+      "code": "",
+      "detail": "Un enregistrement `v=spf1` déclare les serveurs autorisés à envoyer du courrier pour ce domaine.",
+      "entry_id": null,
+      "evidence": "v=spf1 -all",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Enregistrement SPF présent"
+    },
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-dmarc",
+      "code": "",
+      "detail": "Un enregistrement `v=DMARC1` existe mais sa balise `p=` est absente ou invalide, donc aucune mesure n'est appliquée.",
+      "entry_id": null,
+      "evidence": "v=DMARC1; rua=mailto:d@example.com",
+      "params": {},
+      "recommendation": "Définis explicitement `p=quarantine` ou `p=reject`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "DMARC sans politique d'application"
+    },
+    {
+      "catalog": null,
+      "category": "dns",
+      "check_id": "dns-caa",
+      "code": "",
+      "detail": "Aucun enregistrement CAA : n'importe quelle autorité de certification peut émettre un certificat pour ce domaine. Optionnel mais recommandé.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Ajoute un enregistrement CAA, par ex. `0 issue \"letsencrypt.org\"`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Enregistrement CAA absent"
+    }
+  ],
+  "exposed_all": [
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-env",
+      "code": "",
+      "detail": "Un fichier `.env` est servi publiquement : il contient typiquement des secrets (clés API, identifiants base de données, tokens).",
+      "entry_id": null,
+      "evidence": "SECRET_KEY=abc\nDB_PASSWORD=xyz",
+      "params": {},
+      "recommendation": "Sors `.env` du webroot et bloque le chemin côté serveur (`location ~ /\\.env { deny all; }`).",
+      "severity": "critical",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `.env`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-env-bak",
+      "code": "",
+      "detail": "Une sauvegarde `.env.bak` est accessible : même expirée, elle peut révéler des secrets encore valides.",
+      "entry_id": null,
+      "evidence": "SECRET_KEY=abc backup",
+      "params": {},
+      "recommendation": "Supprime cette sauvegarde du webroot et bloque les extensions `.bak`.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `.env.bak`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-git",
+      "code": "",
+      "detail": "Un dépôt Git semble exposé (`.git/HEAD` lisible) : tout l'historique du code source peut être reconstitué et téléchargé.",
+      "entry_id": null,
+      "evidence": "ref: refs/heads/main",
+      "params": {},
+      "recommendation": "Empêche l'accès à `.git/` côté serveur (`location ~ /\\.git { deny all; }`) et ne déploie jamais le dépôt dans le webroot.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `.git/HEAD`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-git-config",
+      "code": "",
+      "detail": "Le fichier `.git/config` est lisible : il confirme un dépôt Git exposé et peut divulguer des URLs de remote (parfois avec identifiants).",
+      "entry_id": null,
+      "evidence": "[core]\n\trepositoryformatversion = 0",
+      "params": {},
+      "recommendation": "Bloque l'accès au répertoire `.git/` côté serveur.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `.git/config`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-svn",
+      "code": "",
+      "detail": "Des métadonnées Subversion (`.svn/entries`) sont exposées : le code source et son arborescence peuvent être reconstitués.",
+      "entry_id": null,
+      "evidence": "12",
+      "params": {},
+      "recommendation": "Bloque l'accès au répertoire `.svn/` côté serveur.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `.svn/entries`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-hg",
+      "code": "",
+      "detail": "Des métadonnées Mercurial (`.hg/requires`) sont exposées : le dépôt et son code source peuvent être récupérés.",
+      "entry_id": null,
+      "evidence": "revlogv1\ndotencode\nstore",
+      "params": {},
+      "recommendation": "Bloque l'accès au répertoire `.hg/` côté serveur.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `.hg/requires`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-compose",
+      "code": "",
+      "detail": "Un fichier `docker-compose.yml` est accessible : il révèle l'architecture des services, des ports internes et parfois des variables sensibles.",
+      "entry_id": null,
+      "evidence": "services:\n  web:\n    image: x",
+      "params": {},
+      "recommendation": "Retire ce fichier du webroot ; il n'a rien à faire en ligne.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `docker-compose.yml`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-dockerfile",
+      "code": "",
+      "detail": "Un `Dockerfile` est accessible : il expose la chaîne de build, les versions et parfois des secrets passés en argument.",
+      "entry_id": null,
+      "evidence": "FROM python:3.12-slim",
+      "params": {},
+      "recommendation": "Retire ce fichier du webroot.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `Dockerfile`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-backup-zip",
+      "code": "",
+      "detail": "Une archive `backup.zip` est téléchargeable : elle peut contenir tout le code source et des données sensibles.",
+      "entry_id": null,
+      "evidence": "PK\u0003\u0004 binary backup",
+      "params": {},
+      "recommendation": "Supprime cette archive du webroot et stocke les sauvegardes hors ligne.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `backup.zip`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-backup-sql",
+      "code": "",
+      "detail": "Un dump SQL `backup.sql` est téléchargeable : il expose probablement l'intégralité de la base de données.",
+      "entry_id": null,
+      "evidence": "INSERT INTO users VALUES (1)",
+      "params": {},
+      "recommendation": "Supprime ce dump du webroot ; ne stocke jamais de sauvegarde base accessible en HTTP.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `backup.sql`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-database-sql",
+      "code": "",
+      "detail": "Un dump SQL `database.sql` est téléchargeable : il expose probablement l'intégralité de la base de données.",
+      "entry_id": null,
+      "evidence": "CREATE TABLE t (id int)",
+      "params": {},
+      "recommendation": "Supprime ce dump du webroot.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `database.sql`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-config-bak",
+      "code": "",
+      "detail": "Une sauvegarde `config.php.bak` est servie en clair : contrairement au `.php` exécuté, le `.bak` est renvoyé tel quel et peut révéler identifiants et clés.",
+      "entry_id": null,
+      "evidence": "<?php $db='secret'; ?>",
+      "params": {},
+      "recommendation": "Supprime cette sauvegarde et bloque les extensions `.bak` côté serveur.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `config.php.bak`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-dsstore",
+      "code": "",
+      "detail": "Un fichier `.DS_Store` est exposé : il liste les noms de fichiers du répertoire et facilite l'énumération de chemins cachés.",
+      "entry_id": null,
+      "evidence": "\u0000\u0000\u0000\u0001Bud1 stuff",
+      "params": {},
+      "recommendation": "Supprime les `.DS_Store` du webroot et bloque ce nom côté serveur.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `.DS_Store`"
+    },
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed-phpinfo",
+      "code": "",
+      "detail": "Une page `phpinfo()` est accessible : elle divulgue la configuration PHP, les chemins serveur, les modules et des variables d'environnement.",
+      "entry_id": null,
+      "evidence": "<title>phpinfo()</title>",
+      "params": {},
+      "recommendation": "Supprime ce fichier de diagnostic ; il ne doit jamais rester en production.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Fichier sensible exposé : `phpinfo.php`"
+    }
+  ],
+  "exposed_clean": [
+    {
+      "catalog": null,
+      "category": "exposure",
+      "check_id": "exposed",
+      "code": "",
+      "detail": "Aucun des chemins sensibles sondés (`.env`, `.git/HEAD`, sauvegardes…) n'est accessible publiquement.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Aucun fichier sensible exposé"
+    }
+  ],
+  "hdr_csp_absent": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-csp",
+      "code": "",
+      "detail": "Aucune CSP n'est envoyée : la première ligne de défense contre le XSS et l'injection de contenu manque.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Définis une CSP, même restrictive au départ (`default-src 'self'`), puis affine.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Content-Security-Policy absent"
+    }
+  ],
+  "hdr_csp_ok": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-csp",
+      "code": "",
+      "detail": "Une CSP est définie, sans directive notoirement dangereuse.",
+      "entry_id": null,
+      "evidence": "default-src 'self'",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Content-Security-Policy présente"
+    }
+  ],
+  "hdr_csp_weak_both": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-csp",
+      "code": "",
+      "detail": "La CSP autorise `unsafe-inline`, `unsafe-eval`, ce qui réduit fortement sa protection.",
+      "entry_id": null,
+      "evidence": "default-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "params": {},
+      "recommendation": "Supprime ces directives en passant aux nonces/hashes pour tes scripts.",
+      "severity": "low",
+      "source_text": null,
+      "title": "CSP présente mais permissive"
+    }
+  ],
+  "hdr_csp_weak_inline": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-csp",
+      "code": "",
+      "detail": "La CSP autorise `unsafe-inline`, ce qui réduit fortement sa protection.",
+      "entry_id": null,
+      "evidence": "default-src 'self' 'unsafe-inline'",
+      "params": {},
+      "recommendation": "Supprime ces directives en passant aux nonces/hashes pour tes scripts.",
+      "severity": "low",
+      "source_text": null,
+      "title": "CSP présente mais permissive"
+    }
+  ],
+  "hdr_disclosure_leak": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-disclosure",
+      "code": "",
+      "detail": "Des en-têtes révèlent des versions précises, utiles pour cibler des CVE connues.",
+      "entry_id": null,
+      "evidence": "server: nginx/1.2.3; x-powered-by: PHP/8.1",
+      "params": {},
+      "recommendation": "Masque ou raccourcis ces en-têtes (`proxy_hide_header`, `server_tokens off`…).",
+      "severity": "low",
+      "source_text": null,
+      "title": "Version logicielle exposée"
+    }
+  ],
+  "hdr_disclosure_ok": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-disclosure",
+      "code": "",
+      "detail": "Aucun en-tête ne divulgue de numéro de version exploitable.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Pas de version logicielle évidente"
+    }
+  ],
+  "hdr_hsts_absent": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-hsts",
+      "code": "",
+      "detail": "Sans HSTS, un visiteur peut être rétrogradé en HTTP par un attaquant réseau.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Ajoute `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "HSTS absent"
+    }
+  ],
+  "hdr_hsts_low": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-hsts",
+      "code": "",
+      "detail": "L'en-tête Strict-Transport-Security est envoyé.",
+      "entry_id": null,
+      "evidence": "max-age=100",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "HSTS présent"
+    },
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-hsts-maxage",
+      "code": "",
+      "detail": "max-age=100 s, en dessous du seuil recommandé (~6 mois).",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Monte max-age à 63072000 (2 ans) une fois sûr de ton HTTPS.",
+      "severity": "low",
+      "source_text": null,
+      "title": "HSTS max-age faible"
+    }
+  ],
+  "hdr_hsts_ok": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-hsts",
+      "code": "",
+      "detail": "L'en-tête Strict-Transport-Security est envoyé.",
+      "entry_id": null,
+      "evidence": "max-age=63072000",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "HSTS présent"
+    }
+  ],
+  "hdr_nosniff_absent": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-nosniff",
+      "code": "",
+      "detail": "Le MIME sniffing peut transformer un upload anodin en script exécutable.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Ajoute `X-Content-Type-Options: nosniff`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "X-Content-Type-Options absent"
+    }
+  ],
+  "hdr_nosniff_ok": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-nosniff",
+      "code": "",
+      "detail": "Le navigateur ne devinera pas le type MIME.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "X-Content-Type-Options: nosniff"
+    }
+  ],
+  "hdr_permissions_absent": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-permissions",
+      "code": "",
+      "detail": "Optionnel mais recommandé pour désactiver les API navigateur inutiles.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Ex. `Permissions-Policy: camera=(), microphone=(), geolocation=()`.",
+      "severity": "info",
+      "source_text": null,
+      "title": "Permissions-Policy absente"
+    }
+  ],
+  "hdr_permissions_present": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-permissions",
+      "code": "",
+      "detail": "L'accès aux API navigateur (caméra, micro, géoloc…) est cadré.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Permissions-Policy présente"
+    }
+  ],
+  "hdr_referrer_absent": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-referrer",
+      "code": "",
+      "detail": "Sans politique, des URLs internes peuvent fuiter vers des sites tiers.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Ajoute `Referrer-Policy: strict-origin-when-cross-origin`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Referrer-Policy absente"
+    }
+  ],
+  "hdr_referrer_present": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-referrer",
+      "code": "",
+      "detail": "La politique de Referer est définie.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Referrer-Policy présente"
+    }
+  ],
+  "hdr_xfo_absent": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-xfo",
+      "code": "",
+      "detail": "Ni X-Frame-Options ni frame-ancestors : la page peut être embarquée en iframe.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Ajoute `X-Frame-Options: DENY` ou `frame-ancestors 'none'` dans la CSP.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Protection clickjacking absente"
+    }
+  ],
+  "hdr_xfo_present": [
+    {
+      "catalog": null,
+      "category": "headers",
+      "check_id": "hdr-xfo",
+      "code": "",
+      "detail": "X-Frame-Options ou CSP frame-ancestors est défini.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Protection clickjacking présente"
+    }
+  ],
+  "mx_active_1": [
+    {
+      "catalog": null,
+      "category": "content",
+      "check_id": "mixed-active",
+      "code": "",
+      "detail": "1 ressource(s) active(s) (script, iframe, feuille de style, object) sont chargées en `http://` sur une page `https://`. Un attaquant réseau peut les altérer et compromettre toute la page.",
+      "entry_id": null,
+      "evidence": "http://a/x.js",
+      "params": {},
+      "recommendation": "Sers ces ressources en `https://` (ou en URL relative au protocole `//`), et ajoute `upgrade-insecure-requests` dans la CSP pour forcer la mise à niveau.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Contenu mixte actif"
+    }
+  ],
+  "mx_active_2": [
+    {
+      "catalog": null,
+      "category": "content",
+      "check_id": "mixed-active",
+      "code": "",
+      "detail": "2 ressource(s) active(s) (script, iframe, feuille de style, object) sont chargées en `http://` sur une page `https://`. Un attaquant réseau peut les altérer et compromettre toute la page.",
+      "entry_id": null,
+      "evidence": "http://a/x.js; http://b/y.js",
+      "params": {},
+      "recommendation": "Sers ces ressources en `https://` (ou en URL relative au protocole `//`), et ajoute `upgrade-insecure-requests` dans la CSP pour forcer la mise à niveau.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Contenu mixte actif"
+    }
+  ],
+  "mx_clean": [
+    {
+      "catalog": null,
+      "category": "content",
+      "check_id": "mixed",
+      "code": "",
+      "detail": "Aucune ressource `http://` détectée dans le HTML de cette page `https://`.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Pas de contenu mixte"
+    }
+  ],
+  "mx_not_html": [
+    {
+      "catalog": null,
+      "category": "content",
+      "check_id": "mixed",
+      "code": "",
+      "detail": "Le contenu mixte ne concerne que les pages HTTPS au format HTML ; ici, la réponse n'est pas du HTML.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Aucune action requise pour ce point.",
+      "severity": "info",
+      "source_text": null,
+      "title": "Contenu mixte non évalué"
+    }
+  ],
+  "mx_not_https": [
+    {
+      "catalog": null,
+      "category": "content",
+      "check_id": "mixed",
+      "code": "",
+      "detail": "Le contenu mixte ne concerne que les pages HTTPS au format HTML ; ici, la page finale n'est pas servie en HTTPS.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Aucune action requise pour ce point.",
+      "severity": "info",
+      "source_text": null,
+      "title": "Contenu mixte non évalué"
+    }
+  ],
+  "mx_passive": [
+    {
+      "catalog": null,
+      "category": "content",
+      "check_id": "mixed-passive",
+      "code": "",
+      "detail": "1 ressource(s) passive(s) (image, audio, vidéo, `source`) sont chargées en `http://` sur une page `https://`. Le risque est moindre mais le navigateur peut bloquer l'affichage ou afficher un avertissement.",
+      "entry_id": null,
+      "evidence": "http://a/i.png",
+      "params": {},
+      "recommendation": "Sers ces ressources en `https://` (ou en URL relative au protocole `//`), et ajoute `upgrade-insecure-requests` dans la CSP pour forcer la mise à niveau.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Contenu mixte passif"
+    }
+  ],
+  "nuclei_absent": [
+    {
+      "catalog": null,
+      "category": "pentest",
+      "check_id": "nuclei",
+      "code": "",
+      "detail": "Le binaire `nuclei` n'est pas disponible : l'étape pentest est ignorée.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Installe nuclei (ProjectDiscovery) dans le PATH — l'image Docker le fait déjà.",
+      "severity": "info",
+      "source_text": null,
+      "title": "nuclei non installé"
+    }
+  ],
+  "nuclei_off": [
+    {
+      "catalog": null,
+      "category": "pentest",
+      "check_id": "nuclei",
+      "code": "",
+      "detail": "Le check est désactivé par configuration (`SONAR_NUCLEI=off`).",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "info",
+      "source_text": null,
+      "title": "Pentest nuclei désactivé"
+    }
+  ],
+  "sr_missing": [
+    {
+      "catalog": null,
+      "category": "subresource",
+      "check_id": "subresources",
+      "code": "",
+      "detail": "1 sur 1 sous-ressource(s) même-origine (script/CSS) sont servies sans `nosniff` : un fichier au type MIME ambigu peut être réinterprété par le navigateur (MIME sniffing), même quand la page principale est correctement protégée.",
+      "entry_id": null,
+      "evidence": "https://example.com/app.js",
+      "params": {},
+      "recommendation": "Ajoute `X-Content-Type-Options: nosniff` sur **toutes** les réponses, y compris les fichiers statiques — configure-le globalement côté serveur plutôt que par route.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Sous-ressources sans `X-Content-Type-Options: nosniff`"
+    }
+  ],
+  "sr_non_html": [
+    {
+      "catalog": null,
+      "category": "subresource",
+      "check_id": "subresources",
+      "code": "",
+      "detail": "La page principale n'est pas du HTML : il n'y a pas de sous-ressource à analyser.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Aucune action requise pour ce point.",
+      "severity": "info",
+      "source_text": null,
+      "title": "Sous-ressources non évaluées"
+    }
+  ],
+  "sr_none": [
+    {
+      "catalog": null,
+      "category": "subresource",
+      "check_id": "subresources",
+      "code": "",
+      "detail": "La page ne charge aucun script ni feuille de style hébergé localement à vérifier.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Aucune sous-ressource même-origine"
+    }
+  ],
+  "sr_protected": [
+    {
+      "catalog": null,
+      "category": "subresource",
+      "check_id": "subresources",
+      "code": "",
+      "detail": "Les 1 sous-ressource(s) même-origine vérifiées portent toutes `X-Content-Type-Options: nosniff`.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Sous-ressources correctement protégées"
+    }
+  ],
+  "sr_unreachable": [
+    {
+      "catalog": null,
+      "category": "subresource",
+      "check_id": "subresources",
+      "code": "",
+      "detail": "Aucune des sous-ressources échantillonnées n'a pu être récupérée pour vérification.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Aucune action requise pour ce point.",
+      "severity": "info",
+      "source_text": null,
+      "title": "Sous-ressources injoignables"
+    }
+  ],
+  "tc_detect": [
+    {
+      "catalog": null,
+      "category": "tech",
+      "check_id": "tech",
+      "code": "",
+      "detail": "Empreinte applicative repérée passivement (en-têtes, cookies ou HTML).",
+      "entry_id": null,
+      "evidence": "server: nginx",
+      "params": {},
+      "recommendation": "",
+      "severity": "info",
+      "source_text": null,
+      "title": "Technologie détectée : nginx"
+    },
+    {
+      "catalog": null,
+      "category": "tech",
+      "check_id": "tech",
+      "code": "",
+      "detail": "Empreinte applicative repérée passivement (en-têtes, cookies ou HTML).",
+      "entry_id": null,
+      "evidence": "cookie PHPSESSID",
+      "params": {},
+      "recommendation": "",
+      "severity": "info",
+      "source_text": null,
+      "title": "Technologie détectée : PHP"
+    },
+    {
+      "catalog": null,
+      "category": "tech",
+      "check_id": "tech",
+      "code": "",
+      "detail": "Empreinte applicative repérée passivement (en-têtes, cookies ou HTML).",
+      "entry_id": null,
+      "evidence": "meta generator: WordPress 6.5",
+      "params": {},
+      "recommendation": "",
+      "severity": "info",
+      "source_text": null,
+      "title": "Technologie détectée : WordPress"
+    },
+    {
+      "catalog": null,
+      "category": "tech",
+      "check_id": "tech",
+      "code": "",
+      "detail": "La version précise de `WordPress` (6.5) est révélée, ce qui facilite le ciblage de CVE connues.",
+      "entry_id": null,
+      "evidence": "meta generator: WordPress 6.5",
+      "params": {},
+      "recommendation": "Masque la version : `server_tokens off`, retire `X-Powered-By`, supprime la balise `<meta name=\"generator\">`.",
+      "severity": "low",
+      "source_text": null,
+      "title": "Version exposée : WordPress 6.5"
+    }
+  ],
+  "tc_none": [
+    {
+      "catalog": null,
+      "category": "tech",
+      "check_id": "tech",
+      "code": "",
+      "detail": "Aucune empreinte applicative notable n'a été repérée passivement.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Pas de technologie/version évidente exposée"
+    }
+  ],
+  "tls_cert_expired": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-cert-expiry",
+      "code": "",
+      "detail": "Le certificat a expiré le `Jun 03 08:55:43 2026 GMT` (émis par organizationName=Let's Encrypt).",
+      "entry_id": null,
+      "evidence": "Jun 03 08:55:43 2026 GMT",
+      "params": {},
+      "recommendation": "Renouvelle le certificat immédiatement.",
+      "severity": "critical",
+      "source_text": null,
+      "title": "Certificat expiré"
+    }
+  ],
+  "tls_cert_not_yet": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-cert-validity",
+      "code": "",
+      "detail": "Le certificat n'entre en vigueur que le `Jun 05 08:55:43 2026 GMT` (date `notBefore` dans le futur).",
+      "entry_id": null,
+      "evidence": "commonName=x",
+      "params": {},
+      "recommendation": "Vérifie l'horloge du serveur ou déploie le bon certificat.",
+      "severity": "critical",
+      "source_text": null,
+      "title": "Certificat pas encore valide"
+    },
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-cert-expiry",
+      "code": "",
+      "detail": "Le certificat est valide encore 199 jour(s) (jusqu'au `Dec 21 08:55:43 2026 GMT`).",
+      "entry_id": null,
+      "evidence": "Dec 21 08:55:43 2026 GMT",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Certificat valide"
+    }
+  ],
+  "tls_cert_ok": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-cert-expiry",
+      "code": "",
+      "detail": "Le certificat est valide encore 199 jour(s) (jusqu'au `Dec 21 08:55:43 2026 GMT`).",
+      "entry_id": null,
+      "evidence": "Dec 21 08:55:43 2026 GMT",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Certificat valide"
+    }
+  ],
+  "tls_cert_soon": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-cert-expiry",
+      "code": "",
+      "detail": "Le certificat expire dans 4 jour(s) (le `Jun 09 08:55:43 2026 GMT`).",
+      "entry_id": null,
+      "evidence": "Jun 09 08:55:43 2026 GMT",
+      "params": {},
+      "recommendation": "Renouvelle-le avant l'échéance ; vise un renouvellement automatique.",
+      "severity": "medium",
+      "source_text": null,
+      "title": "Certificat proche de l'expiration"
+    }
+  ],
+  "tls_http": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls",
+      "code": "",
+      "detail": "L'URL finale est `http://x/` : le trafic circule en clair, exposé à l'interception et à la modification.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Sers le site exclusivement en HTTPS et redirige tout HTTP vers HTTPS.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Connexion non chiffrée (HTTP)"
+    }
+  ],
+  "tls_unreachable": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls",
+      "code": "",
+      "detail": "Impossible d'établir une connexion TLS vers `x:443` : OSError.",
+      "entry_id": null,
+      "evidence": "connection refused",
+      "params": {},
+      "recommendation": "Vérifie que le port est ouvert et qu'un service TLS y répond.",
+      "severity": "info",
+      "source_text": null,
+      "title": "TLS non vérifiable"
+    }
+  ],
+  "tls_verify_failed": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls",
+      "code": "",
+      "detail": "La chaîne ou le hostname n'a pas pu être validé : `CERTIFICATE_VERIFY_FAILED`. Le navigateur affichera un avertissement de sécurité.",
+      "entry_id": null,
+      "evidence": "self signed certificate",
+      "params": {},
+      "recommendation": "Déploie un certificat de confiance valide pour ce hostname (chaîne complète, hostname correct, non expiré).",
+      "severity": "high",
+      "source_text": null,
+      "title": "Validation du certificat échouée"
+    },
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-version",
+      "code": "",
+      "detail": "La connexion négocie `TLSv1.3` (>= TLS 1.2).",
+      "entry_id": null,
+      "evidence": "TLSv1.3",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Version TLS correcte"
+    },
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-cert-expiry",
+      "code": "",
+      "detail": "Le certificat est valide encore 199 jour(s) (jusqu'au `Dec 21 08:55:43 2026 GMT`).",
+      "entry_id": null,
+      "evidence": "Dec 21 08:55:43 2026 GMT",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Certificat valide"
+    }
+  ],
+  "tls_version_obsolete": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-version",
+      "code": "",
+      "detail": "Le serveur accepte `TLSv1`, un protocole déprécié et vulnérable (BEAST, POODLE…).",
+      "entry_id": null,
+      "evidence": "TLSv1",
+      "params": {},
+      "recommendation": "Désactive tous les protocoles < TLS 1.2 et privilégie TLS 1.3.",
+      "severity": "high",
+      "source_text": null,
+      "title": "Version TLS obsolète négociée"
+    }
+  ],
+  "tls_version_ok": [
+    {
+      "catalog": null,
+      "category": "tls",
+      "check_id": "tls-version",
+      "code": "",
+      "detail": "La connexion négocie `TLSv1.3` (>= TLS 1.2).",
+      "entry_id": null,
+      "evidence": "TLSv1.3",
+      "params": {},
+      "recommendation": "",
+      "severity": "pass",
+      "source_text": null,
+      "title": "Version TLS correcte"
+    }
+  ],
+  "zap_not_configured": [
+    {
+      "catalog": null,
+      "category": "zap",
+      "check_id": "zap",
+      "code": "",
+      "detail": "Aucun démon OWASP ZAP n'est configuré (`ZAP_API_URL` vide) : l'étape ZAP est ignorée.",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "Lance un conteneur ZAP en mode démon et renseigne `ZAP_API_URL` (voir le README).",
+      "severity": "info",
+      "source_text": null,
+      "title": "ZAP non configuré"
+    }
+  ],
+  "zap_off": [
+    {
+      "catalog": null,
+      "category": "zap",
+      "check_id": "zap",
+      "code": "",
+      "detail": "Le check est désactivé par configuration (`SONAR_ZAP=off`).",
+      "entry_id": null,
+      "evidence": null,
+      "params": {},
+      "recommendation": "",
+      "severity": "info",
+      "source_text": null,
+      "title": "Pentest ZAP désactivé"
+    }
+  ]
+}

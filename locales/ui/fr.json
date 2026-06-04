@@ -1,0 +1,120 @@
+{
+  "lang_name": "Français",
+  "dir": "ltr",
+
+  "sev_label": {
+    "critical": "Critique",
+    "high": "Élevé",
+    "medium": "Moyen",
+    "low": "Faible",
+    "info": "Info",
+    "pass": "Conforme"
+  },
+
+  "cat_label": {
+    "headers": "En-têtes HTTP",
+    "cookies": "Cookies",
+    "tls": "TLS / Cert",
+    "dns": "DNS",
+    "exposure": "Exposition",
+    "cors": "CORS",
+    "content": "Contenu mixte",
+    "subresource": "Sous-ressources",
+    "tech": "Technologies",
+    "pentest": "Pentest (nuclei)",
+    "zap": "Pentest (ZAP)",
+    "transport": "Transport",
+    "info": "Info"
+  },
+
+  "topbar": {
+    "subtitle": "console de reconnaissance",
+    "version": "v0.1 · phase 1",
+    "logout": "Déconnexion",
+    "language": "Langue"
+  },
+
+  "console": {
+    "prompt": "scan ~$",
+    "placeholder": "monsite.com",
+    "scan": "Lancer",
+    "scanning": "Scan…"
+  },
+
+  "gauge": {
+    "waiting": "en attente",
+    "of_100": "/ 100",
+    "analyzing": "analyse en cours · {done}/{total}",
+    "summary": "{issues} problème(s) · {pass} conforme(s)",
+    "idle_caption": "indice de surface d'exposition"
+  },
+
+  "domains": {
+    "title": "Mes domaines",
+    "empty": "Ajoute un domaine et vérifie-le pour débloquer le scan.",
+    "verified": "✓ vérifié",
+    "pending": "en attente",
+    "delete": "Supprimer",
+    "howto": "Publie ce TXT sur ta zone DNS, puis clique Vérifier :",
+    "verify": "Vérifier",
+    "add_placeholder": "exemple.com",
+    "add": "Ajouter",
+    "invalid": "Domaine invalide."
+  },
+
+  "panels": {
+    "breakdown": "Répartition",
+    "progress": "Progression",
+    "history": "Historique",
+    "history_empty": "Aucun scan enregistré."
+  },
+
+  "feed": {
+    "checks_progress": "{done}/{total} checks",
+    "observations": "{count} observations sur",
+    "hide_pass": "masquer les conformes",
+    "empty": "Entre l'URL d'un de tes sites et lance un scan. Les observations apparaîtront ici au fil de l'analyse, et la jauge mesurera ta surface d'exposition."
+  },
+
+  "remediation": {
+    "expand": "Comment corriger",
+    "collapse": "Réduire",
+    "explanation": "En clair",
+    "why": "Pourquoi ça compte",
+    "steps": "Étapes",
+    "stacks": "Selon ta stack",
+    "evidence": "Preuve",
+    "ai_prompt": "Prompt IA",
+    "copy_prompt": "Copier le prompt IA",
+    "copied": "Copié !",
+    "refs": "Références",
+    "pass_why": "Pourquoi c'est conforme",
+    "to_review": "à vérifier",
+    "untranslated": "description d'origine (non traduite)",
+    "detected_stack": "détectée"
+  },
+
+  "stacks": {
+    "nginx": "Nginx",
+    "npm": "Nginx Proxy Manager",
+    "cloudflare": "Cloudflare",
+    "apache": "Apache",
+    "nextjs": "Next.js",
+    "express": "Express",
+    "caddy": "Caddy",
+    "generic": "Générique"
+  },
+
+  "banners": {
+    "archived": "Scan archivé —",
+    "new_scan": "Nouveau scan",
+    "scan_locked": "Scan verrouillé : ajoute et vérifie un domaine dans « Mes domaines ».",
+    "scan_interrupted": "Connexion interrompue — cible injoignable ?",
+    "scan_error": "Erreur pendant le scan."
+  },
+
+  "fallback": {
+    "title": "Résultat sans description disponible",
+    "detail": "Le détail localisé de ce résultat n'est pas encore disponible dans cette langue."
+  }
+}

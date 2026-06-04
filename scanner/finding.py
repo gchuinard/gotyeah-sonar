@@ -6,7 +6,7 @@ demain un wrapper nuclei), rend une liste de `Finding`. Tout le reste de l'appli
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
@@ -49,23 +49,59 @@ _WEIGHTS = {
 
 @dataclass
 class Finding:
+    """Résultat d'un check.
+
+    Deux formes coexistent (transition i18n) :
+
+    * **Structurée** (cible) — le check ne fait que de la *détection* et laisse le
+      texte humain au catalogue de présentation : il renseigne `code` (discriminant
+      de résultat, ex. ``"absent"``/``"weak"``/``"ok"``) et `params` (valeurs
+      d'interpolation : host, nom de cookie, version…). `title`/`detail`/
+      `recommendation` restent vides ; la couche `scanner.i18n` les rend dans la
+      langue demandée à partir de la clé ``(check_id, code)``.
+    * **Externe** (ZAP / nuclei) — le résultat vient du catalogue d'un outil tiers :
+      `catalog` (``"zap"``/``"nuclei"``) + `entry_id` (pluginId / template-id) servent
+      de clé de contenu, et `source_text` porte le texte d'origine (anglais) utilisé
+      en *fallback* si aucune entrée traduite n'existe.
+    * **Legacy** — un `title` renseigné sans `code` (ancien historique, check non
+      encore migré) : rendu tel quel, sans carte de remédiation.
+
+    Seules `severity` (le score) et `check_id`/`category` (le routage) sont
+    structurelles ; tout le reste est de la présentation.
+    """
     check_id: str
     category: Category
     severity: Severity
-    title: str
+    title: str = ""
     detail: str = ""
     recommendation: str = ""
     evidence: Optional[str] = None
+    # --- i18n : détection structurée (le texte humain vit dans le catalogue) ---
+    code: str = ""                              # result_code : discriminant DANS un check_id
+    params: dict = field(default_factory=dict)  # valeurs d'interpolation (host, value, count…)
+    catalog: Optional[str] = None               # "zap" | "nuclei" | None (= maison, clé = check_id)
+    entry_id: Optional[str] = None              # pluginId / template-id (clé de contenu stable)
+    source_text: Optional[dict] = None          # {title, detail, recommendation, refs[]} langue d'origine
 
     def as_dict(self) -> dict:
+        """Sérialise la forme structurée (c'est ce qui est streamé et persisté).
+
+        On conserve `title`/`detail`/`recommendation` : vides pour un check migré,
+        renseignés pour un finding legacy — ce qui garde l'ancien historique lisible.
+        """
         return {
             "check_id": self.check_id,
             "category": self.category.value,
             "severity": self.severity.value,
+            "code": self.code,
+            "params": self.params,
+            "evidence": self.evidence,
+            "catalog": self.catalog,
+            "entry_id": self.entry_id,
+            "source_text": self.source_text,
             "title": self.title,
             "detail": self.detail,
             "recommendation": self.recommendation,
-            "evidence": self.evidence,
         }
 
 

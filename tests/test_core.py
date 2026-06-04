@@ -37,12 +37,24 @@ def test_summarize():
     assert s["grade"] == "C"
 
 
-def test_as_dict():
+def test_as_dict_legacy():
+    # Forme legacy (texte rendu en dur) : title/detail/reco renseignés, structuré vide.
     d = Finding("cid", Category.TLS, Severity.HIGH, "titre", "det", "reco", evidence="ev").as_dict()
     assert d == {
-        "check_id": "cid", "category": "tls", "severity": "high", "title": "titre",
-        "detail": "det", "recommendation": "reco", "evidence": "ev",
+        "check_id": "cid", "category": "tls", "severity": "high",
+        "code": "", "params": {}, "evidence": "ev",
+        "catalog": None, "entry_id": None, "source_text": None,
+        "title": "titre", "detail": "det", "recommendation": "reco",
     }
+
+
+def test_as_dict_structured():
+    # Forme structurée (cible) : code/params portent la détection, pas de texte humain.
+    d = Finding("hdr-csp", Category.HEADERS, Severity.MEDIUM,
+                code="absent", params={"host": "x.com"}, evidence="ev").as_dict()
+    assert d["check_id"] == "hdr-csp" and d["code"] == "absent"
+    assert d["params"] == {"host": "x.com"} and d["title"] == ""
+    assert d["catalog"] is None and d["source_text"] is None
 
 
 # ---- registry.py ----

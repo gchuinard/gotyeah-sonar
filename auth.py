@@ -103,7 +103,8 @@ def init_auth() -> None:
                 id         TEXT PRIMARY KEY,
                 email      TEXT NOT NULL UNIQUE,
                 is_admin   INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                lang       TEXT
             );
             CREATE TABLE IF NOT EXISTS magic_tokens (
                 token_hash  TEXT PRIMARY KEY,
@@ -137,6 +138,10 @@ def init_auth() -> None:
             );
             """
         )
+        # Migration douce : une base d'avant l'i18n n'a pas la colonne `lang`.
+        ucols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "lang" not in ucols:
+            conn.execute("ALTER TABLE users ADD COLUMN lang TEXT")
 
 
 # --------------------------------------------------------------------------- #
@@ -158,6 +163,12 @@ def get_user_by_id(uid: str):
 def set_admin(uid: str, value: bool) -> None:
     with _conn() as conn:
         conn.execute("UPDATE users SET is_admin=? WHERE id=?", (1 if value else 0, uid))
+
+
+def set_user_lang(uid: str, lang: str) -> None:
+    """Enregistre la langue préférée de l'utilisateur (déjà validée par l'appelant)."""
+    with _conn() as conn:
+        conn.execute("UPDATE users SET lang=? WHERE id=?", (lang, uid))
 
 
 def create_user(email: str, is_admin: bool = False):

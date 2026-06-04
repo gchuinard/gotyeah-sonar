@@ -23,6 +23,7 @@ from fastapi.responses import (
 import auth
 import db
 import mailer
+from scanner import i18n
 from scanner.runner import normalize_target, run_scan
 
 BASE = Path(__file__).parent
@@ -30,6 +31,7 @@ PAGE = (BASE / "templates" / "index.html").read_text(encoding="utf-8")
 LOGIN_PAGE = (BASE / "templates" / "login.html").read_text(encoding="utf-8")
 
 SESSION_COOKIE = "sonar_session"
+LANG_COOKIE = "sonar_lang"
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -63,6 +65,42 @@ def _current_user(request: Request):
     return auth.get_session_user(request.cookies.get(SESSION_COOKIE))
 
 
+def _lang(request: Request, user=None) -> str:
+    """Langue active : préférence utilisateur → cookie → Accept-Language → fr.
+
+    On n'accepte qu'une langue réellement disponible (un fichier de locale existe),
+    sinon on retombe sur `fr`.
+    """
+    available = set(i18n.available_langs())
+    if user and user.get("lang") and user["lang"] in available:
+        return user["lang"]
+    cookie = request.cookies.get(LANG_COOKIE)
+    if cookie and cookie in available:
+        return cookie
+    for part in (request.headers.get("accept-language") or "").split(","):
+        code = part.split(";")[0].strip().lower()[:2]
+        if code in available:
+            return code
+    return "fr"
+
+
+def _pick_lang(lang_param, request: Request, user=None) -> str:
+    """Langue explicite (?lang=) si valide, sinon la langue active déduite."""
+    if lang_param and lang_param in set(i18n.available_langs()):
+        return lang_param
+    return _lang(request, user)
+
+
+def _render_index(request: Request, user) -> str:
+    """Injecte le bootstrap i18n (langue + dict UI) dans la page (no-op si absent)."""
+    lang = _lang(request, user)
+    boot = json.dumps(
+        {"lang": lang, "available": i18n.available_langs(), "ui": i18n.render_ui(lang)},
+        ensure_ascii=False,
+    )
+    return PAGE.replace("__SONAR_BOOTSTRAP__", boot)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
@@ -83,9 +121,10 @@ def _sse(event: str, data: dict) -> str:
 # --------------------------------------------------------------------------- #
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    if not _current_user(request):
+    user = _current_user(request)
+    if not user:
         return RedirectResponse("/login", status_code=302)
-    return HTMLResponse(PAGE)
+    return HTMLResponse(_render_index(request, user))
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -143,7 +182,42 @@ async def api_me(request: Request):
         "email": user["email"],
         "is_admin": bool(user["is_admin"]),
         "can_scan": auth.user_can_scan(user),
+        "lang": _lang(request, user),
+        "available_langs": i18n.available_langs(),
     })
+
+
+# --------------------------------------------------------------------------- #
+# i18n (chrome UI + préférence de langue)
+# --------------------------------------------------------------------------- #
+@app.get("/api/i18n/ui")
+async def i18n_ui(request: Request, lang: str = Query(None)):
+    user = _current_user(request)
+    chosen = _pick_lang(lang, request, user)
+    return JSONResponse({
+        "lang": chosen,
+        "available": i18n.available_langs(),
+        "ui": i18n.render_ui(chosen),
+    })
+
+
+@app.post("/api/lang")
+async def set_lang(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    lang = body.get("lang", "") if isinstance(body, dict) else ""
+    if lang not in set(i18n.available_langs()):
+        return JSONResponse({"error": "langue non disponible"}, status_code=400)
+    user = _current_user(request)
+    if user:
+        auth.set_user_lang(user["id"], lang)
+    resp = JSONResponse({"ok": True, "lang": lang})
+    # Cookie non-httponly : non sensible, et permet au front de connaître la langue.
+    resp.set_cookie(LANG_COOKIE, lang, max_age=365 * 86400,
+                    secure=_env_bool("SONAR_COOKIE_SECURE", True), samesite="lax", path="/")
+    return resp
 
 
 # --------------------------------------------------------------------------- #
@@ -215,14 +289,21 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
             {"error": "Tu ne peux scanner que tes domaines vérifiés.", "code": "domain_not_owned"},
             status_code=403)
 
+    lang = _lang(request, user)
+
     async def gen():
         summary = None
         findings = None
         async for ev in run_scan(target):
-            if ev["event"] == "done":
+            data = ev["data"]
+            if ev["event"] == "finding":
+                # Le finding structuré est rendu dans la langue active pour l'affichage
+                # live ; la forme structurée (`_findings`) reste celle persistée.
+                data = {**data, **i18n.render_finding(data, lang)}
+            elif ev["event"] == "done":
                 summary = ev["data"]
                 findings = ev.get("_findings", [])
-            yield _sse(ev["event"], ev["data"])
+            yield _sse(ev["event"], data)
         if summary is not None:
             scan_id = db.save_scan(summary.get("target", target), summary, findings or [],
                                    user_id=user["id"])
@@ -246,7 +327,7 @@ async def history(request: Request):
 
 
 @app.get("/api/scan/{scan_id}")
-async def scan_detail(request: Request, scan_id: str):
+async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
     user = _current_user(request)
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
@@ -254,4 +335,9 @@ async def scan_detail(request: Request, scan_id: str):
     data = db.get_scan(scan_id, user_id=scope)
     if not data:
         return JSONResponse({"error": "not found"}, status_code=404)
+    # Re-render des findings STRUCTURÉS archivés dans la langue demandée (le passé se
+    # relit dans n'importe quelle langue ; un finding legacy retombe en passthrough).
+    chosen = _pick_lang(lang, request, user)
+    data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
+    data["lang"] = chosen
     return JSONResponse(data)
