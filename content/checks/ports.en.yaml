@@ -1,0 +1,38 @@
+# Exposed ports / services. Fix = firewall / bind to localhost → no AI prompt
+# (exact commands in steps). Placeholders: {service}, {port}, {ip}, {host}, {cdn}.
+
+ports:
+  service-exposed:
+    title: "Exposed service: {service} (port {port})"
+    detail: "Port {port} ({service}) accepts connections from outside. This kind of service generally has no business being publicly reachable."
+    explanation: "A connect-scan established a TCP connection on port {port}, where {service} typically listens. Databases, caches and admin APIs are designed for a trusted internal network, not the open Internet."
+    why: "An exposed data service (often without strong authentication by default) is a direct target: data theft or destruction, server takeover. An open Redis, MongoDB or Docker API is a classic compromise within seconds."
+    steps:
+      - "Confirm this service really needs to be reachable from outside — the answer is almost always “no”."
+      - "Bind the service to the loopback interface instead of all interfaces — e.g. `bind 127.0.0.1` (Redis), `bindIp: 127.0.0.1` (MongoDB), `-p 127.0.0.1:{port}:{port}` instead of `-p {port}:{port}` (Docker container)."
+      - "Block the port at the firewall: `ufw deny {port}` (or your cloud/router security rule). Only open what is strictly required."
+      - "If remote access is unavoidable, go through a VPN or SSH tunnel, and enable strong authentication + encryption (TLS) on the service."
+    refs:
+      - "https://owasp.org/www-project-top-ten/"
+      - "https://www.cisa.gov/news-events/alerts"
+    a_verifier: false
+  behind-cdn:
+    title: "Port scan skipped (behind {cdn})"
+    detail: "`{host}` resolves to a {cdn} address: that is the CDN edge, not your origin server. The port scan was deliberately skipped so as not to probe a third party's infrastructure."
+    why: "Scanning the CDN's IP tells you nothing about your origin (and would mean scanning a third party). To check your real network surface, you have to target the origin IP."
+    steps:
+      - "To scan your origin, set the `SONAR_ORIGIN_IP` environment variable to its real IP address."
+      - "Also make sure your origin is reachable ONLY through the CDN (firewall the CDN IPs in) to prevent bypass."
+    a_verifier: false
+  unresolved:
+    title: "Host did not resolve"
+    detail: "Could not resolve `{host}` to an IP address: the port scan was skipped."
+    why: "Without DNS resolution there is no IP to probe. Check the hostname or the DNS connectivity of the scanning environment."
+  clean:
+    title: "No sensitive service exposed"
+    detail: "None of the sensitive ports probed (databases, caches, admin APIs…) accepts a public connection on `{ip}`."
+    why: "Common sensitive services are not reachable from outside: good network exposure hygiene."
+  "off":
+    title: "Port scan disabled"
+    detail: "The check is disabled by configuration (`SONAR_PORTS=off`)."
+    why: "The port/service scan was deliberately turned off: no network probing is performed."

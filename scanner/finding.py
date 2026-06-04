@@ -30,6 +30,8 @@ class Category(str, Enum):
     CONTENT = "content"     # Phase 2 — contenu mixte (ressources http sur page https)
     SUBRESOURCE = "subresource"  # Phase 2 — en-têtes de sécurité sur les sous-ressources
     TECH = "tech"           # Phase 2 — technologies/versions détectées
+    PORTS = "ports"         # Réseau — services/ports exposés (connect-scan borné)
+    HTTP = "http"           # Méthodes HTTP (TRACE/PUT…) et durcissement verbe
     PENTEST = "pentest"     # Phase 3 — résultats du moteur nuclei
     ZAP = "zap"             # Phase 3 (bonus) — résultats d'OWASP ZAP (mode API)
     TRANSPORT = "transport"

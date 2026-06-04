@@ -1,0 +1,83 @@
+"""Scan de ports : logique CDN, sélection de ports, codes — seams mockés, hors-ligne."""
+from types import SimpleNamespace
+
+import scanner.checks.ports as portsmod
+from scanner.checks.ports import ports
+from scanner.finding import Severity
+
+
+def _ctx(host="x.com"):
+    return SimpleNamespace(host=host)
+
+
+def test_is_cdn_ip():
+    assert portsmod._is_cdn_ip("104.16.0.1") == "Cloudflare"   # plage Cloudflare
+    assert portsmod._is_cdn_ip("203.0.113.10") is None         # TEST-NET-3
+    assert portsmod._is_cdn_ip("pas-une-ip") is None
+
+
+def test_port_list_override(monkeypatch):
+    monkeypatch.setenv("SONAR_PORTS_LIST", "6379, 22")
+    assert {p for p, _s, _sev in portsmod._port_list()} == {6379, 22}
+
+
+async def test_off(monkeypatch):
+    monkeypatch.setenv("SONAR_PORTS", "off")
+    out = await ports(_ctx())
+    assert out[0].code == "off" and out[0].severity == Severity.INFO
+
+
+async def test_behind_cdn(monkeypatch):
+    monkeypatch.delenv("SONAR_PORTS", raising=False)
+    monkeypatch.delenv("SONAR_ORIGIN_IP", raising=False)
+
+    async def fake_resolve(host):
+        return ["104.16.0.1"]
+    monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
+    out = await ports(_ctx())
+    assert len(out) == 1 and out[0].code == "behind-cdn"
+    assert out[0].params["cdn"] == "Cloudflare"
+
+
+async def test_service_exposed(monkeypatch):
+    monkeypatch.delenv("SONAR_PORTS", raising=False)
+    monkeypatch.delenv("SONAR_ORIGIN_IP", raising=False)
+
+    async def fake_resolve(host):
+        return ["203.0.113.10"]
+
+    async def fake_probe(ip, port, timeout):
+        return (port == 6379, "")
+    monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
+    monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
+    out = await ports(_ctx())
+    exposed = [f for f in out if f.code == "service-exposed"]
+    assert len(exposed) == 1 and exposed[0].severity == Severity.CRITICAL
+    assert exposed[0].params["service"] == "Redis" and exposed[0].params["port"] == 6379
+
+
+async def test_clean(monkeypatch):
+    monkeypatch.delenv("SONAR_PORTS", raising=False)
+    monkeypatch.delenv("SONAR_ORIGIN_IP", raising=False)
+
+    async def fake_resolve(host):
+        return ["203.0.113.10"]
+
+    async def fake_probe(ip, port, timeout):
+        return (False, "")
+    monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
+    monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
+    out = await ports(_ctx())
+    assert len(out) == 1 and out[0].code == "clean" and out[0].severity == Severity.PASS
+
+
+async def test_origin_ip_bypasses_cdn(monkeypatch):
+    monkeypatch.delenv("SONAR_PORTS", raising=False)
+    monkeypatch.setenv("SONAR_ORIGIN_IP", "203.0.113.50")   # court-circuite résolution + CDN
+
+    async def fake_probe(ip, port, timeout):
+        return (ip == "203.0.113.50" and port == 3306, "")
+    monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
+    out = await ports(_ctx())
+    exposed = [f for f in out if f.code == "service-exposed"]
+    assert exposed and exposed[0].params["port"] == 3306 and exposed[0].params["ip"] == "203.0.113.50"

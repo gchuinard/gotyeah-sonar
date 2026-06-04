@@ -63,6 +63,7 @@ async def _collect():
     from scanner.checks import subresources as SR
     from scanner.checks import tls as TLS
     from scanner.checks import dns as DNS
+    from scanner.checks import ports as PORTS
     from scanner.checks import nuclei as NU
     from scanner.checks import zap as ZP
 
@@ -312,6 +313,44 @@ async def _collect():
         await run("zap_not_configured", ZP.zap(types.SimpleNamespace(url="https://x/")))
     finally:
         r()
+
+    # ---- PORTS (seams _resolve_ips / _probe_port ; IP CDN vs non-CDN) ----
+    _orig_resolve, _orig_probe = PORTS._resolve_ips, PORTS._probe_port
+
+    def fake_resolve(ips):
+        async def f(host):
+            return ips
+        return f
+
+    def fake_probe(open_ports):
+        async def f(ip, port, timeout):
+            return (port in open_ports, "")
+        return f
+
+    def _ports_ctx():
+        return types.SimpleNamespace(host="x.com")
+
+    r = _with_env(SONAR_PORTS="off")
+    try:
+        await run("ports_off", PORTS.ports(_ports_ctx()))
+    finally:
+        r()
+
+    for sid, ips, probe, env in [
+        ("ports_unresolved", [], None, {}),
+        ("ports_behind_cdn", ["104.16.0.1"], None, {}),                       # plage Cloudflare
+        ("ports_exposed", ["203.0.113.10"], fake_probe({6379}), {}),          # TEST-NET-3, Redis ouvert
+        ("ports_clean", ["203.0.113.10"], fake_probe(set()), {}),
+    ]:
+        rr = _with_env(SONAR_PORTS=None, SONAR_ORIGIN_IP=None, **env)
+        PORTS._resolve_ips = fake_resolve(ips)
+        if probe is not None:
+            PORTS._probe_port = probe
+        try:
+            await run(sid, PORTS.ports(_ports_ctx()))
+        finally:
+            PORTS._resolve_ips, PORTS._probe_port = _orig_resolve, _orig_probe
+            rr()
 
     return out
 

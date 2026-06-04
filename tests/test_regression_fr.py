@@ -35,8 +35,11 @@ def _norm(s: str) -> str:
 
 
 def test_no_regression_fr():
+    # Le golden verrouille le texte FR des checks EXISTANTS. De nouveaux scénarios
+    # (nouveaux checks, structurés dès le départ) peuvent s'ajouter à `scenarios.run_all()`
+    # sans être dans le golden ; on exige seulement qu'aucun scénario du golden ne disparaisse.
     fresh = scenarios.run_all()
-    assert set(fresh) == set(GOLDEN), "la liste des scénarios a changé"
+    assert set(GOLDEN) <= set(fresh), "des scénarios du golden ont disparu"
 
     diffs: list[str] = []
     for sid, golden_findings in GOLDEN.items():

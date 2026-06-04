@@ -21,6 +21,8 @@
     "content": "Contenu mixte",
     "subresource": "Sous-ressources",
     "tech": "Technologies",
+    "ports": "Ports / services",
+    "http": "Méthodes HTTP",
     "pentest": "Pentest (nuclei)",
     "zap": "Pentest (ZAP)",
     "transport": "Transport",

@@ -1,0 +1,38 @@
+# Ports / services exposés. Correctif = pare-feu / bind localhost → pas de prompt IA
+# (commandes exactes dans steps). Placeholders : {service}, {port}, {ip}, {host}, {cdn}.
+
+ports:
+  service-exposed:
+    title: "Service exposé : {service} (port {port})"
+    detail: "Le port {port} ({service}) accepte des connexions depuis l'extérieur. Ce type de service n'a en général rien à faire en accès public."
+    explanation: "Un connect-scan a établi une connexion TCP sur le port {port}, où tourne typiquement {service}. Bases de données, caches et API d'administration sont conçus pour un réseau interne de confiance, pas pour l'Internet ouvert."
+    why: "Un service de données exposé (souvent sans authentification forte par défaut) est une cible directe : vol ou destruction de données, prise de contrôle du serveur. Redis, MongoDB ou une API Docker ouverts sont des compromissions classiques en quelques secondes."
+    steps:
+      - "Confirme que ce service doit réellement être joignable de l'extérieur : la réponse est presque toujours « non »."
+      - "Lie le service à la boucle locale plutôt qu'à toutes les interfaces — ex. `bind 127.0.0.1` (Redis), `bindIp: 127.0.0.1` (MongoDB), `-p 127.0.0.1:{port}:{port}` au lieu de `-p {port}:{port}` (conteneur Docker)."
+      - "Bloque le port au pare-feu : `ufw deny {port}` (ou la règle de sécurité de ton cloud/box). N'ouvre que le strict nécessaire."
+      - "Si un accès distant est indispensable, passe par un VPN ou un tunnel SSH, et active l'authentification forte + le chiffrement (TLS) sur le service."
+    refs:
+      - "https://owasp.org/www-project-top-ten/"
+      - "https://www.cisa.gov/news-events/alerts"
+    a_verifier: false
+  behind-cdn:
+    title: "Scan de ports ignoré (derrière {cdn})"
+    detail: "`{host}` résout vers une adresse {cdn} : c'est l'edge du CDN, pas ton serveur d'origine. Le scan de ports a été volontairement ignoré pour ne pas sonder l'infrastructure d'un tiers."
+    why: "Scanner l'IP du CDN ne dit rien de ton origine (et reviendrait à scanner un tiers). Pour vérifier ta vraie surface réseau, il faut viser l'IP d'origine."
+    steps:
+      - "Pour scanner ton origine, renseigne la variable d'environnement `SONAR_ORIGIN_IP` avec son adresse IP réelle."
+      - "Assure-toi par ailleurs que ton origine n'est joignable QUE via le CDN (filtre les IP du CDN au pare-feu) pour éviter le contournement."
+    a_verifier: false
+  unresolved:
+    title: "Hôte non résolu"
+    detail: "Impossible de résoudre `{host}` en adresse IP : le scan de ports a été ignoré."
+    why: "Sans résolution DNS, aucune IP à sonder. Vérifie le nom d'hôte ou la connectivité DNS de l'environnement de scan."
+  clean:
+    title: "Aucun service sensible exposé"
+    detail: "Aucun des ports sensibles sondés (bases de données, caches, API d'admin…) n'accepte de connexion publique sur `{ip}`."
+    why: "Les services sensibles courants ne sont pas joignables depuis l'extérieur : bonne hygiène d'exposition réseau."
+  "off":
+    title: "Scan de ports désactivé"
+    detail: "Le check est désactivé par configuration (`SONAR_PORTS=off`)."
+    why: "Le scan de ports/services a été volontairement coupé : aucune sonde réseau n'est effectuée."
