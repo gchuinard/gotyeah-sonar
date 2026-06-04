@@ -6,6 +6,7 @@ journalisé. Le branchement effectif sur les 3 lectures + l'IDOR HTTP sont à l'
 """
 import app as appmod
 import auth
+import db
 from starlette.requests import Request
 
 
@@ -80,3 +81,49 @@ def test_pat_never_logged(authdb, caplog):
         appmod._pat_or_session_user(_req(_bearer(raw)))
         auth.resolve_pat(raw)
     assert raw not in caplog.text
+
+
+# --------------------------------------------------------------------------- #
+# Étape 3 — les 3 lectures acceptent le PAT ; IDOR HTTP : un PAT ne lit que les
+# scans de SON propriétaire ; et le dashboard (cookie) marche toujours.
+# --------------------------------------------------------------------------- #
+def _save_scan_for(user, target):
+    summary = {"score": 80, "grade": "B", "counts": {"low": 1}, "total": 1, "target": target}
+    findings = [{"check_id": "hdr-csp", "category": "headers", "severity": "low",
+                 "code": "absent", "params": {}}]
+    return db.save_scan(target, summary, findings, user_id=user["id"])
+
+
+def test_read_endpoints_pat_and_idor(client):
+    c, _appmod = client
+    a = auth.create_user("a@b.com")
+    b = auth.create_user("b@b.com")
+    raw_a, _ = auth.create_pat(a["id"])
+    raw_b, _ = auth.create_pat(b["id"])
+    sid_a = _save_scan_for(a, "https://a.example")
+    ha, hb = _bearer(raw_a), _bearer(raw_b)
+
+    # Le PAT de A lit son propre scan -> 200
+    r = c.get(f"/api/scan/{sid_a}", headers=ha)
+    assert r.status_code == 200 and r.json()["target"] == "https://a.example"
+    # IDOR : le PAT de B ne lit PAS le scan de A -> 404
+    assert c.get(f"/api/scan/{sid_a}", headers=hb).status_code == 404
+    # /api/history est cloisonné par propriétaire
+    assert any(s["id"] == sid_a for s in c.get("/api/history", headers=ha).json())
+    assert all(s["id"] != sid_a for s in c.get("/api/history", headers=hb).json())
+    # /api/domains accessible au PAT (lecture)
+    assert c.get("/api/domains", headers=ha).status_code == 200
+    # Sans aucune auth -> 401 (les routes restent protégées)
+    assert c.get(f"/api/scan/{sid_a}").status_code == 401
+    assert c.get("/api/history").status_code == 401
+
+
+def test_read_endpoints_still_accept_session_cookie(client):
+    """Non-régression dashboard : la session (cookie) lit toujours les 3 routes."""
+    c, _appmod = client
+    u = auth.create_user("a@b.com")
+    sid = _save_scan_for(u, "https://a.example")
+    c.cookies.set("sonar_session", auth.create_session(u["id"]))
+    assert c.get("/api/domains").status_code == 200
+    assert c.get("/api/history").status_code == 200
+    assert c.get(f"/api/scan/{sid}").status_code == 200

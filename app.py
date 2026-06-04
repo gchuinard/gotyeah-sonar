@@ -278,7 +278,7 @@ async def set_lang(request: Request):
 # --------------------------------------------------------------------------- #
 @app.get("/api/domains")
 async def domains_list(request: Request):
-    user = _current_user(request)
+    user = _pat_or_session_user(request)   # lecture : session OU PAT scans:read
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
     return JSONResponse({"domains": auth.list_domains(user["id"])})
@@ -442,7 +442,7 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
 
 @app.get("/api/history")
 async def history(request: Request):
-    user = _current_user(request)
+    user = _pat_or_session_user(request)   # lecture : session OU PAT scans:read
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
     scope = None if user["is_admin"] else user["id"]
@@ -451,7 +451,7 @@ async def history(request: Request):
 
 @app.get("/api/scan/{scan_id}")
 async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
-    user = _current_user(request)
+    user = _pat_or_session_user(request)   # lecture : session OU PAT scans:read
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
     scope = None if user["is_admin"] else user["id"]
