@@ -258,3 +258,28 @@ def test_logout_destroys_session(client):
     assert c.get("/api/me").status_code == 200
     c.post("/api/auth/logout")
     assert auth.get_session_user(raw) is None
+
+
+def test_admin_scan_any_toggle_endpoint(client):
+    c, _ = client
+    admin = auth.create_user("boss@b.com", is_admin=True)
+    c.cookies.set("sonar_session", auth.create_session(admin["id"]))
+    # défaut : /api/me expose admin_scan_any=True et can_scan=True
+    me = c.get("/api/me").json()
+    assert me["is_admin"] is True and me["admin_scan_any"] is True and me["can_scan"] is True
+    # toggle OFF → l'admin (sans domaine vérifié) est gaté
+    r = c.post("/api/admin/scan-any", json={"enabled": False})
+    assert r.status_code == 200 and r.json()["admin_scan_any"] is False
+    me2 = c.get("/api/me").json()
+    assert me2["admin_scan_any"] is False and me2["can_scan"] is False
+    # toggle ON → de nouveau libre
+    c.post("/api/admin/scan-any", json={"enabled": True})
+    assert c.get("/api/me").json()["can_scan"] is True
+
+
+def test_admin_scan_any_toggle_forbidden_for_non_admin(client):
+    c, _ = client
+    plain = auth.create_user("nonadmin@b.com")
+    c.cookies.set("sonar_session", auth.create_session(plain["id"]))
+    assert c.post("/api/admin/scan-any", json={"enabled": True}).status_code == 403
+    assert "admin_scan_any" not in c.get("/api/me").json()   # non exposé aux non-admins

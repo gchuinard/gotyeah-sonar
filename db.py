@@ -39,6 +39,30 @@ def init_db() -> None:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(scans)").fetchall()}
         if "user_id" not in cols:
             conn.execute("ALTER TABLE scans ADD COLUMN user_id TEXT")
+        # Réglages applicatifs modifiables à chaud (clé/valeur), ex. toggle admin.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+
+
+def get_setting(key: str, default: str | None = None) -> str | None:
+    """Lit un réglage applicatif (None/`default` si absent). Robuste si la table manque."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+        return row[0] if row else default
+    except sqlite3.Error:
+        return default
+
+
+def set_setting(key: str, value: str) -> None:
+    """Écrit (upsert) un réglage applicatif."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
 
 
 def save_scan(target: str, summary: dict, findings: list[dict], user_id: str | None = None) -> str:

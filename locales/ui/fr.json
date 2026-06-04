@@ -36,6 +36,10 @@
     "language": "Langue"
   },
 
+  "admin": {
+    "scan_any": "Scan libre admin (sans vérif DNS)"
+  },
+
   "console": {
     "prompt": "scan ~$",
     "placeholder": "monsite.com",

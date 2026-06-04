@@ -244,6 +244,7 @@
   .dom-add input:focus { border-color: var(--accent); }
   .dom-add .btn-sm { align-self: auto; }
   .dom-msg { margin-top: 9px; font-size: 12px; color: var(--text-dim); }
+  .admin-toggle { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 
   .feed-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 60px 20px; }
   .feed-empty .mark { width: 56px; height: 56px; opacity: .5; }
@@ -320,6 +321,12 @@
 
       <div class="panel">
         <h2>{{ T('domains.title', 'Mes domaines') }}</h2>
+        <div v-if="me && me.is_admin" class="admin-toggle">
+          <label class="toggle">
+            <input type="checkbox" :checked="me.admin_scan_any" @change="setAdminScanAny($event.target.checked)"/>
+            {{ T('admin.scan_any', 'Scan libre admin (sans vérif DNS)') }}
+          </label>
+        </div>
         <div class="doms">
           <div v-if="!domains.length" class="empty">{{ T('domains.empty', 'Ajoute un domaine et vérifie-le pour débloquer le scan.') }}</div>
           <div v-for="d in domains" :key="d.id" class="dom">
@@ -610,6 +617,15 @@ createApp({
         const r = await fetch('/api/me');
         if (r.status === 401) { window.location.href = '/login'; return; }
         this.me = await r.json();
+      } catch (e) {}
+    },
+    async setAdminScanAny(enabled) {
+      try {
+        await fetch('/api/admin/scan-any', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        });
+        await this.loadMe();   // rafraîchit can_scan + l'état du toggle
       } catch (e) {}
     },
     logout() {

@@ -178,13 +178,33 @@ async def api_me(request: Request):
     user = _current_user(request)
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
-    return JSONResponse({
+    payload = {
         "email": user["email"],
         "is_admin": bool(user["is_admin"]),
         "can_scan": auth.user_can_scan(user),
         "lang": _lang(request, user),
         "available_langs": i18n.available_langs(),
-    })
+    }
+    if user["is_admin"]:
+        payload["admin_scan_any"] = auth.admin_scan_any()
+    return JSONResponse(payload)
+
+
+@app.post("/api/admin/scan-any")
+async def api_admin_scan_any(request: Request):
+    """Toggle (admin only) : l'admin scanne-t-il sans vérification DNS ?"""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    if not user["is_admin"]:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    enabled = bool(body.get("enabled")) if isinstance(body, dict) else False
+    auth.set_admin_scan_any(enabled)
+    return JSONResponse({"ok": True, "admin_scan_any": enabled})
 
 
 # --------------------------------------------------------------------------- #

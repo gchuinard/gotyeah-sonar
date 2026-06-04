@@ -62,12 +62,19 @@ def open_registration() -> bool:
 def admin_scan_any() -> bool:
     """L'admin peut-il scanner n'importe quel domaine SANS vérification DNS ?
 
-    Défaut : True (commodité du propriétaire). Mettre `SONAR_ADMIN_SCAN_ANY=false`
-    soumet l'admin au même gate que les autres comptes (vérifier ses domaines par DNS
-    avant de scanner). N'affecte QUE le compte admin ; les non-admins restent toujours
-    gatés.
+    Priorité : le réglage modifiable depuis l'UI (table `app_settings`) l'emporte ; à
+    défaut, l'env `SONAR_ADMIN_SCAN_ANY` fixe la valeur initiale (défaut True). N'affecte
+    QUE le compte admin ; les non-admins restent toujours gatés.
     """
+    override = db.get_setting("admin_scan_any")
+    if override is not None:
+        return override == "1"
     return _env_bool("SONAR_ADMIN_SCAN_ANY", True)
+
+
+def set_admin_scan_any(enabled: bool) -> None:
+    """Persiste le toggle (UI admin) ; surclasse l'env par défaut."""
+    db.set_setting("admin_scan_any", "1" if enabled else "0")
 
 
 def session_max_age() -> int:
