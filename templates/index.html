@@ -491,6 +491,16 @@
         <button v-if="sevFilter.length" class="reset-link" @click="clearSevFilter">{{ T('feed.show_all', 'Tout afficher') }}</button>
       </div>
 
+      <div class="filter-bar" v-if="hasResult && catList.length">
+        <span class="fb-label">{{ T('feed.filter_cat', 'Catégorie') }}</span>
+        <button v-for="c in catList" :key="c" class="fchip"
+                :class="{ on: catFilter.includes(c), off: catFilter.length && !catFilter.includes(c) }"
+                :style="{ '--c': 'var(--accent)' }" @click="toggleCat(c)">
+          {{ catLabel(c) }} <b>{{ catCounts[c] }}</b>
+        </button>
+        <button v-if="catFilter.length" class="reset-link" @click="clearCatFilter">{{ T('feed.show_all', 'Tout afficher') }}</button>
+      </div>
+
       <transition-group name="feed" tag="div" class="feed">
         <div v-for="f in visibleFindings" :key="fkey(f)"
              class="finding" :class="{ card: hasCard(f), open: isOpen(f) }"
@@ -620,7 +630,7 @@ createApp({
       historyFilter: '',   // si défini, l'historique est filtré sur ce domaine
 
       // affichage du feed uniquement (n'affecte JAMAIS score/jauge/répartition)
-      sevFilter: [], sortBy: 'severity',
+      sevFilter: [], catFilter: [], sortBy: 'severity',
       domains: [], newDomain: '', domainBusy: false, domainMsg: '',
       // i18n
       ui: ui, lang: SONAR_BOOT.lang || 'fr', langs: SONAR_BOOT.available || ['fr'],
@@ -657,6 +667,12 @@ createApp({
       this.findings.forEach(f => { if (c[f.severity] != null) c[f.severity]++; });
       return c;
     },
+    catCounts() {
+      const c = {};
+      this.findings.forEach(f => { c[f.category] = (c[f.category] || 0) + 1; });
+      return c;
+    },
+    catList() { return this.CAT_ORDER.filter(cat => this.catCounts[cat]); },
     issuesCount() { return this.findings.filter(f => f.severity !== 'pass' && f.severity !== 'info').length; },
     passCount() { return this.counts.pass; },
     progressPct() { return this.totalChecks ? Math.round(this.done / this.totalChecks * 100) : 0; },
@@ -665,7 +681,8 @@ createApp({
     visibleFindings() {
       let list = this.findings.filter(f =>
         (!this.hidePass || f.severity !== 'pass') &&
-        (!this.sevFilter.length || this.sevFilter.includes(f.severity)));
+        (!this.sevFilter.length || this.sevFilter.includes(f.severity)) &&
+        (!this.catFilter.length || this.catFilter.includes(f.category)));
       if (this.sortBy === 'severity') {
         const si = s => this.SEV_ORDER.indexOf(s);
         list = list.slice().sort((a, b) => si(a.severity) - si(b.severity));   // critiques d'abord
@@ -907,6 +924,11 @@ createApp({
       if (i >= 0) this.sevFilter.splice(i, 1); else this.sevFilter.push(s);
     },
     clearSevFilter() { this.sevFilter = []; },
+    toggleCat(c) {
+      const i = this.catFilter.indexOf(c);
+      if (i >= 0) this.catFilter.splice(i, 1); else this.catFilter.push(c);
+    },
+    clearCatFilter() { this.catFilter = []; },
     // --- remédiation (cartes dépliables) ---
     rem(f) { return f.remediation || {}; },
     fkey(f) { return f.check_id + ':' + (f.code || '') + ':' + (f.title || ''); },

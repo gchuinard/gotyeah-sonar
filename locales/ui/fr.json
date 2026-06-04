@@ -109,6 +109,7 @@
     "sort_category": "Catégorie",
     "show_all": "Tout afficher",
     "filter_by": "Filtrer",
+    "filter_cat": "Catégorie",
     "filter_hint": "Clique une sévérité pour filtrer le feed"
   },
 
