@@ -33,7 +33,8 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 Sonar est **authentifié** : pas de mot de passe, on se connecte par **lien magique**.
 Tu saisis ton email sur `/login`, tu reçois un lien à usage unique (valable ~15 min),
 le clic ouvre une session longue (cookie). Un compte ne peut **rien scanner** tant qu'il
-n'a pas **vérifié un domaine par DNS** (l'admin, lui, scanne sans restriction).
+n'a pas **vérifié un domaine par DNS**. Par défaut, l'admin échappe à ce gate (commodité) ;
+mets `SONAR_ADMIN_SCAN_ANY=false` pour le soumettre à la même vérification que les autres.
 
 **Première connexion / porte de secours.** Définis `SONAR_ADMIN_EMAIL` : au démarrage, un
 lien de login one-time est imprimé dans les logs — récupère-le avec :

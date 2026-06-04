@@ -108,6 +108,27 @@ def test_scan_gate(authdb):
     assert auth.user_can_scan_target(plain, "n-importe-quoi.com") is False
 
 
+def test_admin_scan_any_default_on(authdb, monkeypatch):
+    monkeypatch.delenv("SONAR_ADMIN_SCAN_ANY", raising=False)   # défaut = bypass conservé
+    admin = auth.create_user("a@b.com", is_admin=True)
+    assert auth.user_can_scan(admin) is True
+    assert auth.user_can_scan_target(admin, "n-importe.com") is True
+
+
+def test_admin_scan_any_off_gates_admin(authdb, monkeypatch):
+    monkeypatch.setenv("SONAR_ADMIN_SCAN_ANY", "false")
+    admin = auth.create_user("a2@b.com", is_admin=True)
+    # gaté exactement comme un compte lambda
+    assert auth.user_can_scan(admin) is False
+    assert auth.user_can_scan_target(admin, "x.com") is False
+    # après vérif DNS d'un domaine, il ne peut scanner que CE domaine (+ ses sous-domaines)
+    c = auth.add_domain(admin["id"], "monsite.com")
+    auth._mark_verified(c["id"])
+    assert auth.user_can_scan(admin) is True
+    assert auth.user_can_scan_target(admin, "app.monsite.com") is True
+    assert auth.user_can_scan_target(admin, "autre.com") is False
+
+
 def test_bootstrap_admin(authdb, monkeypatch):
     monkeypatch.setenv("SONAR_ADMIN_EMAIL", "boss@b.com")
     raw = auth.bootstrap_admin()

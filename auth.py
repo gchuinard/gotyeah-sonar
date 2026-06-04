@@ -59,6 +59,17 @@ def open_registration() -> bool:
     return _env_bool("SONAR_OPEN_REGISTRATION", False)
 
 
+def admin_scan_any() -> bool:
+    """L'admin peut-il scanner n'importe quel domaine SANS vérification DNS ?
+
+    Défaut : True (commodité du propriétaire). Mettre `SONAR_ADMIN_SCAN_ANY=false`
+    soumet l'admin au même gate que les autres comptes (vérifier ses domaines par DNS
+    avant de scanner). N'affecte QUE le compte admin ; les non-admins restent toujours
+    gatés.
+    """
+    return _env_bool("SONAR_ADMIN_SCAN_ANY", True)
+
+
 def session_max_age() -> int:
     return _env_int("SONAR_SESSION_DAYS", 30) * 86400
 
@@ -317,7 +328,11 @@ def has_verified_domain(user_id: str) -> bool:
 
 
 def user_can_scan(user) -> bool:
-    return bool(user) and (bool(user["is_admin"]) or has_verified_domain(user["id"]))
+    if not user:
+        return False
+    if user["is_admin"] and admin_scan_any():
+        return True
+    return has_verified_domain(user["id"])
 
 
 def _verified_domains_of(user_id: str) -> list[str]:
@@ -329,11 +344,11 @@ def _verified_domains_of(user_id: str) -> list[str]:
 
 
 def user_can_scan_target(user, host: str) -> bool:
-    """Admin : tout. Sinon : le domaine cible doit être un domaine vérifié de
-    l'utilisateur, ou un sous-domaine de celui-ci."""
+    """Admin (si `SONAR_ADMIN_SCAN_ANY`) : tout. Sinon : le domaine cible doit être un
+    domaine vérifié de l'utilisateur, ou un sous-domaine de celui-ci."""
     if not user:
         return False
-    if user["is_admin"]:
+    if user["is_admin"] and admin_scan_any():
         return True
     h = normalize_domain(host)
     for d in _verified_domains_of(user["id"]):

@@ -90,7 +90,8 @@ def authdb(tmp_path, monkeypatch):
     """Base temporaire + tables d'auth, env propre."""
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "sonar.db")
     for k in ("SONAR_OPEN_REGISTRATION", "SONAR_ADMIN_EMAIL", "BREVO_API_KEY",
-              "SONAR_MAGIC_TTL_MIN", "SONAR_RATE_EMAIL", "SONAR_RATE_IP"):
+              "SONAR_MAGIC_TTL_MIN", "SONAR_RATE_EMAIL", "SONAR_RATE_IP",
+              "SONAR_ADMIN_SCAN_ANY"):
         monkeypatch.delenv(k, raising=False)
     db.init_db()
     auth.init_auth()
@@ -105,6 +106,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "true")
     monkeypatch.delenv("SONAR_ADMIN_EMAIL", raising=False)
     monkeypatch.delenv("BREVO_API_KEY", raising=False)
+    monkeypatch.delenv("SONAR_ADMIN_SCAN_ANY", raising=False)
     from fastapi.testclient import TestClient
     import app as appmod
     with TestClient(appmod.app) as c:
