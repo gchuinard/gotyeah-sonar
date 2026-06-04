@@ -817,7 +817,9 @@ createApp({
     },
     goHistory() { this.historyFilter = ''; this.activeTab = 'history'; this.loadHistory(); },
     openDomain(d) {
-      // Clic sur un domaine vérifié → son historique (vide → bouton « Lancer le scan »).
+      // Clic sur un domaine vérifié → pré-remplit l'input de scan (console, toujours visible)
+      // ET ouvre son historique (vide → bouton « Lancer le scan »).
+      this.target = d.domain;
       this.historyFilter = d.domain;
       this.activeTab = 'history';
       this.loadHistory();
