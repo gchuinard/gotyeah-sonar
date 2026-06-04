@@ -36,6 +36,17 @@
     "language": "Langue"
   },
 
+  "email": {
+    "subject": "Sonar — ton lien de connexion",
+    "subtitle": "console de reconnaissance",
+    "heading": "Ta connexion",
+    "intro": "Clique sur le bouton pour ouvrir ta session. Le lien est valable ~15 min et à usage unique.",
+    "button": "Ouvrir ma session",
+    "fallback": "Le bouton ne fonctionne pas ? Copie-colle ce lien :",
+    "security": "Tu n'as pas demandé ce lien ? Ignore cet email — aucune action ne sera effectuée, et personne ne peut se connecter sans l'ouvrir.",
+    "footer": "Sonar · scanner de sécurité web auto-hébergé"
+  },
+
   "admin": {
     "scan_any": "Scan libre admin (sans vérif DNS)"
   },

@@ -152,7 +152,8 @@ async def auth_request(request: Request):
     raw = auth.request_login_link(email, _client_ip(request))
     if raw:
         link = f"{_base_url(request)}/auth/verify?token={raw}"
-        await mailer.send_magic_link(auth.normalize_email(email), link)
+        # Pas encore de session : langue déduite du cookie / de l'Accept-Language.
+        await mailer.send_magic_link(auth.normalize_email(email), link, _lang(request))
 
     # Réponse GÉNÉRIQUE quoi qu'il arrive : on ne révèle pas si le compte existe.
     return JSONResponse({

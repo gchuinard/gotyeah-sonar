@@ -36,6 +36,17 @@
     "language": "Language"
   },
 
+  "email": {
+    "subject": "Sonar — your sign-in link",
+    "subtitle": "reconnaissance console",
+    "heading": "Your sign-in",
+    "intro": "Click the button to open your session. The link is valid for ~15 min and single-use.",
+    "button": "Open my session",
+    "fallback": "Button not working? Copy and paste this link:",
+    "security": "Didn't request this link? Ignore this email — nothing will happen, and no one can sign in without opening it.",
+    "footer": "Sonar · self-hosted web security scanner"
+  },
+
   "admin": {
     "scan_any": "Admin free scan (no DNS check)"
   },
