@@ -126,39 +126,110 @@ puis renseigne, sur le service `sonar`, les variables d'environnement :
 ## Architecture
 
 ```
-app.py                 FastAPI : sert la page + endpoint SSE + historique
-db.py                  SQLite (historique des scans)
-templates/index.html   dashboard Vue 3 (CDN, zéro build)
+app.py                 FastAPI : page + SSE + historique + langue (rend les findings)
+db.py                  SQLite (historique des scans, sous forme STRUCTURÉE)
+auth.py / mailer.py    auth lien magique + vérif domaine DNS ; envoi des emails
+templates/index.html   dashboard Vue 3 (CDN, zéro build) — cartes de remédiation + langue
 scanner/
-  finding.py           Finding + sévérités + scoring  (le format de sortie commun)
+  finding.py           Finding (détection structurée) + sévérités + scoring
   registry.py          décorateur @check
   runner.py            moteur : lance les checks en //, émet les events au fil de l'eau
-  checks/              une famille de checks par fichier
+  checks/              une famille de checks par fichier — DÉTECTION pure (code + params)
+  i18n/                couche de PRÉSENTATION : (check_id, code, lang) -> texte rendu
+content/               catalogue de remédiation (YAML) :
+                         checks/<famille>.<lang>.yaml   (checks maison)
+                         zap/<pluginId>.<lang>.yaml     (alertes ZAP transformées)
+locales/ui/<lang>.json libellés d'interface (chrome : boutons, panneaux, bannières…)
+tools/                 génération build-time du catalogue (validate / coverage / transform)
 ```
 
 Le principe : **tout est un `Finding`**, et le backend ne fait que *streamer du JSON*.
-Le frontend est donc totalement interchangeable — si un jour tu veux changer la couche
-d'affichage, tu ne touches qu'à `index.html`, rien côté serveur.
+Depuis l'i18n, ce `Finding` est **structuré** (il porte un `code` de résultat et des
+`params`, pas de texte humain) ; la couche `scanner/i18n/` le **rend** dans la langue
+demandée à partir des fichiers de `content/` et `locales/`. L'historique stocke la forme
+structurée → un scan archivé se **re-rend dans n'importe quelle langue**.
 
 ### Ajouter un check
 
 Crée une fonction décorée, n'importe où dans `scanner/checks/`, et déclare le module
-dans `scanner/checks/__init__.py`. C'est tout, le runner le prend automatiquement.
+dans `scanner/checks/__init__.py`. Le check ne fait que de la **détection** : il renvoie
+un `code` (+ `params`/`evidence`), jamais de texte. Le texte (titre, détail, remédiation)
+vit dans le catalogue YAML, indexé par `(check_id, code)`.
 
 ```python
+# scanner/checks/coop.py — détection pure
 from ..finding import Category, Finding, Severity
 from ..registry import check
 
 @check("hdr-coop", "Cross-Origin-Opener-Policy", Category.HEADERS)
 async def coop(ctx):
     if ctx.response.headers.get("cross-origin-opener-policy"):
-        return [Finding("hdr-coop", Category.HEADERS, Severity.PASS, "COOP présent")]
-    return [Finding("hdr-coop", Category.HEADERS, Severity.LOW,
-        "COOP absent", "…", "Ajoute `Cross-Origin-Opener-Policy: same-origin`.")]
+        return [Finding("hdr-coop", Category.HEADERS, Severity.PASS, code="ok")]
+    return [Finding("hdr-coop", Category.HEADERS, Severity.LOW, code="absent")]
+```
+
+```yaml
+# content/checks/headers.fr.yaml — présentation (texte + remédiation)
+hdr-coop:
+  absent:
+    title: "Cross-Origin-Opener-Policy absent"
+    detail: "Sans COOP, la page partage son contexte de navigation avec les popups."
+    recommendation: "Ajoute `Cross-Origin-Opener-Policy: same-origin`."
+    explanation: "…"          # c'est quoi
+    why: "…"                  # le risque concret
+    steps: ["…"]              # pas-à-pas
+    stacks: { nginx: "add_header Cross-Origin-Opener-Policy \"same-origin\" always;" }
+    ai_prompt: "… {host} … {stack} …"   # si corrigeable par un agent de code
+    refs: ["https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy"]
+    a_verifier: false
+  ok:
+    title: "Cross-Origin-Opener-Policy présent"
+    why: "Le contexte de navigation est isolé des fenêtres tierces."
 ```
 
 `ctx` te donne : `ctx.url` (URL finale), `ctx.host`, `ctx.response` (réponse httpx avec
 les en-têtes), `ctx.history` (redirections) et `ctx.client` si tu as besoin de refaire des requêtes.
+
+### i18n & remédiation
+
+**Détection / présentation séparées.** Les checks produisent des données structurées ;
+la couche `scanner/i18n/` rend le texte dans la langue active (préférence utilisateur →
+cookie → `Accept-Language` → `fr`). Le rendu est **côté serveur** : le front affiche du JSON
+déjà localisé, et le gros catalogue ne part jamais dans le navigateur.
+
+**Chaîne de fallback stricte** (jamais de clé brute, couverture toujours complète) :
+
+```
+langue demandée → fr → (ZAP/nuclei : texte d'origine anglais de l'outil) → défaut sûr
+```
+
+**Cartes de remédiation (façon GTmetrix).** Chaque finding non conforme se déplie :
+explication, pourquoi ça compte, étapes, variantes selon la stack (Nginx / NPM / Cloudflare /
+framework — la stack détectée est surlignée), preuve, **prompt IA prêt à copier** (pour les
+problèmes corrigeables par un agent de code), références. Les `PASS` n'affichent qu'une ligne
+« pourquoi c'est conforme ».
+
+**Ajouter une langue = déposer des fichiers, ZÉRO code :**
+
+1. `locales/ui/<lang>.json` — les libellés d'interface (copie `fr.json`, traduis).
+2. `content/checks/<famille>.<lang>.yaml` et `content/zap/<pluginId>.<lang>.yaml` — le
+   contenu de remédiation (ce qui manque retombe proprement sur `fr`, puis sur l'anglais ZAP).
+
+Le sélecteur de langue apparaît automatiquement dans la topbar dès qu'une 2ᵉ langue existe.
+
+**Regénérer / enrichir un catalogue.** Tout est figé en fichiers commités — **aucun LLM au
+runtime**. L'outillage build-time :
+
+```bash
+python3 tools/gen_content.py validate --lang fr   # schéma de tout le catalogue
+python3 tools/gen_content.py coverage --lang fr   # (check_id, code) maison sans entrée
+python3 tools/gen_content.py zap --lang fr        # alertes ZAP (tools/zap_sources) à couvrir
+python3 tools/gen_content.py scaffold --lang fr   # squelettes a_verifier:true à enrichir
+```
+
+Le catalogue ZAP est **transformé** (pas traduit) à partir de `tools/zap_sources/zap_alerts.json`,
+strictement grounded sur ces sources ; les entrées générées non relues portent `a_verifier: true`.
+Procédure complète (réutilisable pour `en`, `de`…) dans `tools/PROMPTS.md`.
 
 ---
 
@@ -170,5 +241,9 @@ les en-têtes), `ctx.history` (redirections) et `ctx.client` si tu as besoin de 
   et **OWASP ZAP** en mode API (`scanner/checks/zap.py`), chacun branché comme un simple check
   de plus qui convertit la sortie de l'outil en `Finding`. Aucune réécriture de moteur : le
   dashboard, le score et l'historique marchaient déjà.
+- **i18n & remédiation** : ✅ — détection/présentation séparées, contenu multilingue (FR pour
+  l'instant), cartes de remédiation dépliables + prompt IA, historique re-rendable dans
+  n'importe quelle langue. Ajouter une langue ne demande que des fichiers de locale. Le
+  catalogue ZAP est transformé en FR (fallback propre sur l'anglais d'origine pour le reste).
 
 Tout ça se branche sans rien casser, parce que ça reste le même format de sortie.
