@@ -9,6 +9,10 @@ un fichier au type MIME ambigu peut être réinterprété par le navigateur).
 
 On ignore volontairement les ressources tierces (CDN…) : on ne peut pas corriger
 leurs en-têtes, et le bon réflexe pour elles est plutôt l'intégrité (SRI).
+
+Détection pure : chaque finding ne porte qu'un `code` (+ `params`/`evidence`). Le
+texte humain (titre, détail, recommandation, remédiation) vit dans
+`content/checks/subresources.fr.yaml` et est rendu par `scanner.i18n`.
 """
 from __future__ import annotations
 
@@ -56,13 +60,11 @@ def _extract_subresources(html: str, base_url: str, host: str) -> list[str]:
 
 
 @check("subresources", "En-têtes des sous-ressources", C)
-async def subresources(ctx):
+async def subresources(ctx) -> list[Finding]:
     content_type = (ctx.response.headers.get("content-type") or "").lower()
     if "text/html" not in content_type:
-        return [Finding("subresources", C, Severity.INFO,
-            "Sous-ressources non évaluées",
-            "La page principale n'est pas du HTML : il n'y a pas de sous-ressource à analyser.",
-            "Aucune action requise pour ce point.")]
+        # La page principale n'est pas du HTML : rien à analyser.
+        return [Finding("subresources", C, Severity.INFO, code="non-html")]
 
     try:
         html = ctx.response.text or ""
@@ -71,9 +73,8 @@ async def subresources(ctx):
 
     targets = _extract_subresources(html, ctx.url, ctx.host)
     if not targets:
-        return [Finding("subresources", C, Severity.PASS,
-            "Aucune sous-ressource même-origine",
-            "La page ne charge aucun script ni feuille de style hébergé localement à vérifier.")]
+        # Aucune sous-ressource même-origine à vérifier.
+        return [Finding("subresources", C, Severity.PASS, code="pass-none")]
 
     sampled = targets[:_MAX_SUBRESOURCES]
     missing: list[str] = []
@@ -89,25 +90,17 @@ async def subresources(ctx):
             missing.append(url)
 
     if checked == 0:
-        return [Finding("subresources", C, Severity.INFO,
-            "Sous-ressources injoignables",
-            "Aucune des sous-ressources échantillonnées n'a pu être récupérée pour vérification.",
-            "Aucune action requise pour ce point.")]
+        # Aucune des sous-ressources échantillonnées n'a pu être récupérée.
+        return [Finding("subresources", C, Severity.INFO, code="unreachable")]
 
-    note = f" (échantillon de {len(sampled)} sur {len(targets)})" if len(targets) > len(sampled) else ""
+    # Note d'échantillonnage : non vide uniquement quand on a tronqué la liste.
+    note = (f" (échantillon de {len(sampled)} sur {len(targets)})"
+            if len(targets) > len(sampled) else "")
 
     if missing:
-        return [Finding("subresources", C, Severity.LOW,
-            "Sous-ressources sans `X-Content-Type-Options: nosniff`",
-            f"{len(missing)} sur {checked} sous-ressource(s) même-origine (script/CSS) sont "
-            f"servies sans `nosniff`{note} : un fichier au type MIME ambigu peut être "
-            "réinterprété par le navigateur (MIME sniffing), même quand la page principale "
-            "est correctement protégée.",
-            "Ajoute `X-Content-Type-Options: nosniff` sur **toutes** les réponses, y compris "
-            "les fichiers statiques — configure-le globalement côté serveur plutôt que par route.",
-            evidence="; ".join(u[:120] for u in missing[:3]))]
+        return [Finding("subresources", C, Severity.LOW, code="missing",
+                        params={"missing_count": len(missing), "checked": checked, "note": note},
+                        evidence="; ".join(u[:120] for u in missing[:3]))]
 
-    return [Finding("subresources", C, Severity.PASS,
-        "Sous-ressources correctement protégées",
-        f"Les {checked} sous-ressource(s) même-origine vérifiées portent toutes "
-        "`X-Content-Type-Options: nosniff`.")]
+    return [Finding("subresources", C, Severity.PASS, code="pass-protected",
+                    params={"checked": checked})]

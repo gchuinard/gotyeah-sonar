@@ -85,7 +85,8 @@ async def test_subresources_cross_origin_ignored(make_ctx, make_response, fake_c
     ctx = make_ctx(response=page, url="https://example.com/", host="example.com",
                    client=fake_client_cls())
     out = await subresources(ctx)
-    assert out[0].severity == Severity.PASS and "même-origine" in out[0].title.lower()
+    # La ressource tierce est ignorée → branche « aucune sous-ressource même-origine ».
+    assert out[0].severity == Severity.PASS and out[0].code == "pass-none"
 
 
 async def test_subresources_non_html_info(make_ctx, make_response, fake_client_cls):

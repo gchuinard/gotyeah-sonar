@@ -1,4 +1,9 @@
-"""Couche TLS / certificat — handshake direct vers la cible (Phase 1)."""
+"""Couche TLS / certificat — handshake direct vers la cible (Phase 1).
+
+Détection pure : chaque check ne renvoie qu'un `code` (+ `params`/`evidence`). Le
+texte humain (titre, détail, recommandation, remédiation) vit dans
+`content/checks/tls.fr.yaml` et est rendu par `scanner.i18n`.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -50,22 +55,18 @@ def _fmt_name(rdn_seq) -> str:
 
 
 def _version_findings(version: str | None) -> list[Finding]:
+    """Détection pure de la version TLS négociée → Finding structuré (code/params)."""
     if not version:
         return []
     if version in _OBSOLETE_VERSIONS:
         return [Finding("tls-version", C, Severity.HIGH,
-            "Version TLS obsolète négociée",
-            f"Le serveur accepte `{version}`, un protocole déprécié et vulnérable "
-            "(BEAST, POODLE…).",
-            "Désactive tous les protocoles < TLS 1.2 et privilégie TLS 1.3.",
-            evidence=version)]
+            code="obsolete", params={"version": version}, evidence=version)]
     return [Finding("tls-version", C, Severity.PASS,
-        "Version TLS correcte",
-        f"La connexion négocie `{version}` (>= TLS 1.2).",
-        evidence=version)]
+        code="ok", params={"version": version}, evidence=version)]
 
 
 def _expiry_findings(cert: dict) -> list[Finding]:
+    """Détection pure de la validité/expiration du certificat → Finding structurés."""
     findings: list[Finding] = []
     issuer = _fmt_name(cert.get("issuer"))
     subject = _fmt_name(cert.get("subject"))
@@ -77,10 +78,7 @@ def _expiry_findings(cert: dict) -> list[Finding]:
             starts = ssl.cert_time_to_seconds(not_before)
             if starts > time.time():
                 findings.append(Finding("tls-cert-validity", C, Severity.CRITICAL,
-                    "Certificat pas encore valide",
-                    f"Le certificat n'entre en vigueur que le `{not_before}` "
-                    "(date `notBefore` dans le futur).",
-                    "Vérifie l'horloge du serveur ou déploie le bon certificat.",
+                    code="not-yet-valid", params={"not_before": not_before},
                     evidence=subject or not_before))
         except (ValueError, TypeError):
             pass
@@ -93,8 +91,7 @@ def _expiry_findings(cert: dict) -> list[Finding]:
         expires = ssl.cert_time_to_seconds(not_after)
     except (ValueError, TypeError):
         findings.append(Finding("tls-cert-expiry", C, Severity.INFO,
-            "Date d'expiration du certificat illisible",
-            f"Impossible de parser la date `notAfter` (`{not_after}`).",
+            code="unparseable", params={"not_after": not_after},
             evidence=not_after))
         return findings
 
@@ -102,20 +99,16 @@ def _expiry_findings(cert: dict) -> list[Finding]:
     days = int(remaining // 86400)
     if remaining <= 0:
         findings.append(Finding("tls-cert-expiry", C, Severity.CRITICAL,
-            "Certificat expiré",
-            f"Le certificat a expiré le `{not_after}` (émis par {issuer or 'inconnu'}).",
-            "Renouvelle le certificat immédiatement.",
+            code="expired",
+            params={"not_after": not_after, "issuer": issuer or "inconnu"},
             evidence=not_after))
     elif days < 15:
         findings.append(Finding("tls-cert-expiry", C, Severity.MEDIUM,
-            "Certificat proche de l'expiration",
-            f"Le certificat expire dans {days} jour(s) (le `{not_after}`).",
-            "Renouvelle-le avant l'échéance ; vise un renouvellement automatique.",
+            code="soon", params={"days": days, "not_after": not_after},
             evidence=not_after))
     else:
         findings.append(Finding("tls-cert-expiry", C, Severity.PASS,
-            "Certificat valide",
-            f"Le certificat est valide encore {days} jour(s) (jusqu'au `{not_after}`).",
+            code="ok", params={"days": days, "not_after": not_after},
             evidence=not_after))
     return findings
 
@@ -127,10 +120,7 @@ async def tls(ctx):
     # Pas de HTTPS du tout : inutile de tenter un handshake.
     if parsed.scheme != "https":
         return [Finding("tls", C, Severity.HIGH,
-            "Connexion non chiffrée (HTTP)",
-            f"L'URL finale est `{ctx.url}` : le trafic circule en clair, exposé à "
-            "l'interception et à la modification.",
-            "Sers le site exclusivement en HTTPS et redirige tout HTTP vers HTTPS.")]
+            code="http", params={"url": ctx.url})]
 
     host = ctx.host
     port = parsed.port or 443
@@ -143,11 +133,8 @@ async def tls(ctx):
             # 2. Échec de validation : on reconnecte SANS vérifier, uniquement
             #    pour lire le cert et remonter le problème précis.
             findings: list[Finding] = [Finding("tls", C, Severity.HIGH,
-                "Validation du certificat échouée",
-                f"La chaîne ou le hostname n'a pas pu être validé : `{exc.reason or exc}`. "
-                "Le navigateur affichera un avertissement de sécurité.",
-                "Déploie un certificat de confiance valide pour ce hostname "
-                "(chaîne complète, hostname correct, non expiré).",
+                code="verify-failed",
+                params={"error": str(exc.reason or exc)},
                 evidence=str(exc.verify_message or exc.reason or exc))]
             try:
                 version, cert = await asyncio.to_thread(_connect, host, port, False)
@@ -167,13 +154,10 @@ async def tls(ctx):
     except (socket.timeout, ssl.SSLError, OSError) as exc:
         # 3. Connexion impossible (timeout, port fermé, pas de TLS…).
         return [Finding("tls", C, Severity.INFO,
-            "TLS non vérifiable",
-            f"Impossible d'établir une connexion TLS vers `{host}:{port}` : "
-            f"{type(exc).__name__}.",
-            "Vérifie que le port est ouvert et qu'un service TLS y répond.",
+            code="unreachable",
+            params={"host": host, "port": port, "error_type": type(exc).__name__},
             evidence=str(exc))]
     except Exception as exc:  # filet de sécurité : aucune exception ne remonte.
         return [Finding("tls", C, Severity.INFO,
-            "TLS non vérifiable",
-            f"Erreur inattendue lors du test TLS : {type(exc).__name__}.",
+            code="error", params={"error_type": type(exc).__name__},
             evidence=str(exc))]

@@ -1,0 +1,48 @@
+# En-têtes de sécurité sur les sous-ressources — catalogue de présentation FR.
+# `title` / `detail` / `recommendation` reproduisent EXACTEMENT le texte historique
+# (garde anti-régression : tests/test_regression_fr.py). Le reste (explanation, why,
+# steps, stacks, ai_prompt, refs) est le contenu de remédiation façon GTmetrix.
+# Placeholders : {missing_count}, {checked}, {note} (note d'échantillonnage, peut être
+# vide). {stack} est rempli côté UI.
+
+subresources:
+  non-html:
+    title: "Sous-ressources non évaluées"
+    detail: "La page principale n'est pas du HTML : il n'y a pas de sous-ressource à analyser."
+    recommendation: "Aucune action requise pour ce point."
+
+  pass-none:
+    title: "Aucune sous-ressource même-origine"
+    detail: "La page ne charge aucun script ni feuille de style hébergé localement à vérifier."
+    why: "Aucune sous-ressource même-origine n'est chargée : il n'y a pas d'en-tête de script/CSS à vérifier de ce côté."
+
+  unreachable:
+    title: "Sous-ressources injoignables"
+    detail: "Aucune des sous-ressources échantillonnées n'a pu être récupérée pour vérification."
+    recommendation: "Aucune action requise pour ce point."
+
+  missing:
+    title: "Sous-ressources sans `X-Content-Type-Options: nosniff`"
+    detail: "{missing_count} sur {checked} sous-ressource(s) même-origine (script/CSS) sont servies sans `nosniff`{note} : un fichier au type MIME ambigu peut être réinterprété par le navigateur (MIME sniffing), même quand la page principale est correctement protégée."
+    recommendation: "Ajoute `X-Content-Type-Options: nosniff` sur **toutes** les réponses, y compris les fichiers statiques — configure-le globalement côté serveur plutôt que par route."
+    explanation: "Le `nosniff` empêche le navigateur de « deviner » le type d'un fichier d'après son contenu plutôt que son `Content-Type`. Sur un script ou une feuille de style, son absence permet de réinterpréter un fichier au type MIME ambigu (MIME sniffing) — et la protection de la page principale n'y change rien, car chaque réponse porte ses propres en-têtes."
+    why: "Une config d'en-têtes incohérente est fréquente : la page principale est protégée, mais les fichiers statiques (servis par une autre `location`/route) ne le sont pas. Un script ou un CSS sans `nosniff` rouvre la porte au MIME sniffing, donc à l'exécution d'un fichier réinterprété, même quand le document principal est correctement durci."
+    steps:
+      - "Ajoute `X-Content-Type-Options: nosniff` sur TOUTES les réponses, y compris les fichiers statiques (JS, CSS), pas seulement la page principale."
+      - "Configure-le globalement côté serveur/proxy plutôt que route par route, pour éviter les `location` oubliées."
+      - "Assure-toi que chaque sous-ressource est servie avec le bon `Content-Type` (`application/javascript`, `text/css`)."
+    stacks:
+      nginx: "add_header X-Content-Type-Options \"nosniff\" always;  # dans le bloc http {} pour couvrir toutes les location"
+      npm: "Proxy Host → Advanced → Custom Nginx : add_header X-Content-Type-Options \"nosniff\" always;"
+      apache: "Header always set X-Content-Type-Options \"nosniff\"  # dans <VirtualHost>, pas seulement <Location>"
+      cloudflare: "Transform Rules → Modify Response Header → Set static : X-Content-Type-Options = nosniff (sur toutes les réponses)"
+    ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), certaines sous-ressources même-origine (scripts/CSS) sont servies sans `X-Content-Type-Options: nosniff` ({evidence}), alors que la page principale est protégée. Explique le risque de MIME sniffing sur ces fichiers et donne la configuration exacte pour {stack} appliquant `nosniff` GLOBALEMENT à toutes les réponses, y compris les fichiers statiques."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/X-Content-Type-Options"
+      - "https://owasp.org/www-project-secure-headers/"
+    a_verifier: false
+
+  pass-protected:
+    title: "Sous-ressources correctement protégées"
+    detail: "Les {checked} sous-ressource(s) même-origine vérifiées portent toutes `X-Content-Type-Options: nosniff`."
+    why: "Les sous-ressources même-origine échantillonnées portent toutes `nosniff` : pas de réinterprétation possible d'un script/CSS par MIME sniffing."

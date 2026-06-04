@@ -4,6 +4,11 @@ On sonde quelques chemins classiques (`.env`, `.git/HEAD`, sauvegardes…) à la
 racine de la cible. Beaucoup de sites renvoient 200 + HTML pour *tout* (soft-404),
 donc chaque chemin a une **signature de contenu** : sans correspondance, on ne
 signale rien. Une seule requête par chemin, tout est protégé par try/except.
+
+Détection pure : chaque hit ne renvoie qu'un `code` (`found`) + `params` (le
+chemin) + `evidence` (le snippet). Le texte humain (titre, détail, recommandation,
+remédiation) vit dans `content/checks/exposed.fr.yaml` et est rendu par
+`scanner.i18n` à partir de la clé ``(check_id, code)``.
 """
 from __future__ import annotations
 
@@ -77,94 +82,22 @@ def _sig_phpinfo(text: str, content_type: str) -> bool:
     return "phpinfo()" in low or "phpinfo" in low and "php version" in low
 
 
-# (chemin, check_id, sévérité, signature, détail, recommandation)
+# (chemin, check_id, sévérité, signature) — le texte humain part dans le YAML.
 _TARGETS = [
-    (
-        ".env", "exposed-env", Severity.CRITICAL, _sig_env,
-        "Un fichier `.env` est servi publiquement : il contient typiquement des "
-        "secrets (clés API, identifiants base de données, tokens).",
-        "Sors `.env` du webroot et bloque le chemin côté serveur "
-        "(`location ~ /\\.env { deny all; }`).",
-    ),
-    (
-        ".env.bak", "exposed-env-bak", Severity.HIGH, _sig_backup,
-        "Une sauvegarde `.env.bak` est accessible : même expirée, elle peut "
-        "révéler des secrets encore valides.",
-        "Supprime cette sauvegarde du webroot et bloque les extensions `.bak`.",
-    ),
-    (
-        ".git/HEAD", "exposed-git", Severity.HIGH, _sig_git_head,
-        "Un dépôt Git semble exposé (`.git/HEAD` lisible) : tout l'historique du "
-        "code source peut être reconstitué et téléchargé.",
-        "Empêche l'accès à `.git/` côté serveur (`location ~ /\\.git { deny all; }`) "
-        "et ne déploie jamais le dépôt dans le webroot.",
-    ),
-    (
-        ".git/config", "exposed-git-config", Severity.HIGH, _sig_git_config,
-        "Le fichier `.git/config` est lisible : il confirme un dépôt Git exposé et "
-        "peut divulguer des URLs de remote (parfois avec identifiants).",
-        "Bloque l'accès au répertoire `.git/` côté serveur.",
-    ),
-    (
-        ".svn/entries", "exposed-svn", Severity.HIGH, _sig_svn,
-        "Des métadonnées Subversion (`.svn/entries`) sont exposées : le code source "
-        "et son arborescence peuvent être reconstitués.",
-        "Bloque l'accès au répertoire `.svn/` côté serveur.",
-    ),
-    (
-        ".hg/requires", "exposed-hg", Severity.HIGH, _sig_hg,
-        "Des métadonnées Mercurial (`.hg/requires`) sont exposées : le dépôt et son "
-        "code source peuvent être récupérés.",
-        "Bloque l'accès au répertoire `.hg/` côté serveur.",
-    ),
-    (
-        "docker-compose.yml", "exposed-compose", Severity.MEDIUM, _sig_compose,
-        "Un fichier `docker-compose.yml` est accessible : il révèle l'architecture "
-        "des services, des ports internes et parfois des variables sensibles.",
-        "Retire ce fichier du webroot ; il n'a rien à faire en ligne.",
-    ),
-    (
-        "Dockerfile", "exposed-dockerfile", Severity.MEDIUM, _sig_dockerfile,
-        "Un `Dockerfile` est accessible : il expose la chaîne de build, les versions "
-        "et parfois des secrets passés en argument.",
-        "Retire ce fichier du webroot.",
-    ),
-    (
-        "backup.zip", "exposed-backup-zip", Severity.HIGH, _sig_backup,
-        "Une archive `backup.zip` est téléchargeable : elle peut contenir tout le "
-        "code source et des données sensibles.",
-        "Supprime cette archive du webroot et stocke les sauvegardes hors ligne.",
-    ),
-    (
-        "backup.sql", "exposed-backup-sql", Severity.HIGH, _sig_backup,
-        "Un dump SQL `backup.sql` est téléchargeable : il expose probablement "
-        "l'intégralité de la base de données.",
-        "Supprime ce dump du webroot ; ne stocke jamais de sauvegarde base accessible en HTTP.",
-    ),
-    (
-        "database.sql", "exposed-database-sql", Severity.HIGH, _sig_backup,
-        "Un dump SQL `database.sql` est téléchargeable : il expose probablement "
-        "l'intégralité de la base de données.",
-        "Supprime ce dump du webroot.",
-    ),
-    (
-        "config.php.bak", "exposed-config-bak", Severity.HIGH, _sig_backup,
-        "Une sauvegarde `config.php.bak` est servie en clair : contrairement au `.php` "
-        "exécuté, le `.bak` est renvoyé tel quel et peut révéler identifiants et clés.",
-        "Supprime cette sauvegarde et bloque les extensions `.bak` côté serveur.",
-    ),
-    (
-        ".DS_Store", "exposed-dsstore", Severity.LOW, _sig_dsstore,
-        "Un fichier `.DS_Store` est exposé : il liste les noms de fichiers du "
-        "répertoire et facilite l'énumération de chemins cachés.",
-        "Supprime les `.DS_Store` du webroot et bloque ce nom côté serveur.",
-    ),
-    (
-        "phpinfo.php", "exposed-phpinfo", Severity.MEDIUM, _sig_phpinfo,
-        "Une page `phpinfo()` est accessible : elle divulgue la configuration PHP, "
-        "les chemins serveur, les modules et des variables d'environnement.",
-        "Supprime ce fichier de diagnostic ; il ne doit jamais rester en production.",
-    ),
+    (".env", "exposed-env", Severity.CRITICAL, _sig_env),
+    (".env.bak", "exposed-env-bak", Severity.HIGH, _sig_backup),
+    (".git/HEAD", "exposed-git", Severity.HIGH, _sig_git_head),
+    (".git/config", "exposed-git-config", Severity.HIGH, _sig_git_config),
+    (".svn/entries", "exposed-svn", Severity.HIGH, _sig_svn),
+    (".hg/requires", "exposed-hg", Severity.HIGH, _sig_hg),
+    ("docker-compose.yml", "exposed-compose", Severity.MEDIUM, _sig_compose),
+    ("Dockerfile", "exposed-dockerfile", Severity.MEDIUM, _sig_dockerfile),
+    ("backup.zip", "exposed-backup-zip", Severity.HIGH, _sig_backup),
+    ("backup.sql", "exposed-backup-sql", Severity.HIGH, _sig_backup),
+    ("database.sql", "exposed-database-sql", Severity.HIGH, _sig_backup),
+    ("config.php.bak", "exposed-config-bak", Severity.HIGH, _sig_backup),
+    (".DS_Store", "exposed-dsstore", Severity.LOW, _sig_dsstore),
+    ("phpinfo.php", "exposed-phpinfo", Severity.MEDIUM, _sig_phpinfo),
 ]
 
 
@@ -187,7 +120,7 @@ async def exposed(ctx):
 
     findings: list[Finding] = []
 
-    for path, cid, severity, signature, detail, reco in _TARGETS:
+    for path, cid, severity, signature in _TARGETS:
         try:
             url = urljoin(ctx.url, path)
             resp = await ctx.client.get(url)
@@ -213,20 +146,16 @@ async def exposed(ctx):
             continue
 
         snippet = text.strip()[:200]
+        # Détection pure : le chemin part en `params`, le snippet en `evidence` ;
+        # titre/détail/reco sont rendus par le catalogue via (check_id, "found").
         findings.append(Finding(
             cid, C, severity,
-            f"Fichier sensible exposé : `{path}`",
-            detail,
-            reco,
+            code="found",
+            params={"path": path},
             evidence=snippet or None,
         ))
 
     if not findings:
-        return [Finding(
-            "exposed", C, Severity.PASS,
-            "Aucun fichier sensible exposé",
-            "Aucun des chemins sensibles sondés (`.env`, `.git/HEAD`, sauvegardes…) "
-            "n'est accessible publiquement.",
-        )]
+        return [Finding("exposed", C, Severity.PASS, code="clean")]
 
     return findings

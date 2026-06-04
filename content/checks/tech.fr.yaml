@@ -1,0 +1,41 @@
+# Technologies/versions détectées — catalogue de présentation FR.
+# `title` / `detail` / `recommendation` reproduisent EXACTEMENT le texte historique
+# (garde anti-régression : tests/test_regression_fr.py, scénarios « tc_* »). Le reste
+# (explanation, why, steps, stacks, ai_prompt, refs) est le contenu de remédiation
+# façon GTmetrix.
+# Placeholders : {name} (techno détectée), {version} (version exposée). {stack} est
+# rempli côté UI.
+
+tech:
+  detected:
+    title: "Technologie détectée : {name}"
+    detail: "Empreinte applicative repérée passivement (en-têtes, cookies ou HTML)."
+    explanation: "Une empreinte applicative, c'est la trace laissée par un logiciel dans ce qu'il renvoie : un nom dans l'en-tête `Server`, un cookie caractéristique (`PHPSESSID`, `wordpress_…`), une balise `<meta name=\"generator\">` ou un chemin révélateur dans le HTML (`/wp-content/`). Repérée passivement, elle indique quelle techno (`{name}`) fait tourner le site."
+    why: "Savoir qu'un site tourne sous `{name}` est la première étape de la reconnaissance : un attaquant adapte ensuite ses sondes aux faiblesses connues de cette techno. Ce n'est pas une faille en soi — c'est une information. La révélation devient problématique surtout quand elle s'accompagne d'un numéro de version précis (signalé à part)."
+    a_verifier: false
+  version:
+    title: "Version exposée : {name} {version}"
+    detail: "La version précise de `{name}` ({version}) est révélée, ce qui facilite le ciblage de CVE connues."
+    recommendation: "Masque la version : `server_tokens off`, retire `X-Powered-By`, supprime la balise `<meta name=\"generator\">`."
+    explanation: "Au-delà du simple nom de la techno, c'est ici le numéro de version exact (`{name} {version}`) qui fuite — via un en-tête, un cookie, une balise `<meta name=\"generator\">` ou le HTML. Or à une version donnée correspond une liste publique de vulnérabilités (CVE)."
+    why: "Connaître `{name} {version}` permet à un attaquant de consulter directement les CVE connues de cette version précise et de lancer les exploits correspondants, sans tâtonner. Masquer la version ne corrige pas les failles mais ralentit la reconnaissance et casse les scans automatisés qui ciblent une version exacte."
+    steps:
+      - "Désactive l'affichage de version côté serveur d'origine (ex. `server_tokens off` pour nginx, `ServerTokens Prod` pour Apache, `expose_php = Off` pour PHP)."
+      - "Retire les en-têtes qui annoncent un logiciel et sa version : `X-Powered-By`, `X-Generator`, `X-AspNet-Version`."
+      - "Supprime la balise `<meta name=\"generator\">` générée par le CMS (`{name}`) dans tes gabarits/thème."
+      - "Sur le reverse proxy, masque ou réécris les en-têtes remontés par l'amont (`proxy_hide_header`)."
+    stacks:
+      nginx: "server_tokens off; proxy_hide_header X-Powered-By; more_clear_headers Server; (module headers-more)"
+      npm: "Proxy Host → Advanced → Custom Nginx : proxy_hide_header X-Powered-By; proxy_hide_header Server;"
+      apache: "ServerTokens Prod ; ServerSignature Off ; Header always unset X-Powered-By"
+      cloudflare: "Transform Rules → Modify Response Header → Remove : Server / X-Powered-By / X-Generator"
+      wordpress: "Retire la balise generator : `remove_action('wp_head', 'wp_generator');` dans functions.php ; masque la version côté serveur."
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose la version précise de {name} ({version}). Explique le risque de reconnaissance et de ciblage de CVE, puis donne la configuration exacte pour {stack} afin de masquer la version : retrait de la balise `<meta name=\"generator\">`, suppression des en-têtes X-Powered-By / Server, et désactivation de l'affichage de version (server_tokens off ou équivalent)."
+    refs:
+      - "https://owasp.org/www-project-secure-headers/"
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Server"
+    a_verifier: false
+  none:
+    title: "Pas de technologie/version évidente exposée"
+    detail: "Aucune empreinte applicative notable n'a été repérée passivement."
+    why: "Aucune techno ni version n'est annoncée passivement : la reconnaissance par empreinte (en-têtes, cookies, HTML) est limitée."

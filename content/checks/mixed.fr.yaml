@@ -1,0 +1,64 @@
+# Contenu mixte — catalogue de présentation FR.
+# `title` / `detail` / `recommendation` reproduisent EXACTEMENT le texte historique
+# (garde anti-régression : tests/test_regression_fr.py). Le reste (explanation, why,
+# steps, stacks, ai_prompt, refs) est le contenu de remédiation façon GTmetrix.
+# Placeholders : {count} (nombre de ressources), {reason} (non-évaluation),
+# {error} (exception). {stack} est rempli côté UI.
+
+mixed:
+  not-evaluated:
+    title: "Contenu mixte non évalué"
+    detail: "Le contenu mixte ne concerne que les pages HTTPS au format HTML ; ici, {reason}."
+    recommendation: "Aucune action requise pour ce point."
+  pass:
+    title: "Pas de contenu mixte"
+    detail: "Aucune ressource `http://` détectée dans le HTML de cette page `https://`."
+    why: "Toutes les ressources de la page sont servies en HTTPS : pas de maillon en clair qu'un attaquant réseau pourrait altérer ou intercepter."
+  error:
+    title: "Contenu mixte non évalué"
+    detail: "L'analyse du HTML a échoué : `{error}`."
+    recommendation: "Aucune action requise pour ce point."
+
+mixed-active:
+  active:
+    title: "Contenu mixte actif"
+    detail: "{count} ressource(s) active(s) (script, iframe, feuille de style, object) sont chargées en `http://` sur une page `https://`. Un attaquant réseau peut les altérer et compromettre toute la page."
+    recommendation: "Sers ces ressources en `https://` (ou en URL relative au protocole `//`), et ajoute `upgrade-insecure-requests` dans la CSP pour forcer la mise à niveau."
+    explanation: "Le contenu mixte « actif » désigne du code exécutable (script, feuille de style, iframe, object) chargé en `http://` au sein d'une page `https://`. Comme ce maillon transite en clair, n'importe qui sur le réseau peut le remplacer par sa propre version, qui s'exécute alors avec tous les droits de ta page."
+    why: "Un script chargé en clair sur une page sécurisée annule l'HTTPS : un attaquant réseau (Wi-Fi public, proxy hostile) peut injecter son propre code, voler les sessions, modifier le contenu ou rediriger l'utilisateur. Les navigateurs bloquent d'ailleurs de plus en plus ce type de ressource."
+    steps:
+      - "Repère les ressources actives chargées en `http://` (script, link/feuille de style, iframe, object) dans le HTML."
+      - "Corrige les URLs : passe-les en `https://`, ou en URL relative au protocole `//` si l'hôte sert bien les deux."
+      - "Pour les tiers qui ne proposent pas d'HTTPS, change de fournisseur ou héberge la ressource chez toi en HTTPS."
+      - "Ajoute `upgrade-insecure-requests` à la CSP pour que le navigateur mette d'office à niveau les requêtes restantes."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"upgrade-insecure-requests\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration : add_header Content-Security-Policy \"upgrade-insecure-requests\" always;"
+      cloudflare: "Rules → Transform Rules → Modify Response Header → Set static : Content-Security-Policy = upgrade-insecure-requests (et corrige les URLs en // ou https à la source)."
+    ai_prompt: "Tu es un expert en sécurité web. La page {host} (servie par {stack}) charge {count} ressource(s) active(s) en `http://` (ex. {evidence}) alors qu'elle est servie en HTTPS. Explique le risque de contenu mixte actif, montre comment corriger les URLs (passage en https:// ou en // relatif au protocole) dans les templates/config, et donne la configuration exacte pour {stack} afin d'ajouter `upgrade-insecure-requests` à la CSP. Tu es autorisé à corriger les templates et la configuration."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/Security/Mixed_content"
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests"
+    a_verifier: false
+
+mixed-passive:
+  passive:
+    title: "Contenu mixte passif"
+    detail: "{count} ressource(s) passive(s) (image, audio, vidéo, `source`) sont chargées en `http://` sur une page `https://`. Le risque est moindre mais le navigateur peut bloquer l'affichage ou afficher un avertissement."
+    recommendation: "Sers ces ressources en `https://` (ou en URL relative au protocole `//`), et ajoute `upgrade-insecure-requests` dans la CSP pour forcer la mise à niveau."
+    explanation: "Le contenu mixte « passif » désigne des ressources d'affichage (image, audio, vidéo, `source`) chargées en `http://` sur une page `https://`. Elles ne peuvent pas exécuter de code, mais transitent en clair : un attaquant réseau peut les altérer, et le navigateur dégrade ou bloque souvent leur affichage."
+    why: "Le risque est moindre qu'avec une ressource active, mais réel : l'image ou la vidéo peut être substituée par un attaquant réseau, et surtout le navigateur signale la page comme « non entièrement sécurisée » (cadenas barré), ce qui dégrade la confiance."
+    steps:
+      - "Repère les ressources passives chargées en `http://` (img, audio, video, source) dans le HTML."
+      - "Corrige les URLs : passe-les en `https://`, ou en URL relative au protocole `//` si l'hôte sert bien les deux."
+      - "Pour les médias hébergés chez un tiers sans HTTPS, rapatrie-les sur ton origine servie en HTTPS."
+      - "Ajoute `upgrade-insecure-requests` à la CSP pour que le navigateur mette d'office à niveau les requêtes restantes."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"upgrade-insecure-requests\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration : add_header Content-Security-Policy \"upgrade-insecure-requests\" always;"
+      cloudflare: "Rules → Transform Rules → Modify Response Header → Set static : Content-Security-Policy = upgrade-insecure-requests (et corrige les URLs en // ou https à la source)."
+    ai_prompt: "Tu es un expert en sécurité web. La page {host} (servie par {stack}) charge {count} ressource(s) passive(s) en `http://` (ex. {evidence}) alors qu'elle est servie en HTTPS. Explique le risque de contenu mixte passif, montre comment corriger les URLs (passage en https:// ou en // relatif au protocole) dans les templates/config, et donne la configuration exacte pour {stack} afin d'ajouter `upgrade-insecure-requests` à la CSP. Tu es autorisé à corriger les templates et la configuration."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/Security/Mixed_content"
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests"
+    a_verifier: false

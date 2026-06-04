@@ -1,0 +1,333 @@
+# Fichiers/chemins sensibles exposés — catalogue de présentation FR.
+# `title` / `detail` / `recommendation` reproduisent EXACTEMENT le texte historique
+# (garde anti-régression : tests/test_regression_fr.py). Le reste (explanation, why,
+# steps, stacks, ai_prompt, refs) est le contenu de remédiation façon GTmetrix.
+# Le `title` est commun aux 14 chemins (seul {path} change) ; detail/reco sont
+# spécifiques. Placeholders : {path} (le chemin sondé) ; {stack} est rempli côté UI.
+
+exposed-env:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un fichier `.env` est servi publiquement : il contient typiquement des secrets (clés API, identifiants base de données, tokens)."
+    recommendation: "Sors `.env` du webroot et bloque le chemin côté serveur (`location ~ /\\.env { deny all; }`)."
+    explanation: "Un fichier `.env` regroupe la configuration sensible d'une application : clés d'API, identifiants de base de données, secrets de session, tokens. Servi en HTTP, son contenu est lisible par n'importe qui d'un simple `curl`, ce qui revient à publier ses mots de passe."
+    why: "Avec les secrets d'un `.env`, un attaquant accède directement à la base de données, usurpe l'identité de l'application auprès des API tierces et peut prendre le contrôle complet du service. C'est l'une des fuites les plus directement exploitables."
+    steps:
+      - "Sors le fichier `.env` du webroot : place-le dans un répertoire non servi par le serveur web."
+      - "Ajoute une règle qui refuse l'accès aux fichiers commençant par un point (`location ~ /\\.` deny all)."
+      - "Considère les secrets contenus comme compromis : régénère clés d'API, mots de passe et tokens."
+      - "Vérifie ensuite qu'un `curl https://{host}/.env` renvoie bien 403/404."
+    stacks:
+      nginx: "location ~ /\\.env { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~ /\\.env { deny all; return 404; }"
+      apache: "<FilesMatch \"^\\.env\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"/.env\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose publiquement le fichier `{path}`, qui contient des secrets d'application. Explique le risque, donne la configuration exacte pour {stack} qui bloque l'accès à ce chemin, et rappelle qu'il faut considérer les secrets comme compromis et les régénérer."
+    refs:
+      - "https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url"
+      - "https://cwe.mitre.org/data/definitions/538.html"
+    a_verifier: false
+
+exposed-env-bak:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Une sauvegarde `.env.bak` est accessible : même expirée, elle peut révéler des secrets encore valides."
+    recommendation: "Supprime cette sauvegarde du webroot et bloque les extensions `.bak`."
+    explanation: "Les fichiers de sauvegarde (`.bak`, `.old`, `~`…) sont servis tels quels par le serveur web : contrairement au fichier d'origine éventuellement interprété, leur contenu brut est renvoyé. Une copie de `.env` ainsi exposée divulgue les secrets qu'elle contient."
+    why: "Une sauvegarde n'est pas forcément à jour, mais les secrets qu'elle contient (mots de passe, clés) sont souvent encore valides : un attaquant les récupère et s'en sert immédiatement contre le service en production."
+    steps:
+      - "Supprime le fichier `{path}` du webroot."
+      - "Bloque côté serveur toutes les extensions de sauvegarde (`.bak`, `.old`, `.save`, `~`)."
+      - "Régénère les secrets si la sauvegarde a pu être téléchargée."
+      - "Vérifie que `curl https://{host}/{path}` renvoie 403/404."
+    stacks:
+      nginx: "location ~* \\.(bak|old|save|swp|~)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* \\.(bak|old|save)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(bak|old|save)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path matches \"\\.(bak|old|save)$\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose le fichier de sauvegarde `{path}`, dont le contenu brut peut révéler des secrets. Explique le risque, donne la configuration exacte pour {stack} qui bloque les extensions de sauvegarde, et rappelle de régénérer les secrets exposés."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-git:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un dépôt Git semble exposé (`.git/HEAD` lisible) : tout l'historique du code source peut être reconstitué et téléchargé."
+    recommendation: "Empêche l'accès à `.git/` côté serveur (`location ~ /\\.git { deny all; }`) et ne déploie jamais le dépôt dans le webroot."
+    explanation: "Si le répertoire `.git/` est accessible, des outils automatisés (git-dumper…) reconstituent l'intégralité du dépôt : code source, historique, branches, et tout ce qui a été committé un jour — y compris des secrets supprimés depuis mais toujours présents dans l'historique."
+    why: "Récupérer le dépôt, c'est obtenir le code source complet (logique métier, vulnérabilités exploitables) et souvent des secrets oubliés dans l'historique. C'est une fuite massive et entièrement automatisable."
+    steps:
+      - "Bloque l'accès au répertoire `.git/` côté serveur."
+      - "Ne déploie jamais le dépôt Git dans le webroot : déploie une copie sans `.git/` (export/build)."
+      - "Audite l'historique pour les secrets committés et révoque-les."
+      - "Vérifie que `curl https://{host}/.git/HEAD` renvoie 403/404."
+    stacks:
+      nginx: "location ~ /\\.git { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~ /\\.git { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.git\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"/.git/\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose son dépôt Git via `{path}`, ce qui permet de reconstituer tout le code source et l'historique. Explique le risque, donne la configuration exacte pour {stack} qui bloque l'accès à `.git/`, et conseille de ne jamais déployer le dépôt dans le webroot."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-git-config:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Le fichier `.git/config` est lisible : il confirme un dépôt Git exposé et peut divulguer des URLs de remote (parfois avec identifiants)."
+    recommendation: "Bloque l'accès au répertoire `.git/` côté serveur."
+    explanation: "Le fichier `.git/config` décrit la configuration du dépôt : ses remotes, leurs URLs et parfois des identifiants encodés dedans (`https://user:token@host/...`). Sa lisibilité confirme que tout le répertoire `.git/` est accessible."
+    why: "Au-delà de confirmer l'exposition du dépôt, `.git/config` peut révéler des URLs de remote contenant des tokens d'accès : un attaquant les réutilise pour accéder à d'autres dépôts ou services internes."
+    steps:
+      - "Bloque l'accès au répertoire `.git/` côté serveur."
+      - "Si une URL de remote contenait des identifiants, révoque ce token immédiatement."
+      - "Ne déploie pas le dépôt Git dans le webroot."
+      - "Vérifie que `curl https://{host}/.git/config` renvoie 403/404."
+    stacks:
+      nginx: "location ~ /\\.git { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~ /\\.git { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.git\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"/.git/\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose `{path}`, qui confirme un dépôt Git accessible et peut divulguer des URLs de remote avec identifiants. Explique le risque, donne la configuration exacte pour {stack} qui bloque `.git/`, et conseille de révoquer tout token éventuellement exposé."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-svn:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Des métadonnées Subversion (`.svn/entries`) sont exposées : le code source et son arborescence peuvent être reconstitués."
+    recommendation: "Bloque l'accès au répertoire `.svn/` côté serveur."
+    explanation: "Le répertoire `.svn/` contient les métadonnées d'une copie de travail Subversion : la liste des fichiers, leur arborescence et souvent une copie locale de leur contenu. Exposé, il permet de reconstituer le code source du projet."
+    why: "Comme pour Git, l'exposition des métadonnées SVN permet de récupérer le code source complet et son arborescence : logique applicative, chemins internes et éventuels secrets en clair."
+    steps:
+      - "Bloque l'accès au répertoire `.svn/` côté serveur."
+      - "Déploie une copie exportée (`svn export`) sans le répertoire `.svn/`."
+      - "Vérifie que `curl https://{host}/.svn/entries` renvoie 403/404."
+    stacks:
+      nginx: "location ~ /\\.svn { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~ /\\.svn { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.svn\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"/.svn/\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose les métadonnées Subversion via `{path}`, ce qui permet de reconstituer le code source. Explique le risque, donne la configuration exacte pour {stack} qui bloque `.svn/`, et conseille de déployer une copie exportée sans métadonnées."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-hg:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Des métadonnées Mercurial (`.hg/requires`) sont exposées : le dépôt et son code source peuvent être récupérés."
+    recommendation: "Bloque l'accès au répertoire `.hg/` côté serveur."
+    explanation: "Le répertoire `.hg/` contient les métadonnées d'un dépôt Mercurial : ses capacités (`requires`), son store et l'historique des révisions. Exposé, il permet de cloner le dépôt et d'en récupérer le code source et l'historique."
+    why: "L'exposition des métadonnées Mercurial donne accès au code source complet et à l'historique du projet, avec les mêmes risques de fuite de logique métier et de secrets que pour Git ou SVN."
+    steps:
+      - "Bloque l'accès au répertoire `.hg/` côté serveur."
+      - "Déploie une copie exportée (`hg archive`) sans le répertoire `.hg/`."
+      - "Audite l'historique pour les secrets et révoque-les si besoin."
+      - "Vérifie que `curl https://{host}/.hg/requires` renvoie 403/404."
+    stacks:
+      nginx: "location ~ /\\.hg { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~ /\\.hg { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.hg\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"/.hg/\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose les métadonnées Mercurial via `{path}`, ce qui permet de récupérer le dépôt et son code source. Explique le risque, donne la configuration exacte pour {stack} qui bloque `.hg/`, et conseille de déployer une copie exportée sans métadonnées."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-compose:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un fichier `docker-compose.yml` est accessible : il révèle l'architecture des services, des ports internes et parfois des variables sensibles."
+    recommendation: "Retire ce fichier du webroot ; il n'a rien à faire en ligne."
+    explanation: "Un `docker-compose.yml` décrit toute l'infrastructure conteneurisée : services, images, ports internes, volumes et — fréquemment — des variables d'environnement avec mots de passe ou clés en clair. C'est un fichier de déploiement qui n'a aucune raison d'être servi en HTTP."
+    why: "Lire ce fichier offre à l'attaquant une carte de l'architecture (services internes, ports, dépendances) et parfois directement des secrets : c'est de la reconnaissance de très haute valeur, voire une compromission immédiate."
+    steps:
+      - "Retire `{path}` du webroot : ce fichier de déploiement ne doit pas être servi."
+      - "Bloque par précaution les fichiers `.yml`/`.yaml` à la racine côté serveur."
+      - "Si des secrets y figuraient en clair, considère-les comme compromis et régénère-les."
+      - "Vérifie que `curl https://{host}/{path}` renvoie 403/404."
+    stacks:
+      nginx: "location ~* /(docker-compose\\.ya?ml|\\.env)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* /docker-compose\\.ya?ml$ { deny all; return 404; }"
+      apache: "<FilesMatch \"docker-compose\\.ya?ml$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"docker-compose.yml\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose `{path}`, qui révèle l'architecture des services et parfois des secrets. Explique le risque, donne la configuration exacte pour {stack} qui bloque ce fichier, et rappelle qu'un fichier de déploiement ne doit jamais être servi en HTTP."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-dockerfile:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un `Dockerfile` est accessible : il expose la chaîne de build, les versions et parfois des secrets passés en argument."
+    recommendation: "Retire ce fichier du webroot."
+    explanation: "Un `Dockerfile` décrit comment l'image applicative est construite : image de base et sa version, paquets installés, étapes de build et arguments. Il peut révéler des versions vulnérables et, quand des secrets sont passés en `ARG`/`ENV`, les exposer directement."
+    why: "Connaître la chaîne de build et les versions exactes aide l'attaquant à cibler des CVE connues ; et tout secret laissé dans le `Dockerfile` (token, mot de passe) devient directement exploitable."
+    steps:
+      - "Retire `{path}` du webroot : ce fichier de build n'a pas à être servi."
+      - "Vérifie qu'aucun secret n'est passé en `ARG`/`ENV` dans le Dockerfile (utilise des secrets de build dédiés)."
+      - "Bloque par précaution `Dockerfile` à la racine côté serveur."
+      - "Vérifie que `curl https://{host}/{path}` renvoie 403/404."
+    stacks:
+      nginx: "location ~* /Dockerfile { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* /Dockerfile { deny all; return 404; }"
+      apache: "<FilesMatch \"^Dockerfile\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"/Dockerfile\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose `{path}`, qui révèle la chaîne de build et parfois des secrets. Explique le risque, donne la configuration exacte pour {stack} qui bloque ce fichier, et rappelle qu'un secret ne doit jamais figurer en clair dans un Dockerfile."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-backup-zip:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Une archive `backup.zip` est téléchargeable : elle peut contenir tout le code source et des données sensibles."
+    recommendation: "Supprime cette archive du webroot et stocke les sauvegardes hors ligne."
+    explanation: "Une archive de sauvegarde laissée dans le webroot est téléchargeable en un clic. Elle contient typiquement une copie complète du site : code source, fichiers de configuration avec secrets, et parfois un dump de base de données."
+    why: "Télécharger une sauvegarde complète, c'est obtenir tout le site d'un coup : code, configuration, secrets, données utilisateurs. C'est l'une des fuites les plus graves et les plus simples à exploiter."
+    steps:
+      - "Supprime l'archive `{path}` du webroot immédiatement."
+      - "Stocke les sauvegardes hors ligne ou dans un espace de stockage privé non servi en HTTP."
+      - "Considère le contenu comme exfiltré : régénère les secrets et préviens si des données personnelles étaient incluses."
+      - "Bloque par précaution les extensions d'archive à la racine."
+    stacks:
+      nginx: "location ~* \\.(zip|tar|tar\\.gz|tgz|gz|7z|rar)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* \\.(zip|tar|gz|7z|rar)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(zip|tar|gz|7z|rar)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path matches \"\\.(zip|tar|gz|7z|rar)$\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose l'archive de sauvegarde `{path}`, téléchargeable et potentiellement complète. Explique le risque, donne la configuration exacte pour {stack} qui bloque les archives, et conseille de stocker les sauvegardes hors ligne."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-backup-sql:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un dump SQL `backup.sql` est téléchargeable : il expose probablement l'intégralité de la base de données."
+    recommendation: "Supprime ce dump du webroot ; ne stocke jamais de sauvegarde base accessible en HTTP."
+    explanation: "Un dump SQL laissé dans le webroot est téléchargeable directement. Il contient l'export complet de la base : schéma, mais surtout toutes les données — comptes utilisateurs, mots de passe (parfois mal hachés), e-mails, données métier."
+    why: "Récupérer un dump de base, c'est exfiltrer toutes les données en une requête : identifiants, données personnelles, secrets applicatifs. L'impact (RGPD, prise de comptes) est immédiat et majeur."
+    steps:
+      - "Supprime le dump `{path}` du webroot immédiatement."
+      - "Ne stocke jamais de sauvegarde de base accessible en HTTP : utilise un stockage privé hors ligne."
+      - "Considère les données comme exfiltrées : force la réinitialisation des mots de passe et applique tes obligations de notification."
+      - "Bloque par précaution les extensions `.sql`/`.dump` à la racine."
+    stacks:
+      nginx: "location ~* \\.(sql|dump|db|sqlite)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* \\.(sql|dump|db|sqlite)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(sql|dump|db|sqlite)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path matches \"\\.(sql|dump|db|sqlite)$\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose le dump SQL `{path}`, qui contient probablement toute la base de données. Explique le risque (exfiltration de données, RGPD), donne la configuration exacte pour {stack} qui bloque les dumps, et conseille de stocker les sauvegardes hors ligne."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-database-sql:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un dump SQL `database.sql` est téléchargeable : il expose probablement l'intégralité de la base de données."
+    recommendation: "Supprime ce dump du webroot."
+    explanation: "Un dump SQL laissé dans le webroot est téléchargeable directement. Il contient l'export complet de la base : schéma, mais surtout toutes les données — comptes utilisateurs, mots de passe (parfois mal hachés), e-mails, données métier."
+    why: "Récupérer un dump de base, c'est exfiltrer toutes les données en une requête : identifiants, données personnelles, secrets applicatifs. L'impact (RGPD, prise de comptes) est immédiat et majeur."
+    steps:
+      - "Supprime le dump `{path}` du webroot immédiatement."
+      - "Ne stocke jamais de sauvegarde de base accessible en HTTP : utilise un stockage privé hors ligne."
+      - "Considère les données comme exfiltrées : force la réinitialisation des mots de passe et applique tes obligations de notification."
+      - "Bloque par précaution les extensions `.sql`/`.dump` à la racine."
+    stacks:
+      nginx: "location ~* \\.(sql|dump|db|sqlite)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* \\.(sql|dump|db|sqlite)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(sql|dump|db|sqlite)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path matches \"\\.(sql|dump|db|sqlite)$\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose le dump SQL `{path}`, qui contient probablement toute la base de données. Explique le risque (exfiltration de données, RGPD), donne la configuration exacte pour {stack} qui bloque les dumps, et conseille de stocker les sauvegardes hors ligne."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-config-bak:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Une sauvegarde `config.php.bak` est servie en clair : contrairement au `.php` exécuté, le `.bak` est renvoyé tel quel et peut révéler identifiants et clés."
+    recommendation: "Supprime cette sauvegarde et bloque les extensions `.bak` côté serveur."
+    explanation: "Un fichier de config `.php` est normalement interprété par le serveur : son code source n'est jamais renvoyé. Mais sa sauvegarde `.bak` n'est pas reconnue comme du PHP : le serveur la renvoie telle quelle, code et secrets compris (identifiants de base, clés)."
+    why: "La sauvegarde `.bak` contourne la protection naturelle du `.php` exécuté : un attaquant lit le code de configuration en clair et récupère identifiants de base de données et clés encore valides."
+    steps:
+      - "Supprime la sauvegarde `{path}` du webroot."
+      - "Bloque côté serveur toutes les extensions de sauvegarde (`.bak`, `.old`, `.save`, `~`)."
+      - "Régénère les identifiants et clés qui figuraient dans le fichier de config."
+      - "Vérifie que `curl https://{host}/{path}` renvoie 403/404."
+    stacks:
+      nginx: "location ~* \\.(bak|old|save|swp|~)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* \\.(bak|old|save)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(bak|old|save)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path matches \"\\.(bak|old|save)$\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose `{path}`, une sauvegarde de config servie en clair qui révèle identifiants et clés. Explique le risque, donne la configuration exacte pour {stack} qui bloque les extensions de sauvegarde, et rappelle de régénérer les secrets exposés."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-dsstore:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un fichier `.DS_Store` est exposé : il liste les noms de fichiers du répertoire et facilite l'énumération de chemins cachés."
+    recommendation: "Supprime les `.DS_Store` du webroot et bloque ce nom côté serveur."
+    explanation: "Le fichier `.DS_Store` est généré par macOS dans chaque dossier qu'il affiche. Il mémorise la liste des fichiers du répertoire — y compris ceux qui ne sont liés nulle part. Exposé, il révèle des chemins « cachés » qu'un attaquant n'aurait pas devinés."
+    why: "L'énumération de chemins facilite la reconnaissance : un attaquant découvre des fichiers administratifs, des sauvegardes ou des points d'entrée non publics, et concentre ses tests sur des cibles réelles plutôt que de deviner à l'aveugle."
+    steps:
+      - "Supprime tous les fichiers `.DS_Store` du webroot."
+      - "Bloque ce nom de fichier côté serveur."
+      - "Ajoute `.DS_Store` à ton `.gitignore`/pipeline de déploiement pour éviter qu'il revienne."
+      - "Vérifie que `curl https://{host}/.DS_Store` renvoie 403/404."
+    stacks:
+      nginx: "location ~ /\\.DS_Store$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~ /\\.DS_Store$ { deny all; return 404; }"
+      apache: "<FilesMatch \"^\\.DS_Store$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"/.DS_Store\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose `{path}`, qui liste les fichiers du répertoire et facilite l'énumération de chemins. Explique le risque de reconnaissance, donne la configuration exacte pour {stack} qui bloque ce fichier, et conseille de l'ignorer au déploiement."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-phpinfo:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Une page `phpinfo()` est accessible : elle divulgue la configuration PHP, les chemins serveur, les modules et des variables d'environnement."
+    recommendation: "Supprime ce fichier de diagnostic ; il ne doit jamais rester en production."
+    explanation: "La fonction `phpinfo()` affiche un rapport détaillé de l'environnement PHP : version exacte, modules chargés, chemins absolus du serveur, et le contenu des variables d'environnement — qui peuvent inclure des secrets. C'est un outil de diagnostic qui n'a rien à faire en production."
+    why: "Cette page offre à l'attaquant une reconnaissance complète : version PHP (CVE ciblées), chemins serveur (pour des inclusions de fichiers), et parfois des secrets exposés via les variables d'environnement."
+    steps:
+      - "Supprime `{path}` (et tout autre fichier appelant `phpinfo()`) du serveur de production."
+      - "Désactive la fonction en production via `disable_functions = phpinfo` dans le `php.ini`."
+      - "Bloque par précaution ce chemin côté serveur."
+      - "Vérifie que `curl https://{host}/{path}` ne renvoie plus le rapport phpinfo."
+    stacks:
+      nginx: "location ~* /phpinfo\\.php$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* /phpinfo\\.php$ { deny all; return 404; }"
+      apache: "<FilesMatch \"phpinfo\\.php$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"phpinfo.php\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose `{path}`, une page phpinfo() qui divulgue toute la configuration PHP et parfois des secrets. Explique le risque de reconnaissance, donne la configuration exacte pour {stack} qui bloque ce fichier, et rappelle qu'une page de diagnostic ne doit jamais rester en production."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed:
+  clean:
+    title: "Aucun fichier sensible exposé"
+    detail: "Aucun des chemins sensibles sondés (`.env`, `.git/HEAD`, sauvegardes…) n'est accessible publiquement."
+    why: "Aucun fichier sensible classique n'est servi publiquement : la surface d'exposition par fichiers oubliés est maîtrisée."

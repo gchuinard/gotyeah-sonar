@@ -1,0 +1,150 @@
+# Enregistrements DNS de sécurité e-mail / PKI (SPF / DMARC / CAA) — catalogue de présentation FR.
+# `title` / `detail` / `recommendation` reproduisent EXACTEMENT le texte historique
+# (garde anti-régression : tests/test_regression_fr.py). Le reste (explanation, why,
+# steps, stacks, refs) est le contenu de remédiation façon GTmetrix.
+# Placeholders : {dmarc_name} (nom `_dmarc.<domaine>`), {policy} (politique DMARC appliquée),
+# {label} / {error_type} (résolution indisponible).
+# PAS de clé ai_prompt pour la famille dns-* : un enregistrement DNS = on publie une
+# valeur exacte (les `steps` portent les TXT / commandes à copier), pas un agent de code.
+
+dns-resolve:
+  no-host:
+    title: "Résolution DNS indisponible"
+    detail: "Aucun hôte cible n'a pu être déterminé pour interroger le DNS."
+    recommendation: "Fournis un hostname valide à scanner."
+    explanation: "Sans nom d'hôte à interroger, aucune requête DNS (SPF, DMARC, CAA) ne peut être lancée : il n'y a tout simplement pas de domaine à vérifier."
+    why: "Cette ligne n'est pas une faille du domaine cible mais une limite du scan : faute d'hôte valide, les enregistrements de sécurité e-mail / PKI n'ont pas pu être contrôlés."
+    steps:
+      - "Relance le scan en fournissant un hostname complet et valide (ex. `example.com`)."
+      - "Vérifie que l'URL saisie contient bien un domaine résoluble, sans coquille ni schéma manquant."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Glossary/DNS"
+    a_verifier: false
+  unavailable:
+    title: "Résolution DNS indisponible"
+    detail: "La résolution DNS pour {label} n'a pas pu aboutir ({error_type}). Les enregistrements concernés n'ont pas pu être vérifiés."
+    recommendation: "Réessaie plus tard ou vérifie la connectivité DNS de l'environnement de scan."
+    explanation: "La requête DNS a échoué (timeout, absence de serveur de noms répondant, etc.) avant de pouvoir lire l'enregistrement. Ce n'est pas la preuve que l'enregistrement manque : c'est l'impossibilité de conclure."
+    why: "Une panne de résolution masque le résultat réel : tant qu'elle dure, on ne peut affirmer ni que l'enregistrement est présent, ni qu'il est absent. Il faut rejouer la vérification dans de bonnes conditions réseau."
+    steps:
+      - "Vérifie la connectivité DNS de l'environnement de scan (serveur de noms joignable, pas de filtrage sortant sur le port 53)."
+      - "Réessaie le scan un peu plus tard : un `Timeout` ou un `NoNameservers` est souvent transitoire (erreur rencontrée : {error_type})."
+      - "Au besoin, teste manuellement la résolution depuis un autre réseau, ex. `dig example.com TXT` ou `dig example.com CAA`."
+    stacks:
+      registrar: "Confirme que la zone est bien déléguée à des serveurs de noms actifs (champs NS du registrar)."
+      "zone DNS": "Vérifie que les serveurs faisant autorité répondent (pas de zone expirée ni de SOA obsolète)."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Glossary/DNS"
+    a_verifier: false
+
+dns-spf:
+  present:
+    title: "Enregistrement SPF présent"
+    detail: "Un enregistrement `v=spf1` déclare les serveurs autorisés à envoyer du courrier pour ce domaine."
+    why: "Un SPF publié permet aux destinataires de rejeter le courrier émis depuis des serveurs non listés : c'est la première barrière contre l'usurpation d'expéditeur."
+  absent:
+    title: "Enregistrement SPF absent"
+    detail: "Aucun enregistrement `v=spf1` : un tiers peut usurper l'adresse d'expéditeur du domaine."
+    recommendation: "Publie un enregistrement TXT SPF, par ex. `v=spf1 include:_spf.exemple.com -all`."
+    explanation: "SPF (Sender Policy Framework) est un enregistrement TXT qui liste les serveurs autorisés à envoyer du courrier pour ton domaine. Le serveur destinataire compare l'IP émettrice à cette liste : tout ce qui n'y figure pas est considéré comme non autorisé."
+    why: "Sans SPF, n'importe qui peut envoyer des e-mails en se faisant passer pour `@tondomaine` : le destinataire n'a aucun moyen de vérifier l'expéditeur, ce qui facilite le phishing et nuit à ta délivrabilité."
+    steps:
+      - "Recense TOUS les services qui envoient du courrier en ton nom (serveur mail, ESP transactionnel, CRM, support…)."
+      - "Publie un unique enregistrement TXT à la racine du domaine listant ces sources via `include:` ou `ip4:`/`ip6:`, par ex. `v=spf1 include:_spf.example.com -all`."
+      - "Termine par un `-all` (rejet strict) une fois sûr d'avoir listé toutes tes sources légitimes (commence éventuellement par `~all`, softfail)."
+      - "Vérifie qu'il n'existe qu'UN seul enregistrement SPF (plusieurs `v=spf1` invalident la politique)."
+    stacks:
+      registrar: "Ajoute un enregistrement TXT à la racine (`@`) : valeur `v=spf1 include:_spf.example.com -all`."
+      "zone DNS": "@  IN  TXT  \"v=spf1 include:_spf.example.com -all\""
+      cloudflare: "DNS → Records → Add record → Type TXT, Name `@`, Content `v=spf1 include:_spf.example.com -all`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7208"
+      - "https://developer.mozilla.org/fr/docs/Glossary/DNS"
+    a_verifier: false
+
+dns-dmarc:
+  enforced:
+    title: "DMARC appliqué"
+    detail: "La politique DMARC est en `p={policy}`, elle est effectivement appliquée."
+    why: "DMARC est en mode appliqué (`quarantine`/`reject`) : les messages échouant SPF/DKIM sont mis en quarantaine ou rejetés, ce qui ferme la porte à l'usurpation du domaine."
+  monitor:
+    title: "DMARC en mode surveillance (`p=none`)"
+    detail: "La politique DMARC est en `p=none` : les messages frauduleux sont rapportés mais aucune mesure n'est appliquée."
+    recommendation: "Passe progressivement à `p=quarantine` puis `p=reject` une fois les flux légitimes validés."
+    explanation: "Avec `p=none`, DMARC se contente d'observer : tu reçois des rapports (`rua`) sur ce qui passe ou échoue, mais les messages frauduleux sont quand même délivrés. C'est une étape de transition, pas une protection."
+    why: "Tant que la politique reste `p=none`, un usurpateur peut continuer d'envoyer du courrier en ton nom sans être bloqué : le domaine n'est protégé qu'à partir de `quarantine`/`reject`."
+    steps:
+      - "Analyse les rapports DMARC (`rua`) pour identifier toutes tes sources d'envoi légitimes et corriger leur alignement SPF/DKIM."
+      - "Une fois les flux légitimes alignés, passe la politique à `p=quarantine` (mise en spam des messages non conformes)."
+      - "Quand quarantine est stable sans faux positifs, durcis en `p=reject` (rejet pur et simple)."
+      - "Conserve l'adresse `rua=mailto:` pour continuer de recevoir les rapports agrégés, ex. `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+    stacks:
+      registrar: "Modifie l'enregistrement TXT de `_dmarc` : passe `p=none` à `p=quarantine` puis `p=reject`."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → édite le TXT `_dmarc` → remplace `p=none` par `p=quarantine` (puis `p=reject`)."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+  absent:
+    title: "Enregistrement DMARC absent"
+    detail: "Aucune politique `v=DMARC1` sur `{dmarc_name}` : rien n'indique aux destinataires comment traiter les messages échouant SPF/DKIM."
+    recommendation: "Publie une politique DMARC, par ex. `v=DMARC1; p=quarantine; rua=mailto:dmarc@exemple.com`."
+    explanation: "DMARC s'appuie sur SPF et DKIM pour décider du sort des messages non authentifiés et le signaler aux destinataires. La politique se publie dans un enregistrement TXT sur le sous-domaine `_dmarc.<domaine>`."
+    why: "Sans DMARC, même avec SPF/DKIM en place, chaque destinataire applique sa propre heuristique : rien ne lui dit de rejeter un message usurpant ton domaine, et tu ne reçois aucun rapport sur les tentatives d'usurpation."
+    steps:
+      - "Assure-toi d'abord que SPF (et idéalement DKIM) sont publiés et alignés pour tes envois légitimes."
+      - "Publie un enregistrement TXT sur `{dmarc_name}` commençant par `v=DMARC1`, par ex. `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+      - "Démarre prudemment en `p=none` avec un `rua=mailto:` pour collecter les rapports sans bloquer."
+      - "Durcis ensuite vers `p=quarantine` puis `p=reject` une fois les flux légitimes confirmés."
+    stacks:
+      registrar: "Ajoute un TXT de nom `_dmarc` : valeur `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → Add record → Type TXT, Name `_dmarc`, Content `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+  no-policy:
+    title: "DMARC sans politique d'application"
+    detail: "Un enregistrement `v=DMARC1` existe mais sa balise `p=` est absente ou invalide, donc aucune mesure n'est appliquée."
+    recommendation: "Définis explicitement `p=quarantine` ou `p=reject`."
+    explanation: "La balise `p=` est le cœur de DMARC : elle dit au destinataire quoi faire des messages non conformes. Si elle manque ou contient une valeur inconnue, l'enregistrement est traité comme inopérant — comme s'il n'y avait pas de politique."
+    why: "Un `v=DMARC1` sans `p=` valide donne une fausse impression de protection : aucune mesure n'est appliquée, l'usurpation reste possible exactement comme en l'absence de DMARC."
+    steps:
+      - "Édite l'enregistrement TXT `_dmarc` et ajoute une balise `p=` explicite."
+      - "Choisis `p=quarantine` (mise en spam) ou `p=reject` (rejet) selon ta maturité ; reviens éventuellement à `p=none` le temps de valider tes flux."
+      - "Vérifie la syntaxe complète, ex. `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+    stacks:
+      registrar: "Édite le TXT `_dmarc` et ajoute `p=quarantine` (ou `p=reject`) à la valeur existante."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → édite le TXT `_dmarc` → ajoute `p=quarantine` à la valeur."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+
+dns-caa:
+  present:
+    title: "Enregistrement CAA présent"
+    detail: "Un enregistrement CAA restreint les autorités de certification autorisées à émettre des certificats pour ce domaine."
+    why: "Un enregistrement CAA limite l'émission de certificats aux seules autorités que tu as déclarées : une AC tierce ne peut pas émettre de certificat valide pour ton domaine, ce qui réduit le risque de certificat frauduleux."
+  absent:
+    title: "Enregistrement CAA absent"
+    detail: "Aucun enregistrement CAA : n'importe quelle autorité de certification peut émettre un certificat pour ce domaine. Optionnel mais recommandé."
+    recommendation: "Ajoute un enregistrement CAA, par ex. `0 issue \"letsencrypt.org\"`."
+    explanation: "Un enregistrement CAA (Certification Authority Authorization) liste les autorités de certification habilitées à émettre des certificats pour ton domaine. Les AC conformes vérifient ce DNS avant d'émettre : sans CAA, aucune n'est restreinte."
+    why: "Sans CAA, n'importe quelle autorité de certification publique peut émettre un certificat valide pour ton domaine. Restreindre la liste limite l'impact d'une AC compromise ou d'une émission abusive (mis-issuance)."
+    steps:
+      - "Identifie la ou les autorités que tu utilises réellement (ex. `letsencrypt.org`, `digicert.com`)."
+      - "Publie un enregistrement CAA à la racine du domaine autorisant uniquement ces AC via la balise `issue`."
+      - "Ajoute une balise `iodef` (`mailto:`) pour être notifié des tentatives d'émission non autorisées."
+      - "Si tu utilises des certificats wildcard, ajoute une balise `issuewild` pour l'AC concernée. Enregistrement type : `0 issue \"letsencrypt.org\"`."
+    stacks:
+      registrar: "Ajoute un enregistrement CAA à la racine (`@`) : flag `0`, tag `issue`, valeur `letsencrypt.org`."
+      "zone DNS": "@  IN  CAA  0 issue \"letsencrypt.org\""
+      cloudflare: "DNS → Records → Add record → Type CAA, Name `@`, Tag `Only allow specific hostnames`, CA domain `letsencrypt.org`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc8659"
+      - "https://developer.mozilla.org/fr/docs/Web/Security"
+    a_verifier: false

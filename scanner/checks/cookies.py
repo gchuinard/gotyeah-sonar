@@ -5,6 +5,10 @@ cookie, la présence des trois garde-fous classiques. On parcourt aussi les
 réponses de redirection (`ctx.history`) car un cookie de session est souvent
 posé sur le 302 initial, pas sur la page finale ; on dé-duplique par nom de
 cookie (premier vu = gardé) pour ne pas signaler deux fois le même.
+
+Détection pure : chaque check ne renvoie qu'un `code` (+ `params`/`evidence`). Le
+texte humain (titre, détail, recommandation, remédiation) vit dans
+`content/checks/cookies.fr.yaml` et est rendu par `scanner.i18n`.
 """
 from __future__ import annotations
 
@@ -78,10 +82,7 @@ async def cookies(ctx):
     raws = _collect_raw_cookies(ctx)
 
     if not raws:
-        return [Finding("cookies", C, Severity.PASS,
-            "Aucun cookie posé",
-            "La réponse ne pose aucun en-tête `Set-Cookie` : il n'y a pas de "
-            "surface d'attaque côté cookies (vol via XSS, fuite réseau, CSRF).")]
+        return [Finding("cookies", C, Severity.PASS, code="none")]
 
     findings: list[Finding] = []
     for raw in raws:
@@ -93,7 +94,6 @@ async def cookies(ctx):
         if not name:
             continue
 
-        label = f"Cookie « {name} »"
         secure = _has_attr(attrs, "secure")
         httponly = _has_attr(attrs, "httponly")
         samesite = _samesite_value(attrs)
@@ -104,49 +104,26 @@ async def cookies(ctx):
         if is_https and not secure:
             clean = False
             findings.append(Finding("cookie-secure", C, Severity.MEDIUM,
-                f"{label} sans `Secure`",
-                f"Le cookie `{name}` n'a pas l'attribut `Secure` : sur une cible "
-                "HTTPS, il peut être renvoyé en clair lors d'une requête HTTP et "
-                "intercepté sur le réseau.",
-                f"Ajoute l'attribut `Secure` au cookie `{name}`.",
-                evidence=raw[:300]))
+                code="missing", params={"name": name}, evidence=raw[:300]))
 
         # HttpOnly : sans lui, le cookie est lisible par du JavaScript (vol via XSS).
         if not httponly:
             clean = False
             findings.append(Finding("cookie-httponly", C, Severity.MEDIUM,
-                f"{label} sans `HttpOnly`",
-                f"Le cookie `{name}` est accessible en JavaScript (`document.cookie`) : "
-                "une faille XSS permettrait de le voler et d'usurper la session.",
-                f"Ajoute l'attribut `HttpOnly` au cookie `{name}` (sauf s'il doit "
-                "réellement être lu côté client).",
-                evidence=raw[:300]))
+                code="missing", params={"name": name}, evidence=raw[:300]))
 
         # SameSite : sans lui (ou None sans Secure), risque de CSRF.
         if samesite is None:
             clean = False
             findings.append(Finding("cookie-samesite", C, Severity.LOW,
-                f"{label} sans `SameSite`",
-                f"Le cookie `{name}` n'a pas d'attribut `SameSite` : il est joint "
-                "aux requêtes cross-site, ce qui ouvre la porte au CSRF.",
-                f"Ajoute `SameSite=Lax` (ou `Strict`) au cookie `{name}`.",
-                evidence=raw[:300]))
+                code="missing", params={"name": name}, evidence=raw[:300]))
         elif samesite == "none" and not secure:
             clean = False
             findings.append(Finding("cookie-samesite", C, Severity.LOW,
-                f"{label} en `SameSite=None` sans `Secure`",
-                f"Le cookie `{name}` est en `SameSite=None` (envoyé cross-site) mais "
-                "sans `Secure` : les navigateurs récents le rejettent, et il reste "
-                "exposé au CSRF.",
-                f"Passe le cookie `{name}` en `SameSite=Lax`/`Strict`, ou conserve "
-                "`SameSite=None` uniquement avec `Secure`.",
-                evidence=raw[:300]))
+                code="none-insecure", params={"name": name}, evidence=raw[:300]))
 
         if clean:
             findings.append(Finding("cookie-ok", C, Severity.PASS,
-                f"{label} correctement protégé",
-                f"Le cookie `{name}` porte `Secure`, `HttpOnly` et un `SameSite` "
-                "explicite : configuration conforme.",
-                evidence=raw[:300]))
+                code="ok", params={"name": name}, evidence=raw[:300]))
 
     return findings

@@ -1,4 +1,9 @@
-"""Enregistrements DNS de sécurité e-mail / PKI — SPF, DMARC, CAA."""
+"""Enregistrements DNS de sécurité e-mail / PKI — SPF, DMARC, CAA.
+
+Détection pure : chaque branche ne renvoie qu'un `code` (+ `params`/`evidence`). Le
+texte humain (titre, détail, recommandation, remédiation) vit dans
+`content/checks/dns.fr.yaml` et est rendu par `scanner.i18n`.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -42,14 +47,13 @@ def _join_txt(value: str) -> str:
 
 
 def _resolution_unavailable(label: str, exc: Exception) -> Finding:
+    """Finding structuré : la résolution DNS pour `label` n'a pas pu aboutir."""
     return Finding(
         "dns-resolve",
         C,
         Severity.INFO,
-        "Résolution DNS indisponible",
-        f"La résolution DNS pour {label} n'a pas pu aboutir "
-        f"({type(exc).__name__}). Les enregistrements concernés n'ont pas pu être vérifiés.",
-        "Réessaie plus tard ou vérifie la connectivité DNS de l'environnement de scan.",
+        code="unavailable",
+        params={"label": label, "error_type": type(exc).__name__},
     )
 
 
@@ -59,11 +63,7 @@ async def dns_check(ctx):
     domain = _org_domain(getattr(ctx, "host", "") or "")
 
     if not domain:
-        return [Finding(
-            "dns-resolve", C, Severity.INFO,
-            "Résolution DNS indisponible",
-            "Aucun hôte cible n'a pu être déterminé pour interroger le DNS.",
-            "Fournis un hostname valide à scanner.")]
+        return [Finding("dns-resolve", C, Severity.INFO, code="no-host")]
 
     # --- SPF -----------------------------------------------------------------
     try:
@@ -71,25 +71,11 @@ async def dns_check(ctx):
         spf = next((t for t in txts if t.lower().startswith("v=spf1")), None)
         if spf:
             findings.append(Finding(
-                "dns-spf", C, Severity.PASS,
-                "Enregistrement SPF présent",
-                "Un enregistrement `v=spf1` déclare les serveurs autorisés à envoyer "
-                "du courrier pour ce domaine.",
-                evidence=spf[:300]))
+                "dns-spf", C, Severity.PASS, code="present", evidence=spf[:300]))
         else:
-            findings.append(Finding(
-                "dns-spf", C, Severity.MEDIUM,
-                "Enregistrement SPF absent",
-                "Aucun enregistrement `v=spf1` : un tiers peut usurper l'adresse "
-                "d'expéditeur du domaine.",
-                "Publie un enregistrement TXT SPF, par ex. `v=spf1 include:_spf.exemple.com -all`."))
+            findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="absent"))
     except _NO_RECORD:
-        findings.append(Finding(
-            "dns-spf", C, Severity.MEDIUM,
-            "Enregistrement SPF absent",
-            "Aucun enregistrement `v=spf1` : un tiers peut usurper l'adresse "
-            "d'expéditeur du domaine.",
-            "Publie un enregistrement TXT SPF, par ex. `v=spf1 include:_spf.exemple.com -all`."))
+        findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="absent"))
     except _RESOLVE_FAILED as exc:
         findings.append(_resolution_unavailable(f"`{domain}` (SPF)", exc))
     except Exception as exc:  # filet de sécurité : jamais de remontée
@@ -103,42 +89,26 @@ async def dns_check(ctx):
         if not dmarc:
             findings.append(Finding(
                 "dns-dmarc", C, Severity.MEDIUM,
-                "Enregistrement DMARC absent",
-                f"Aucune politique `v=DMARC1` sur `{dmarc_name}` : rien n'indique aux "
-                "destinataires comment traiter les messages échouant SPF/DKIM.",
-                "Publie une politique DMARC, par ex. `v=DMARC1; p=quarantine; rua=mailto:dmarc@exemple.com`."))
+                code="absent", params={"dmarc_name": dmarc_name}))
         else:
             policy = _dmarc_policy(dmarc)
             if policy == "none":
                 findings.append(Finding(
                     "dns-dmarc", C, Severity.LOW,
-                    "DMARC en mode surveillance (`p=none`)",
-                    "La politique DMARC est en `p=none` : les messages frauduleux sont "
-                    "rapportés mais aucune mesure n'est appliquée.",
-                    "Passe progressivement à `p=quarantine` puis `p=reject` une fois les flux légitimes validés.",
-                    evidence=f"p={policy}"))
+                    code="monitor", evidence=f"p={policy}"))
             elif policy in ("quarantine", "reject"):
                 findings.append(Finding(
                     "dns-dmarc", C, Severity.PASS,
-                    "DMARC appliqué",
-                    f"La politique DMARC est en `p={policy}`, elle est effectivement appliquée.",
-                    evidence=f"p={policy}"))
+                    code="enforced", params={"policy": policy}, evidence=f"p={policy}"))
             else:
                 # `v=DMARC1` présent mais `p=` manquant ou invalide : équivaut à pas d'application.
                 findings.append(Finding(
                     "dns-dmarc", C, Severity.LOW,
-                    "DMARC sans politique d'application",
-                    "Un enregistrement `v=DMARC1` existe mais sa balise `p=` est absente ou "
-                    "invalide, donc aucune mesure n'est appliquée.",
-                    "Définis explicitement `p=quarantine` ou `p=reject`.",
-                    evidence=dmarc[:300]))
+                    code="no-policy", evidence=dmarc[:300]))
     except _NO_RECORD:
         findings.append(Finding(
             "dns-dmarc", C, Severity.MEDIUM,
-            "Enregistrement DMARC absent",
-            f"Aucune politique `v=DMARC1` sur `{dmarc_name}` : rien n'indique aux "
-            "destinataires comment traiter les messages échouant SPF/DKIM.",
-            "Publie une politique DMARC, par ex. `v=DMARC1; p=quarantine; rua=mailto:dmarc@exemple.com`."))
+            code="absent", params={"dmarc_name": dmarc_name}))
     except _RESOLVE_FAILED as exc:
         findings.append(_resolution_unavailable(f"`{dmarc_name}` (DMARC)", exc))
     except Exception as exc:
@@ -150,10 +120,7 @@ async def dns_check(ctx):
         if caa:
             findings.append(Finding(
                 "dns-caa", C, Severity.PASS,
-                "Enregistrement CAA présent",
-                "Un enregistrement CAA restreint les autorités de certification "
-                "autorisées à émettre des certificats pour ce domaine.",
-                evidence="; ".join(caa)[:300]))
+                code="present", evidence="; ".join(caa)[:300]))
         else:
             findings.append(_caa_absent())
     except _NO_RECORD:
@@ -176,9 +143,5 @@ def _dmarc_policy(record: str) -> str | None:
 
 
 def _caa_absent() -> Finding:
-    return Finding(
-        "dns-caa", C, Severity.LOW,
-        "Enregistrement CAA absent",
-        "Aucun enregistrement CAA : n'importe quelle autorité de certification peut "
-        "émettre un certificat pour ce domaine. Optionnel mais recommandé.",
-        "Ajoute un enregistrement CAA, par ex. `0 issue \"letsencrypt.org\"`.")
+    """Finding structuré : aucun enregistrement CAA n'est publié pour le domaine."""
+    return Finding("dns-caa", C, Severity.LOW, code="absent")

@@ -113,9 +113,12 @@ async def test_tech_detection(make_ctx, make_response):
         text='<html><head><meta name="generator" content="WordPress 6.5"></head></html>',
     )
     out = await tech(make_ctx(response=resp))
-    titles = " ".join(f.title for f in out)
-    assert "PHP" in titles and "WordPress" in titles
-    assert any(f.severity == Severity.LOW and "6.5" in f.title for f in out)
+    # Détection structurée : le nom de techno vit dans params, plus dans le title.
+    names = {f.params.get("name") for f in out if f.code == "detected"}
+    assert "PHP" in names and "WordPress" in names
+    assert any(f.code == "version" and f.severity == Severity.LOW
+               and f.params.get("name") == "WordPress" and f.params.get("version") == "6.5"
+               for f in out)
     assert all(f.category.value == "tech" for f in out)
 
 

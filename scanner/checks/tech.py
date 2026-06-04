@@ -4,6 +4,10 @@ On déduit le serveur web, le framework, le CMS à partir des en-têtes, des
 cookies et du HTML. C'est passif et surtout informatif (catégorie TECH) : la
 pénalisation de la divulgation de version au niveau en-têtes est déjà gérée par
 `hdr-disclosure`, donc ici on reste léger pour ne pas doublonner.
+
+Détection pure : chaque finding ne porte qu'un `code` (+ `params`/`evidence`). Le
+texte humain (titre, détail, recommandation, remédiation) vit dans
+`content/checks/tech.fr.yaml` et est rendu par `scanner.i18n`.
 """
 from __future__ import annotations
 
@@ -55,28 +59,25 @@ async def tech(ctx):
         seen: set[str] = set()  # dé-duplication par nom de techno (minuscule)
 
         def add_info(name: str, evidence: str) -> None:
+            # DÉTECTION PURE : code="detected" + params{name}, texte au catalogue.
             key = name.lower()
             if key in seen:
                 return
             seen.add(key)
-            findings.append(Finding("tech", C, Severity.INFO,
-                f"Technologie détectée : {name}",
-                "Empreinte applicative repérée passivement (en-têtes, cookies ou HTML).",
+            findings.append(Finding("tech", C, Severity.INFO, code="detected",
+                params={"name": name},
                 evidence=(evidence or "")[:200]))
 
         def add_version(name: str, version: str, evidence: str) -> None:
             # Le LOW « version exposée » ne s'applique qu'aux sources non couvertes
             # par hdr-disclosure (cookies, meta generator, HTML).
+            # DÉTECTION PURE : code="version" + params{name, version}.
             key = f"version:{name.lower()}"
             if key in seen:
                 return
             seen.add(key)
-            findings.append(Finding("tech", C, Severity.LOW,
-                f"Version exposée : {name} {version}",
-                f"La version précise de `{name}` ({version}) est révélée, ce qui "
-                "facilite le ciblage de CVE connues.",
-                "Masque la version : `server_tokens off`, retire `X-Powered-By`, "
-                "supprime la balise `<meta name=\"generator\">`.",
+            findings.append(Finding("tech", C, Severity.LOW, code="version",
+                params={"name": name, "version": version},
                 evidence=(evidence or "")[:200]))
 
         h = ctx.response.headers
@@ -123,9 +124,7 @@ async def tech(ctx):
                 add_info(name, f"chemin `{needle}` présent dans le HTML")
 
         if not findings:
-            return [Finding("tech", C, Severity.PASS,
-                "Pas de technologie/version évidente exposée",
-                "Aucune empreinte applicative notable n'a été repérée passivement.")]
+            return [Finding("tech", C, Severity.PASS, code="none")]
         return findings
     except Exception:
         # Ne JAMAIS laisser une exception remonter : un check qui plante ne doit

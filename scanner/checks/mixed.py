@@ -1,4 +1,9 @@
-"""Contenu mixte — ressources `http://` chargées sur une page `https://`."""
+"""Contenu mixte — ressources `http://` chargées sur une page `https://`.
+
+Détection pure : chaque check ne renvoie qu'un `code` (+ `params`/`evidence`). Le
+texte humain (titre, détail, recommandation, remédiation) vit dans
+`content/checks/mixed.fr.yaml` et est rendu par `scanner.i18n`.
+"""
 from __future__ import annotations
 
 import re
@@ -31,11 +36,6 @@ _PASSIVE_PATTERNS = [
 # Faux positifs : namespaces XML/SVG, pas du vrai contenu chargé.
 _IGNORE = ("http://www.w3.org/",)
 
-_RECO = (
-    "Sers ces ressources en `https://` (ou en URL relative au protocole `//`), "
-    "et ajoute `upgrade-insecure-requests` dans la CSP pour forcer la mise à niveau."
-)
-
 
 def _collect(text: str, patterns) -> list[str]:
     """Renvoie les URLs http trouvées, sans les faux positifs connus."""
@@ -64,10 +64,8 @@ async def mixed(ctx):
         raison = ("la page finale n'est pas servie en HTTPS"
                   if scheme != "https"
                   else "la réponse n'est pas du HTML")
-        return [Finding("mixed", C, Severity.INFO,
-            "Contenu mixte non évalué",
-            f"Le contenu mixte ne concerne que les pages HTTPS au format HTML ; ici, {raison}.",
-            "Aucune action requise pour ce point.")]
+        return [Finding("mixed", C, Severity.INFO, code="not-evaluated",
+                        params={"reason": raison})]
 
     try:
         text = ctx.response.text or ""
@@ -83,31 +81,19 @@ async def mixed(ctx):
 
         if active:
             sev = Severity.HIGH if len(scripts) >= 2 else Severity.MEDIUM
-            findings.append(Finding("mixed-active", C, sev,
-                "Contenu mixte actif",
-                f"{len(active)} ressource(s) active(s) (script, iframe, feuille de style, "
-                "object) sont chargées en `http://` sur une page `https://`. Un attaquant "
-                "réseau peut les altérer et compromettre toute la page.",
-                _RECO,
-                evidence=_evidence(active)))
+            findings.append(Finding("mixed-active", C, sev, code="active",
+                                    params={"count": len(active)},
+                                    evidence=_evidence(active)))
 
         if passive:
-            findings.append(Finding("mixed-passive", C, Severity.LOW,
-                "Contenu mixte passif",
-                f"{len(passive)} ressource(s) passive(s) (image, audio, vidéo, `source`) "
-                "sont chargées en `http://` sur une page `https://`. Le risque est moindre "
-                "mais le navigateur peut bloquer l'affichage ou afficher un avertissement.",
-                _RECO,
-                evidence=_evidence(passive)))
+            findings.append(Finding("mixed-passive", C, Severity.LOW, code="passive",
+                                    params={"count": len(passive)},
+                                    evidence=_evidence(passive)))
 
         if findings:
             return findings
 
-        return [Finding("mixed", C, Severity.PASS,
-            "Pas de contenu mixte",
-            "Aucune ressource `http://` détectée dans le HTML de cette page `https://`.")]
+        return [Finding("mixed", C, Severity.PASS, code="pass")]
     except Exception as exc:  # noqa: BLE001 — un check ne doit jamais faire planter le scan.
-        return [Finding("mixed", C, Severity.INFO,
-            "Contenu mixte non évalué",
-            f"L'analyse du HTML a échoué : `{exc}`.",
-            "Aucune action requise pour ce point.")]
+        return [Finding("mixed", C, Severity.INFO, code="error",
+                        params={"error": str(exc)})]
