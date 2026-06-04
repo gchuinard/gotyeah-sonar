@@ -69,10 +69,20 @@
   },
 
   "panels": {
+    "security": "Security",
+    "weakest_link": "Weakest link",
     "breakdown": "Breakdown",
     "progress": "Progress",
     "history": "History",
     "history_empty": "No scan recorded yet."
+  },
+
+  "pillars": {
+    "transport": { "label": "Transport & encryption", "short": "Transport" },
+    "hardening": { "label": "Browser hardening", "short": "Browser" },
+    "exposure": { "label": "Exposure & surface", "short": "Exposure" },
+    "dns": { "label": "DNS & email", "short": "DNS / mail" },
+    "vulns": { "label": "Known vulnerabilities", "short": "Vulns" }
   },
 
   "feed": {

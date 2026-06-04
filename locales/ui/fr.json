@@ -69,10 +69,20 @@
   },
 
   "panels": {
+    "security": "Sécurité",
+    "weakest_link": "Maillon faible",
     "breakdown": "Répartition",
     "progress": "Progression",
     "history": "Historique",
     "history_empty": "Aucun scan enregistré."
+  },
+
+  "pillars": {
+    "transport": { "label": "Transport & chiffrement", "short": "Transport" },
+    "hardening": { "label": "Durcissement navigateur", "short": "Navigateur" },
+    "exposure": { "label": "Exposition & surface", "short": "Exposition" },
+    "dns": { "label": "DNS & e-mail", "short": "DNS / mail" },
+    "vulns": { "label": "Vulnérabilités connues", "short": "Vulns" }
   },
 
   "feed": {

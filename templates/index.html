@@ -120,6 +120,20 @@
   .gauge .score { font-family: var(--mono); font-size: 13px; color: var(--text-dim); margin-top: 2px; }
   .gauge .caption { font-family: var(--mono); font-size: 11px; color: var(--text-faint); margin-top: 12px; letter-spacing: .05em; text-align: center; }
 
+  /* ---- piliers de sécurité (mini-jauges façon Lighthouse) ---- */
+  .pillars-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 4px; }
+  .pillar { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .pring-wrap { position: relative; width: 58px; height: 58px; }
+  .pillars-panel svg { width: 58px; height: 58px; transform: rotate(-90deg); }
+  .ptrack { fill: none; stroke: var(--line-2); stroke-width: 5; }
+  .pring { fill: none; stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1), stroke .4s; }
+  .pspin { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 24 200; opacity: .5; transform-origin: 32px 32px; animation: rot 1.1s linear infinite; }
+  .pgrade { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 700; font-size: 18px; }
+  .plabel { font-size: 10.5px; color: var(--text-dim); text-align: center; line-height: 1.15; }
+  .weakest { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-dim); text-align: center; }
+  .weakest b { font-family: var(--display); font-size: 15px; }
+  .weakest.muted { color: var(--text-faint); font-family: var(--mono); }
+
   /* ---- tally ---- */
   .tally { display: flex; flex-direction: column; gap: 2px; }
   .tally .row { display: flex; align-items: center; gap: 9px; padding: 4px 0; font-size: 13px; }
@@ -297,26 +311,30 @@
     <!-- ---------------- ASIDE ---------------- -->
     <aside class="aside">
 
-      <div class="panel gauge">
-        <div class="ring-wrap">
-          <svg viewBox="0 0 168 168">
-            <circle class="track" cx="84" cy="84" r="54"/>
-            <circle class="ring" cx="84" cy="84" r="54"
-                    :stroke="ringColor"
-                    :stroke-dasharray="CIRC"
-                    :stroke-dashoffset="dashoffset"/>
-            <circle v-if="scanning" class="spin" cx="84" cy="84" r="54"/>
-          </svg>
-          <div class="readout">
-            <div class="grade" :style="{ color: hasResult ? ringColor : 'var(--text-faint)' }">
-              {{ hasResult ? grade : '—' }}
+      <div class="panel pillars-panel">
+        <h2>{{ T('panels.security', 'Sécurité') }}</h2>
+        <div class="pillars-grid">
+          <div v-for="p in pillars" :key="p.id" class="pillar"
+               :title="p.label + (p.na ? ' — N/A' : ' — ' + p.score + '/100')">
+            <div class="pring-wrap">
+              <svg viewBox="0 0 64 64">
+                <circle class="ptrack" cx="32" cy="32" r="26"/>
+                <circle v-if="!p.na" class="pring" cx="32" cy="32" r="26"
+                        :stroke="p.color" :stroke-dasharray="PCIRC"
+                        :stroke-dashoffset="PCIRC * (1 - p.score / 100)"/>
+                <circle v-if="scanning && p.na" class="pspin" cx="32" cy="32" r="26"/>
+              </svg>
+              <div class="pgrade" :style="{ color: p.na ? 'var(--text-faint)' : p.color }">{{ p.na ? '—' : p.grade }}</div>
             </div>
-            <div class="score">{{ hasResult ? score + ' ' + T('gauge.of_100', '/ 100') : T('gauge.waiting', 'en attente') }}</div>
+            <div class="plabel">{{ p.short }}</div>
           </div>
         </div>
-        <div class="caption" v-if="scanning">{{ T('gauge.analyzing', 'analyse en cours · {done}/{total}').replace('{done}', done).replace('{total}', totalChecks) }}</div>
-        <div class="caption" v-else-if="hasResult">{{ T('gauge.summary', '{issues} problème(s) · {pass} conforme(s)').replace('{issues}', issuesCount).replace('{pass}', passCount) }}</div>
-        <div class="caption" v-else>{{ T('gauge.idle_caption', "indice de surface d'exposition") }}</div>
+        <div class="weakest" v-if="weakestLink">
+          {{ T('panels.weakest_link', 'Maillon faible') }} :
+          <b :style="{ color: weakestLink.color }">{{ weakestLink.grade }}</b> · {{ weakestLink.score }}/100
+        </div>
+        <div class="weakest muted" v-else-if="scanning">{{ T('gauge.analyzing', 'analyse en cours · {done}/{total}').replace('{done}', done).replace('{total}', totalChecks) }}</div>
+        <div class="weakest muted" v-else>{{ T('gauge.idle_caption', "indice de surface d'exposition") }}</div>
       </div>
 
       <div class="panel">
@@ -509,6 +527,16 @@ createApp({
       // remédiation (cartes dépliables)
       expanded: {}, stackSel: {}, copiedKey: '',
       CIRC: 2 * Math.PI * 54,
+      PCIRC: 2 * Math.PI * 26,
+      // Piliers de sécurité (façon Lighthouse) : chaque pilier regroupe des catégories.
+      PILLAR_ORDER: ['transport', 'hardening', 'exposure', 'dns', 'vulns'],
+      PILLAR_CATS: {
+        transport: ['tls', 'content'],
+        hardening: ['headers', 'cookies', 'cors', 'subresource'],
+        exposure: ['exposure', 'tech', 'http', 'ports'],
+        dns: ['dns'],
+        vulns: ['pentest', 'zap'],
+      },
       SEV_ORDER: ['critical', 'high', 'medium', 'low', 'info', 'pass'],
       CAT_ORDER: ['headers', 'cookies', 'tls', 'dns', 'exposure', 'cors', 'content', 'subresource', 'tech', 'ports', 'http', 'pentest', 'zap', 'transport', 'info'],
       WEIGHTS: { critical: 25, high: 15, medium: 8, low: 3, info: 0, pass: 0 },
@@ -567,6 +595,28 @@ createApp({
         }
       }
       return '';
+    },
+    // Score par pilier : même barème que la note globale, mais sur les findings du pilier.
+    // N/A si le pilier n'a produit aucun résultat évalué (que des INFO d'état : moteur off,
+    // ZAP non configuré, ports derrière CDN…) → on n'affiche pas un faux 100.
+    pillars() {
+      return this.PILLAR_ORDER.map(id => {
+        const cats = this.PILLAR_CATS[id];
+        const fs = this.findings.filter(f => cats.includes(f.category));
+        const evaluated = fs.some(f => f.severity !== 'info');
+        if (!evaluated) return { id, label: this.pillarLabel(id), short: this.pillarShort(id), na: true };
+        const penalty = fs.reduce((s, f) => s + (this.WEIGHTS[f.severity] || 0), 0);
+        const score = Math.max(0, 100 - penalty);
+        return { id, label: this.pillarLabel(id), short: this.pillarShort(id),
+                 na: false, score, grade: this.gradeOf(score), color: this.colorOf(score) };
+      });
+    },
+    // Maillon faible = le pilier évalué le plus bas (la sécu vaut son point le plus faible).
+    weakestLink() {
+      const scored = this.pillars.filter(p => !p.na);
+      if (!scored.length) return null;
+      const min = scored.reduce((a, b) => (b.score < a.score ? b : a));
+      return { score: min.score, grade: this.gradeOf(min.score), color: this.colorOf(min.score) };
     },
   },
   methods: {
@@ -711,6 +761,8 @@ createApp({
     },
     sevLabel(s) { return (this.SEV_LABEL && this.SEV_LABEL[s]) || s; },
     catLabel(c) { return (this.CAT_LABEL && this.CAT_LABEL[c]) || c; },
+    pillarLabel(id) { return this.T('pillars.' + id + '.label', id); },
+    pillarShort(id) { return this.T('pillars.' + id + '.short', id); },
     async setLang(l) {
       if (!l || l === this.lang) return;
       try {
