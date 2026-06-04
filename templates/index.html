@@ -148,24 +148,54 @@
   /* ---- findings feed ---- */
   .feed { display: flex; flex-direction: column; gap: 9px; }
   .finding {
-    display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
     background: var(--bg-2); border: 1px solid var(--line);
     border-left: 3px solid var(--sev); border-radius: 9px; padding: 12px 15px;
   }
+  .finding.card.open { border-color: var(--line-2); }
+  .finding .f-head { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .finding.card > .f-head { cursor: pointer; }
   .finding .tag {
-    grid-row: 1 / span 1; align-self: start;
+    align-self: center;
     font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .08em;
     text-transform: uppercase; color: var(--sev);
     border: 1px solid var(--sev); border-radius: 5px; padding: 2px 7px; white-space: nowrap;
   }
-  .finding .head { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
   .finding .title { font-weight: 600; color: var(--text); }
   .finding .cat { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
-  .finding .detail { grid-column: 2; color: var(--text-dim); font-size: 13px; margin-top: 3px; }
-  .finding .reco { grid-column: 2; font-size: 13px; margin-top: 6px; color: var(--accent); }
+  .finding .chev { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--accent); white-space: nowrap; }
+  .finding .detail { color: var(--text-dim); font-size: 13px; margin-top: 6px; }
+  .finding .reco { font-size: 13px; margin-top: 6px; color: var(--accent); }
   .finding .reco::before { content: "▸ "; opacity: .8; }
-  .finding .reco code, .finding .detail code { font-family: var(--mono); font-size: 12px; background: var(--bg-3); padding: 1px 5px; border-radius: 4px; color: var(--text); }
-  .finding .ev { grid-column: 2; margin-top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; word-break: break-all; }
+  .finding .pass-why { color: var(--text-dim); font-size: 13px; margin-top: 6px; }
+  .finding code { font-family: var(--mono); font-size: 12px; background: var(--bg-3); padding: 1px 5px; border-radius: 4px; color: var(--text); }
+  .finding .ev { margin-top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; word-break: break-all; }
+
+  /* ---- carte de remédiation (dépliable, façon GTmetrix) ---- */
+  .remed { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 13px; display: flex; flex-direction: column; gap: 14px; }
+  .remed .reco { margin-top: 0; }
+  .rsec h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); }
+  .rsec p { margin: 0; color: var(--text); font-size: 13px; line-height: 1.55; }
+  .steps { margin: 0; padding-left: 20px; color: var(--text); font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+  .steps li { padding-left: 3px; line-height: 1.5; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
+  .tab { font-family: var(--mono); font-size: 11px; color: var(--text-dim); background: var(--bg-3); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .tab:hover { border-color: var(--line-2); }
+  .tab.active { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  .tab small { opacity: .85; }
+  .snip { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; overflow-x: auto; }
+  .snip code { font-family: var(--mono); font-size: 12px; color: var(--text); background: none; padding: 0; white-space: pre-wrap; word-break: break-word; }
+  .copy-btn { font-family: var(--mono); font-size: 12px; color: var(--bg); background: var(--accent); border: none; border-radius: 6px; padding: 7px 13px; cursor: pointer; align-self: flex-start; transition: filter .15s; }
+  .copy-btn:hover { filter: brightness(1.08); }
+  .refs { margin: 0; padding-left: 18px; }
+  .refs li { font-size: 12px; margin-bottom: 4px; word-break: break-all; }
+  .refs a { color: var(--sev-low); text-decoration: none; }
+  .refs a:hover { text-decoration: underline; }
+  .flags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .flag { font-family: var(--mono); font-size: 10px; color: var(--text-faint); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; }
+  .flag.warn { color: var(--sev-medium); border-color: var(--sev-medium); }
+
+  /* ---- sélecteur de langue ---- */
+  .lang-sel { font-family: var(--mono); font-size: 11px; color: var(--text-dim); background: var(--bg-3); border: 1px solid var(--line); border-radius: 5px; padding: 3px 7px; cursor: pointer; }
 
   .feed-enter-from { opacity: 0; transform: translateY(-10px); }
   .feed-enter-active { transition: opacity .35s ease, transform .35s cubic-bezier(.2,.8,.2,1); }
@@ -224,27 +254,31 @@
 
   <header class="topbar">
     <svg class="mark"><use href="#radar"/></svg>
-    <div class="wordmark"><b>Sonar</b><span>console de reconnaissance</span></div>
+    <div class="wordmark"><b>Sonar</b><span>{{ T('topbar.subtitle', 'console de reconnaissance') }}</span></div>
     <div class="spacer"></div>
+    <select v-if="langs.length > 1" class="lang-sel" :value="lang"
+            @change="setLang($event.target.value)" :title="T('topbar.language', 'Langue')">
+      <option v-for="l in langs" :key="l" :value="l">{{ l.toUpperCase() }}</option>
+    </select>
     <span v-if="me" class="tag-version">{{ me.email }}</span>
-    <button v-if="me" class="tag-version" style="background:none;cursor:pointer" @click="logout">Déconnexion</button>
-    <div class="tag-version">v0.1 · phase 1</div>
+    <button v-if="me" class="tag-version" style="background:none;cursor:pointer" @click="logout">{{ T('topbar.logout', 'Déconnexion') }}</button>
+    <div class="tag-version">{{ T('topbar.version', 'v0.1 · phase 1') }}</div>
   </header>
 
   <div class="console">
     <span class="led" :class="{ live: scanning }"></span>
-    <span class="prompt">scan&nbsp;~$</span>
+    <span class="prompt">{{ T('console.prompt', 'scan ~$') }}</span>
     <input ref="input" v-model="target" @keyup.enter="startScan"
-           placeholder="monsite.com" :disabled="scanning" spellcheck="false" autofocus />
+           :placeholder="T('console.placeholder', 'monsite.com')" :disabled="scanning" spellcheck="false" autofocus />
     <button class="btn" @click="startScan" :disabled="scanning || !target.trim()">
-      {{ scanning ? 'Scan…' : 'Lancer' }}
+      {{ scanning ? T('console.scanning', 'Scan…') : T('console.scan', 'Lancer') }}
     </button>
   </div>
 
   <div v-if="errorMsg" class="banner err">{{ errorMsg }}</div>
   <div v-if="isHistorical" class="banner arch">
-    Scan archivé — <b>{{ historical && fmtDate(historical.date) }}</b>
-    <button @click="newScan">Nouveau scan</button>
+    {{ T('banners.archived', 'Scan archivé —') }} <b>{{ historical && fmtDate(historical.date) }}</b>
+    <button @click="newScan">{{ T('banners.new_scan', 'Nouveau scan') }}</button>
   </div>
 
   <div class="grid">
@@ -265,40 +299,40 @@
             <div class="grade" :style="{ color: hasResult ? ringColor : 'var(--text-faint)' }">
               {{ hasResult ? grade : '—' }}
             </div>
-            <div class="score">{{ hasResult ? score + ' / 100' : 'en attente' }}</div>
+            <div class="score">{{ hasResult ? score + ' ' + T('gauge.of_100', '/ 100') : T('gauge.waiting', 'en attente') }}</div>
           </div>
         </div>
-        <div class="caption" v-if="scanning">analyse en cours · {{ done }}/{{ totalChecks }}</div>
-        <div class="caption" v-else-if="hasResult">{{ issuesCount }} problème(s) · {{ passCount }} conforme(s)</div>
-        <div class="caption" v-else>indice de surface d'exposition</div>
+        <div class="caption" v-if="scanning">{{ T('gauge.analyzing', 'analyse en cours · {done}/{total}').replace('{done}', done).replace('{total}', totalChecks) }}</div>
+        <div class="caption" v-else-if="hasResult">{{ T('gauge.summary', '{issues} problème(s) · {pass} conforme(s)').replace('{issues}', issuesCount).replace('{pass}', passCount) }}</div>
+        <div class="caption" v-else>{{ T('gauge.idle_caption', "indice de surface d'exposition") }}</div>
       </div>
 
       <div class="panel">
-        <h2>Mes domaines</h2>
+        <h2>{{ T('domains.title', 'Mes domaines') }}</h2>
         <div class="doms">
-          <div v-if="!domains.length" class="empty">Ajoute un domaine et vérifie-le pour débloquer le scan.</div>
+          <div v-if="!domains.length" class="empty">{{ T('domains.empty', 'Ajoute un domaine et vérifie-le pour débloquer le scan.') }}</div>
           <div v-for="d in domains" :key="d.id" class="dom">
             <div class="dom-top">
               <span class="dom-name">{{ d.domain }}</span>
-              <span class="dom-badge" :class="d.verified ? 'ok' : 'pending'">{{ d.verified ? '✓ vérifié' : 'en attente' }}</span>
-              <button class="dom-x" @click="deleteDomain(d)" title="Supprimer">✕</button>
+              <span class="dom-badge" :class="d.verified ? 'ok' : 'pending'">{{ d.verified ? T('domains.verified', '✓ vérifié') : T('domains.pending', 'en attente') }}</span>
+              <button class="dom-x" @click="deleteDomain(d)" :title="T('domains.delete', 'Supprimer')">✕</button>
             </div>
             <div v-if="!d.verified" class="dom-howto">
-              <div class="dom-hint">Publie ce TXT sur ta zone DNS, puis clique Vérifier :</div>
+              <div class="dom-hint">{{ T('domains.howto', 'Publie ce TXT sur ta zone DNS, puis clique Vérifier :') }}</div>
               <code class="dom-rec">TXT&nbsp;&nbsp;{{ d.dns.apex.host }}&nbsp;&nbsp;→&nbsp;&nbsp;{{ d.dns.apex.value }}</code>
-              <button class="btn-sm" @click="verifyDomain(d)" :disabled="domainBusy">Vérifier</button>
+              <button class="btn-sm" @click="verifyDomain(d)" :disabled="domainBusy">{{ T('domains.verify', 'Vérifier') }}</button>
             </div>
           </div>
         </div>
         <div class="dom-add">
-          <input v-model="newDomain" @keyup.enter="addDomain" placeholder="exemple.com" spellcheck="false" />
-          <button class="btn-sm" @click="addDomain" :disabled="domainBusy || !newDomain.trim()">Ajouter</button>
+          <input v-model="newDomain" @keyup.enter="addDomain" :placeholder="T('domains.add_placeholder', 'exemple.com')" spellcheck="false" />
+          <button class="btn-sm" @click="addDomain" :disabled="domainBusy || !newDomain.trim()">{{ T('domains.add', 'Ajouter') }}</button>
         </div>
         <div v-if="domainMsg" class="dom-msg">{{ domainMsg }}</div>
       </div>
 
       <div class="panel" v-if="hasResult || scanning">
-        <h2>Répartition</h2>
+        <h2>{{ T('panels.breakdown', 'Répartition') }}</h2>
         <div class="tally">
           <div v-for="s in SEV_ORDER" :key="s" class="row" :class="{ zero: counts[s] === 0 }">
             <span class="dot" :style="{ background: 'var(--sev-' + s + ')' }"></span>
@@ -309,7 +343,7 @@
       </div>
 
       <div class="panel" v-if="categoriesList.length">
-        <h2>Progression</h2>
+        <h2>{{ T('panels.progress', 'Progression') }}</h2>
         <div class="cats">
           <div class="cat" v-for="c in categoriesList" :key="c.name">
             <div class="top"><span class="name">{{ c.label }}</span><span class="num">{{ c.done }}/{{ c.total }}</span></div>
@@ -319,9 +353,9 @@
       </div>
 
       <div class="panel">
-        <h2>Historique</h2>
+        <h2>{{ T('panels.history', 'Historique') }}</h2>
         <div class="hist">
-          <div v-if="!history.length" class="empty">Aucun scan enregistré.</div>
+          <div v-if="!history.length" class="empty">{{ T('panels.history_empty', 'Aucun scan enregistré.') }}</div>
           <div class="item" v-for="h in history" :key="h.id" @click="openScan(h.id)">
             <span class="gr" :style="{ color: colorOf(h.score) }">{{ h.grade }}</span>
             <div class="meta">
@@ -339,29 +373,82 @@
       <div class="feedhead" v-if="hasResult || scanning">
         <div class="summary">
           <template v-if="scanning"><b>{{ done }}</b>/{{ totalChecks }} checks</template>
-          <template v-else>{{ findings.length }} observations sur <b>{{ target.replace(/^https?:\/\//,'') }}</b></template>
+          <template v-else>{{ T('feed.observations', '{count} observations sur').replace('{count}', findings.length) }} <b>{{ target.replace(/^https?:\/\//,'') }}</b></template>
         </div>
         <div class="gbar" v-if="scanning"><i :style="{ width: progressPct + '%' }"></i></div>
-        <label class="toggle"><input type="checkbox" v-model="hidePass"/> masquer les conformes</label>
+        <label class="toggle"><input type="checkbox" v-model="hidePass"/> {{ T('feed.hide_pass', 'masquer les conformes') }}</label>
       </div>
 
       <transition-group name="feed" tag="div" class="feed">
-        <div v-for="f in visibleFindings" :key="f.check_id + ':' + f.title"
-             class="finding" :style="{ '--sev': 'var(--sev-' + f.severity + ')' }">
-          <span class="tag">{{ SEV_LABEL[f.severity] }}</span>
-          <div class="head">
+        <div v-for="f in visibleFindings" :key="fkey(f)"
+             class="finding" :class="{ card: hasCard(f), open: isOpen(f) }"
+             :style="{ '--sev': 'var(--sev-' + f.severity + ')' }">
+          <div class="f-head" @click="toggle(f)">
+            <span class="tag">{{ sevLabel(f.severity) }}</span>
             <span class="title">{{ f.title }}</span>
-            <span class="cat">{{ CAT_LABEL[f.category] || f.category }}</span>
+            <span class="cat">{{ catLabel(f.category) }}</span>
+            <span v-if="hasCard(f)" class="chev">{{ isOpen(f) ? T('remediation.collapse', 'Réduire') : T('remediation.expand', 'Comment corriger') }}</span>
           </div>
+
           <div class="detail" v-if="f.detail" v-html="md(f.detail)"></div>
-          <div class="reco" v-if="f.recommendation" v-html="md(f.recommendation)"></div>
-          <div class="ev" v-if="f.evidence">{{ f.evidence }}</div>
+          <div v-if="passWhy(f)" class="pass-why">{{ passWhy(f) }}</div>
+
+          <!-- findings sans carte (INFO/legacy) : reco + preuve inline -->
+          <template v-if="!hasCard(f) && f.severity !== 'pass'">
+            <div class="reco" v-if="f.recommendation" v-html="md(f.recommendation)"></div>
+            <div class="ev" v-if="f.evidence">{{ f.evidence }}</div>
+          </template>
+
+          <!-- carte de remédiation dépliable -->
+          <div v-if="hasCard(f) && isOpen(f)" class="remed">
+            <div class="reco" v-if="f.recommendation" v-html="md(f.recommendation)"></div>
+            <div v-if="rem(f).explanation" class="rsec">
+              <h4>{{ T('remediation.explanation', 'En clair') }}</h4>
+              <p v-html="md(rem(f).explanation)"></p>
+            </div>
+            <div v-if="rem(f).why" class="rsec">
+              <h4>{{ T('remediation.why', 'Pourquoi ça compte') }}</h4>
+              <p v-html="md(rem(f).why)"></p>
+            </div>
+            <div v-if="rem(f).steps && rem(f).steps.length" class="rsec">
+              <h4>{{ T('remediation.steps', 'Étapes') }}</h4>
+              <ol class="steps"><li v-for="(s, i) in rem(f).steps" :key="i" v-html="md(s)"></li></ol>
+            </div>
+            <div v-if="stackKeys(f).length" class="rsec">
+              <h4>{{ T('remediation.stacks', 'Selon ta stack') }}</h4>
+              <div class="tabs">
+                <button v-for="k in stackKeys(f)" :key="k" class="tab"
+                        :class="{ active: activeStack(f) === k }" @click.stop="setStack(f, k)">
+                  {{ stackName(k) }}<small v-if="k === detectedStack"> · {{ T('remediation.detected_stack', 'détectée') }}</small>
+                </button>
+              </div>
+              <pre class="snip"><code>{{ rem(f).stacks[activeStack(f)] }}</code></pre>
+            </div>
+            <div v-if="f.evidence" class="rsec">
+              <h4>{{ T('remediation.evidence', 'Preuve') }}</h4>
+              <div class="ev">{{ f.evidence }}</div>
+            </div>
+            <div v-if="rem(f).ai_prompt" class="rsec">
+              <h4>{{ T('remediation.ai_prompt', 'Prompt IA') }}</h4>
+              <button class="copy-btn" @click.stop="copyPrompt(f)">
+                {{ copiedKey === fkey(f) ? T('remediation.copied', 'Copié !') : T('remediation.copy_prompt', 'Copier le prompt IA') }}
+              </button>
+            </div>
+            <div v-if="rem(f).refs && rem(f).refs.length" class="rsec">
+              <h4>{{ T('remediation.refs', 'Références') }}</h4>
+              <ul class="refs"><li v-for="(r, i) in rem(f).refs" :key="i"><a :href="r" target="_blank" rel="noopener">{{ r }}</a></li></ul>
+            </div>
+            <div v-if="rem(f).untranslated || rem(f).a_verifier" class="flags">
+              <span v-if="rem(f).untranslated" class="flag">EN · {{ T('remediation.untranslated', "description d'origine (non traduite)") }}</span>
+              <span v-if="rem(f).a_verifier" class="flag warn">⚑ {{ T('remediation.to_review', 'à vérifier') }}</span>
+            </div>
+          </div>
         </div>
       </transition-group>
 
       <div v-if="!hasResult && !scanning" class="feed-empty">
         <svg class="mark" style="color:var(--accent)"><use href="#radar"/></svg>
-        <p>Entre l'URL d'un de <b>tes</b> sites et lance un scan. Les observations apparaîtront ici au fil de l'analyse, et la jauge mesurera ta surface d'exposition.</p>
+        <p>{{ T('feed.empty', "Entre l'URL d'un de tes sites et lance un scan. Les observations apparaîtront ici au fil de l'analyse, et la jauge mesurera ta surface d'exposition.") }}</p>
       </div>
     </section>
   </div>
@@ -371,9 +458,15 @@
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script>
 const { createApp } = Vue;
+// Bootstrap i18n injecté côté serveur (langue active + dict UI). Le placeholder est
+// remplacé par app.py ; fallback minimal au cas où la page est servie brute.
+const SONAR_BOOT = (function () {
+  try { return __SONAR_BOOTSTRAP__; } catch (e) { return { lang: 'fr', available: ['fr'], ui: {} }; }
+})();
 
 createApp({
   data() {
+    const ui = SONAR_BOOT.ui || {};
     return {
       target: '', scanning: false, finished: false, errorMsg: '',
       totalChecks: 0, done: 0,
@@ -381,12 +474,17 @@ createApp({
       isHistorical: false, historical: null,
       hidePass: false, es: null, me: null,
       domains: [], newDomain: '', domainBusy: false, domainMsg: '',
+      // i18n
+      ui: ui, lang: SONAR_BOOT.lang || 'fr', langs: SONAR_BOOT.available || ['fr'],
+      // remédiation (cartes dépliables)
+      expanded: {}, stackSel: {}, copiedKey: '',
       CIRC: 2 * Math.PI * 54,
       SEV_ORDER: ['critical', 'high', 'medium', 'low', 'info', 'pass'],
       CAT_ORDER: ['headers', 'cookies', 'tls', 'dns', 'exposure', 'cors', 'content', 'subresource', 'tech', 'pentest', 'zap', 'transport', 'info'],
       WEIGHTS: { critical: 25, high: 15, medium: 8, low: 3, info: 0, pass: 0 },
-      SEV_LABEL: { critical: 'Critique', high: 'Élevé', medium: 'Moyen', low: 'Faible', info: 'Info', pass: 'Conforme' },
-      CAT_LABEL: { headers: 'En-têtes HTTP', cookies: 'Cookies', tls: 'TLS / Cert', dns: 'DNS', exposure: 'Exposition', cors: 'CORS', content: 'Contenu mixte', subresource: 'Sous-ressources', tech: 'Technologies', pentest: 'Pentest (nuclei)', zap: 'Pentest (ZAP)', transport: 'Transport', info: 'Info' },
+      // Libellés : viennent du dict UI (localisable) avec repli FR de secours.
+      SEV_LABEL: ui.sev_label || { critical: 'Critique', high: 'Élevé', medium: 'Moyen', low: 'Faible', info: 'Info', pass: 'Conforme' },
+      CAT_LABEL: ui.cat_label || { headers: 'En-têtes HTTP', cookies: 'Cookies', tls: 'TLS / Cert', dns: 'DNS', exposure: 'Exposition', cors: 'CORS', content: 'Contenu mixte', subresource: 'Sous-ressources', tech: 'Technologies', pentest: 'Pentest (nuclei)', zap: 'Pentest (ZAP)', transport: 'Transport', info: 'Info' },
     };
   },
   computed: {
@@ -412,13 +510,25 @@ createApp({
                  pct: o.total ? Math.round(o.done / o.total * 100) : 0 };
       });
     },
+    // Stack détectée (via les findings « tech ») → on surligne sa variante de remédiation.
+    detectedStack() {
+      const map = { nginx: 'nginx', apache: 'apache', cloudflare: 'cloudflare', wordpress: 'wordpress',
+                    'next.js': 'nextjs', nextjs: 'nextjs', express: 'express', caddy: 'caddy' };
+      for (const f of this.findings) {
+        if (f.category === 'tech' && f.code === 'detected') {
+          const name = ((f.params && f.params.name) || '').toLowerCase();
+          if (map[name]) return map[name];
+        }
+      }
+      return '';
+    },
   },
   methods: {
     startScan() {
       const t = this.target.trim();
       if (!t || this.scanning) return;
       if (this.me && !this.me.can_scan) {
-        this.errorMsg = "Scan verrouillé : ajoute et vérifie un domaine dans « Mes domaines ».";
+        this.errorMsg = this.T('banners.scan_locked', "Scan verrouillé : ajoute et vérifie un domaine dans « Mes domaines ».");
         return;
       }
       this.closeEs();
@@ -445,12 +555,12 @@ createApp({
       es.addEventListener('saved', () => { this.finishScan(); this.loadHistory(); });
       es.addEventListener('scan_error', e => {
         const d = JSON.parse(e.data);
-        this.errorMsg = d.message || 'Erreur pendant le scan.';
+        this.errorMsg = d.message || this.T('banners.scan_error', 'Erreur pendant le scan.');
         this.finishScan();
       });
       es.onerror = () => {
         if (this.finished) return;
-        this.errorMsg = this.errorMsg || 'Connexion interrompue — cible injoignable ?';
+        this.errorMsg = this.errorMsg || this.T('banners.scan_interrupted', 'Connexion interrompue — cible injoignable ?');
         this.finishScan();
       };
     },
@@ -483,7 +593,7 @@ createApp({
           body: JSON.stringify({ domain: dom }),
         });
         if (r.status === 401) { window.location.href = '/login'; return; }
-        if (!r.ok) { this.domainMsg = 'Domaine invalide.'; return; }
+        if (!r.ok) { this.domainMsg = this.T('domains.invalid', 'Domaine invalide.'); return; }
         this.newDomain = '';
         await this.loadDomains();
       } catch (e) {} finally { this.domainBusy = false; }
@@ -514,7 +624,7 @@ createApp({
     },
     async openScan(id) {
       try {
-        const r = await fetch('/api/scan/' + id);
+        const r = await fetch('/api/scan/' + id + '?lang=' + encodeURIComponent(this.lang));
         if (!r.ok) return;
         const d = await r.json();
         this.closeEs(); this.scanning = false; this.finished = true; this.errorMsg = '';
@@ -537,6 +647,64 @@ createApp({
     md(text) {
       const esc = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return esc.replace(/`([^`]+)`/g, '<code>$1</code>');
+    },
+    // --- i18n ---
+    T(path, fb) {
+      let v = this.ui;
+      for (const k of path.split('.')) { v = v && v[k]; if (v == null) return fb; }
+      return v;
+    },
+    sevLabel(s) { return (this.SEV_LABEL && this.SEV_LABEL[s]) || s; },
+    catLabel(c) { return (this.CAT_LABEL && this.CAT_LABEL[c]) || c; },
+    async setLang(l) {
+      if (!l || l === this.lang) return;
+      try {
+        await fetch('/api/lang', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lang: l }) });
+      } catch (e) {}
+      window.location.reload();   // re-render présent + passé dans la nouvelle langue
+    },
+    // --- remédiation (cartes dépliables) ---
+    rem(f) { return f.remediation || {}; },
+    fkey(f) { return f.check_id + ':' + (f.code || '') + ':' + (f.title || ''); },
+    hasCard(f) {
+      if (f.severity === 'pass' || !f.remediation) return false;
+      const r = f.remediation;
+      // Une carte n'a de sens que s'il y a du fond (pas juste une ligne de reco).
+      return !!(r.explanation || r.why || (r.steps && r.steps.length) ||
+                (r.stacks && Object.keys(r.stacks).length) || r.ai_prompt);
+    },
+    passWhy(f) { return f.severity === 'pass' ? this.rem(f).why : ''; },
+    isOpen(f) { return !!this.expanded[this.fkey(f)]; },
+    toggle(f) {
+      if (!this.hasCard(f)) return;
+      const k = this.fkey(f);
+      this.expanded[k] = !this.expanded[k];
+    },
+    stackKeys(f) { return Object.keys(this.rem(f).stacks || {}); },
+    activeStack(f) {
+      const keys = this.stackKeys(f);
+      const sel = this.stackSel[this.fkey(f)];
+      if (sel && keys.includes(sel)) return sel;
+      if (this.detectedStack && keys.includes(this.detectedStack)) return this.detectedStack;
+      return keys[0];
+    },
+    setStack(f, k) { this.stackSel[this.fkey(f)] = k; },
+    stackName(k) { return this.T('stacks.' + k, k); },
+    filledPrompt(f) {
+      const host = (this.target || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      const stack = this.stackName(this.activeStack(f)) || 'ton serveur';
+      return String(this.rem(f).ai_prompt || '').replace(/\{host\}/g, host).replace(/\{stack\}/g, stack);
+    },
+    copyPrompt(f) {
+      const text = this.filledPrompt(f);
+      const done = () => { this.copiedKey = this.fkey(f); setTimeout(() => { this.copiedKey = ''; }, 1800); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => {});
+      } else {
+        const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); done();
+      }
     },
   },
   mounted() { this.loadMe(); this.loadDomains(); this.loadHistory(); },
