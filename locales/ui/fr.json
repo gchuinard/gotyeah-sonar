@@ -73,7 +73,13 @@
     "checks_progress": "{done}/{total} checks",
     "observations": "{count} observations sur",
     "hide_pass": "masquer les conformes",
-    "empty": "Entre l'URL d'un de tes sites et lance un scan. Les observations apparaîtront ici au fil de l'analyse, et la jauge mesurera ta surface d'exposition."
+    "empty": "Entre l'URL d'un de tes sites et lance un scan. Les observations apparaîtront ici au fil de l'analyse, et la jauge mesurera ta surface d'exposition.",
+    "sort_by": "Trier par",
+    "sort_severity": "Sévérité (critiques d'abord)",
+    "sort_scan": "Ordre du scan",
+    "sort_category": "Catégorie",
+    "show_all": "Tout afficher",
+    "filter_hint": "Clique une sévérité pour filtrer le feed"
   },
 
   "remediation": {

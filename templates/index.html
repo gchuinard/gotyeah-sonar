@@ -197,6 +197,17 @@
   /* ---- sélecteur de langue ---- */
   .lang-sel { font-family: var(--mono); font-size: 11px; color: var(--text-dim); background: var(--bg-3); border: 1px solid var(--line); border-radius: 5px; padding: 3px 7px; cursor: pointer; }
 
+  /* ---- filtre (chips Répartition cliquables) + tri ---- */
+  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
+  .panel-head h2 { margin: 0; }
+  .reset-link { background: none; border: none; color: var(--accent); font-family: var(--mono); font-size: 11px; cursor: pointer; padding: 0; }
+  .reset-link:hover { text-decoration: underline; }
+  .tally .row.clickable { cursor: pointer; border-radius: 6px; padding: 4px 6px; margin: 0 -6px; transition: background .12s, opacity .12s; user-select: none; }
+  .tally .row.clickable:hover { background: var(--bg-3); }
+  .tally .row.sel { background: var(--accent-dim); }
+  .tally .row.dim { opacity: .35; }
+  .sort-sel { font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: var(--bg-3); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+
   .feed-enter-from { opacity: 0; transform: translateY(-10px); }
   .feed-enter-active { transition: opacity .35s ease, transform .35s cubic-bezier(.2,.8,.2,1); }
   .feed-move { transition: transform .4s cubic-bezier(.2,.8,.2,1); }
@@ -332,9 +343,14 @@
       </div>
 
       <div class="panel" v-if="hasResult || scanning">
-        <h2>{{ T('panels.breakdown', 'Répartition') }}</h2>
-        <div class="tally">
-          <div v-for="s in SEV_ORDER" :key="s" class="row" :class="{ zero: counts[s] === 0 }">
+        <div class="panel-head">
+          <h2>{{ T('panels.breakdown', 'Répartition') }}</h2>
+          <button v-if="sevFilter.length" class="reset-link" @click="clearSevFilter">{{ T('feed.show_all', 'Tout afficher') }}</button>
+        </div>
+        <div class="tally" :title="T('feed.filter_hint', 'Clique une sévérité pour filtrer le feed')">
+          <div v-for="s in SEV_ORDER" :key="s" class="row clickable"
+               :class="{ zero: counts[s] === 0, sel: sevFilter.includes(s), dim: sevFilter.length && !sevFilter.includes(s) }"
+               @click="toggleSev(s)">
             <span class="dot" :style="{ background: 'var(--sev-' + s + ')' }"></span>
             <span class="label">{{ SEV_LABEL[s] }}</span>
             <span class="n" :style="{ color: counts[s] ? 'var(--sev-' + s + ')' : 'var(--text-faint)' }">{{ counts[s] }}</span>
@@ -377,6 +393,11 @@
         </div>
         <div class="gbar" v-if="scanning"><i :style="{ width: progressPct + '%' }"></i></div>
         <label class="toggle"><input type="checkbox" v-model="hidePass"/> {{ T('feed.hide_pass', 'masquer les conformes') }}</label>
+        <select class="sort-sel" v-model="sortBy" :title="T('feed.sort_by', 'Trier par')">
+          <option value="severity">{{ T('feed.sort_severity', "Sévérité (critiques d'abord)") }}</option>
+          <option value="scan">{{ T('feed.sort_scan', 'Ordre du scan') }}</option>
+          <option value="category">{{ T('feed.sort_category', 'Catégorie') }}</option>
+        </select>
       </div>
 
       <transition-group name="feed" tag="div" class="feed">
@@ -473,6 +494,8 @@ createApp({
       findings: [], categories: {}, history: [],
       isHistorical: false, historical: null,
       hidePass: false, es: null, me: null,
+      // affichage du feed uniquement (n'affecte JAMAIS score/jauge/répartition)
+      sevFilter: [], sortBy: 'severity',
       domains: [], newDomain: '', domainBusy: false, domainMsg: '',
       // i18n
       ui: ui, lang: SONAR_BOOT.lang || 'fr', langs: SONAR_BOOT.available || ['fr'],
@@ -502,7 +525,23 @@ createApp({
     issuesCount() { return this.findings.filter(f => f.severity !== 'pass' && f.severity !== 'info').length; },
     passCount() { return this.counts.pass; },
     progressPct() { return this.totalChecks ? Math.round(this.done / this.totalChecks * 100) : 0; },
-    visibleFindings() { return this.hidePass ? this.findings.filter(f => f.severity !== 'pass') : this.findings; },
+    // Vue du feed UNIQUEMENT : filtre (conformes + sévérités) puis tri. Le score, la
+    // jauge et la répartition se calculent toujours sur `this.findings` (tout), jamais ici.
+    visibleFindings() {
+      let list = this.findings.filter(f =>
+        (!this.hidePass || f.severity !== 'pass') &&
+        (!this.sevFilter.length || this.sevFilter.includes(f.severity)));
+      if (this.sortBy === 'severity') {
+        const si = s => this.SEV_ORDER.indexOf(s);
+        list = list.slice().sort((a, b) => si(a.severity) - si(b.severity));   // critiques d'abord
+      } else if (this.sortBy === 'category') {
+        const ci = c => { const i = this.CAT_ORDER.indexOf(c); return i < 0 ? 999 : i; };
+        const si = s => this.SEV_ORDER.indexOf(s);
+        list = list.slice().sort((a, b) => ci(a.category) - ci(b.category) || si(a.severity) - si(b.severity));
+      }
+      // 'scan' : ordre d'arrivée (tableau tel quel). Tri stable → départage par insertion.
+      return list;
+    },
     categoriesList() {
       return this.CAT_ORDER.filter(c => this.categories[c]).map(c => {
         const o = this.categories[c];
@@ -664,6 +703,12 @@ createApp({
       } catch (e) {}
       window.location.reload();   // re-render présent + passé dans la nouvelle langue
     },
+    // --- filtre du feed par sévérité (multi-select, affichage seulement) ---
+    toggleSev(s) {
+      const i = this.sevFilter.indexOf(s);
+      if (i >= 0) this.sevFilter.splice(i, 1); else this.sevFilter.push(s);
+    },
+    clearSevFilter() { this.sevFilter = []; },
     // --- remédiation (cartes dépliables) ---
     rem(f) { return f.remediation || {}; },
     fkey(f) { return f.check_id + ':' + (f.code || '') + ':' + (f.title || ''); },
