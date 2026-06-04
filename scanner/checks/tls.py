@@ -161,3 +161,63 @@ async def tls(ctx):
         return [Finding("tls", C, Severity.INFO,
             code="error", params={"error_type": type(exc).__name__},
             evidence=str(exc))]
+
+
+def _handshake(host: str, port: int, vmin, vmax) -> bool:
+    """True si un handshake bornant le protocole entre `vmin` et `vmax` aboutit.
+
+    Code BLOQUANT (→ asyncio.to_thread). On force `@SECLEVEL=0` pour autoriser les
+    vieilles suites côté client, sinon un OpenSSL durci refuserait TLS 1.0/1.1
+    lui-même et masquerait ce que le serveur accepte vraiment. Seam mockable.
+    """
+    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    sslctx.check_hostname = False
+    sslctx.verify_mode = ssl.CERT_NONE
+    try:
+        sslctx.minimum_version = vmin
+        sslctx.maximum_version = vmax
+    except (ValueError, OSError):
+        return False
+    try:
+        sslctx.set_ciphers("ALL:@SECLEVEL=0")
+    except ssl.SSLError:
+        pass
+    try:
+        with socket.create_connection((host, port), timeout=_TIMEOUT) as raw:
+            with sslctx.wrap_socket(raw, server_hostname=host):
+                return True
+    except Exception:
+        return False
+
+
+@check("tls-protocols", "Protocoles TLS obsolètes acceptés", Category.TLS)
+async def tls_protocols(ctx):
+    """Le serveur ACCEPTE-t-il encore TLS 1.0 / 1.1 (même s'il négocie ≥1.2 par défaut) ?
+
+    On force des handshakes mono-protocole. Garde-fou anti-faux-positif : un handshake
+    moderne (1.2/1.3) doit d'abord réussir, sinon on conclut « non vérifiable » plutôt
+    que de prétendre que tout va bien.
+    """
+    parsed = urlparse(ctx.url)
+    if parsed.scheme != "https":
+        return []
+    host = ctx.host
+    port = parsed.port or 443
+
+    modern = await asyncio.to_thread(_handshake, host, port,
+                                     ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3)
+    if not modern:
+        return [Finding("tls-protocols", C, Severity.INFO, code="unverifiable",
+                        params={"host": host, "port": port})]
+
+    obsolete: list[str] = []
+    if await asyncio.to_thread(_handshake, host, port, ssl.TLSVersion.TLSv1, ssl.TLSVersion.TLSv1):
+        obsolete.append("TLS 1.0")
+    if await asyncio.to_thread(_handshake, host, port, ssl.TLSVersion.TLSv1_1, ssl.TLSVersion.TLSv1_1):
+        obsolete.append("TLS 1.1")
+
+    if obsolete:
+        joined = ", ".join(obsolete)
+        return [Finding("tls-protocols", C, Severity.MEDIUM, code="obsolete-accepted",
+                        params={"protocols": joined}, evidence=joined)]
+    return [Finding("tls-protocols", C, Severity.PASS, code="ok")]

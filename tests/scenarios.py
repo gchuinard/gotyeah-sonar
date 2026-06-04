@@ -375,6 +375,31 @@ async def _collect():
         finally:
             TK._cname = _orig_cname
 
+    # ---- TLS-PROTOCOLS (seam _handshake ; garde-fou « moderne d'abord ») ----
+    _orig_hs = TLS._handshake
+
+    def fake_hs(modern, old10, old11):
+        def f(host, port, vmin, vmax):
+            if vmin == ssl.TLSVersion.TLSv1_2:
+                return modern
+            if vmin == ssl.TLSVersion.TLSv1:
+                return old10
+            if vmin == ssl.TLSVersion.TLSv1_1:
+                return old11
+            return False
+        return f
+
+    for sid, m, o10, o11 in [
+        ("tls_proto_obsolete", True, True, False),
+        ("tls_proto_ok", True, False, False),
+        ("tls_proto_unverifiable", False, False, False),
+    ]:
+        TLS._handshake = fake_hs(m, o10, o11)
+        try:
+            await run(sid, TLS.tls_protocols(mkctx(url="https://x/", host="x")))
+        finally:
+            TLS._handshake = _orig_hs
+
     return out
 
 

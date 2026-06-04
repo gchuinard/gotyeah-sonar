@@ -192,3 +192,32 @@ tls-cert-expiry:
     refs:
       - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
     a_verifier: false
+
+tls-protocols:
+  obsolete-accepted:
+    title: "Obsolete TLS protocols accepted ({protocols})"
+    detail: "The server still accepts {protocols}, deprecated and vulnerable protocols, even though it negotiates a recent version by default."
+    explanation: "A server can negotiate TLS 1.2/1.3 with a modern browser while STILL accepting TLS 1.0/1.1 if a client asks for them. These old protocols suffer from known weaknesses (BEAST, POODLE, broken cipher suites)."
+    why: "As long as TLS 1.0/1.1 remains accepted, an attacker able to force a client to use them (downgrade) falls back to vulnerable protocols. Compliance (notably PCI-DSS) requires disabling them."
+    steps:
+      - "Restrict the allowed protocols to TLS 1.2 and TLS 1.3 on the server / reverse proxy."
+      - "Reload the configuration, then re-test (SSL Labs, or `nmap --script ssl-enum-ciphers -p 443 {host}`)."
+      - "Align the cipher suites with a modern configuration (Mozilla SSL Config generator)."
+    stacks:
+      nginx: "ssl_protocols TLSv1.2 TLSv1.3;"
+      apache: "SSLProtocol -all +TLSv1.2 +TLSv1.3"
+      npm: "Proxy Host → SSL: Nginx Proxy Manager already enforces TLS 1.2+; check any custom Nginx config that would re-enable old protocols."
+      cloudflare: "SSL/TLS → Edge Certificates → Minimum TLS Version → TLS 1.2."
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) still accepts old TLS protocols ({protocols}). Give the exact configuration for {stack} allowing only TLS 1.2 and TLS 1.3, with a modern cipher suite, and explain how to re-test."
+    refs:
+      - "https://ssl-config.mozilla.org/"
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+    a_verifier: false
+  ok:
+    title: "Modern TLS protocols only"
+    detail: "The server accepts neither TLS 1.0 nor TLS 1.1: only recent protocols (≥ TLS 1.2) can be negotiated."
+    why: "Obsolete protocols are refused: no downgrade attack surface toward vulnerable TLS."
+  unverifiable:
+    title: "TLS protocols not verifiable"
+    detail: "Could not establish a modern handshake to `{host}:{port}`: acceptance of old protocols could not be tested."
+    why: "Without a successful baseline handshake, we prefer to conclude nothing rather than wrongly claim the old protocols are refused."
