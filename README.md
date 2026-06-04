@@ -34,7 +34,9 @@ Sonar est **authentifié** : pas de mot de passe, on se connecte par **lien magi
 Tu saisis ton email sur `/login`, tu reçois un lien à usage unique (valable ~15 min),
 le clic ouvre une session longue (cookie). Un compte ne peut **rien scanner** tant qu'il
 n'a pas **vérifié un domaine par DNS**. Par défaut, l'admin échappe à ce gate (commodité) ;
-mets `SONAR_ADMIN_SCAN_ANY=false` pour le soumettre à la même vérification que les autres.
+ça se règle soit via l'env `SONAR_ADMIN_SCAN_ANY=false` (valeur initiale), soit **à chaud
+depuis le dashboard** (interrupteur « Scan libre admin » dans le panneau « Mes domaines »,
+visible uniquement pour l'admin). Mis sur off, l'admin doit vérifier ses domaines comme tout le monde.
 
 **Première connexion / porte de secours.** Définis `SONAR_ADMIN_EMAIL` : au démarrage, un
 lien de login one-time est imprimé dans les logs — récupère-le avec :
