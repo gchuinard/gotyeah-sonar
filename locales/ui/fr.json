@@ -92,6 +92,24 @@
     "invalid": "Domaine invalide."
   },
 
+  "tokens": {
+    "title": "Jetons d'accès (MCP)",
+    "intro": "Pour connecter Sonar à Claude via MCP (lecture seule).",
+    "empty": "Aucun jeton.",
+    "no_name": "(sans nom)",
+    "created": "Créé",
+    "last_used": "dernière utilisation",
+    "never": "jamais",
+    "revoked": "révoqué",
+    "revoke": "Révoquer",
+    "name_placeholder": "nom (optionnel)",
+    "generate": "Générer",
+    "copy_now": "Copie-le maintenant, il ne sera plus affiché.",
+    "copy": "Copier",
+    "copied": "Copié !",
+    "error": "Échec de la génération du jeton."
+  },
+
   "panels": {
     "security": "Sécurité",
     "weakest_link": "Maillon faible",

@@ -138,6 +138,18 @@ def init_auth() -> None:
                 created_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS personal_tokens (
+                id           TEXT PRIMARY KEY,
+                user_id      TEXT NOT NULL,
+                name         TEXT NOT NULL DEFAULT '',
+                token_hash   TEXT NOT NULL UNIQUE,
+                scope        TEXT NOT NULL DEFAULT 'scans:read',
+                created_at   TEXT NOT NULL,
+                expires_at   TEXT,
+                last_used_at TEXT,
+                revoked_at   TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_pat_user ON personal_tokens(user_id);
             CREATE TABLE IF NOT EXISTS verified_domains (
                 id          TEXT PRIMARY KEY,
                 user_id     TEXT NOT NULL,
@@ -302,6 +314,90 @@ def destroy_session(raw: str) -> None:
         return
     with _conn() as conn:
         conn.execute("DELETE FROM sessions WHERE token_hash=?", (_hash(raw),))
+
+
+# --------------------------------------------------------------------------- #
+# Jetons d'accès personnels (PAT) — accès LECTURE SEULE à l'API pour le MCP.
+# Le secret brut (`sonar_pat_…`) n'est montré qu'à la création ; seul son hash
+# SHA-256 est stocké (lookup par index, comme les sessions). Révocable, expiry
+# optionnel, scope (un seul pour l'instant : "scans:read").
+# --------------------------------------------------------------------------- #
+PAT_PREFIX = "sonar_pat_"
+PAT_DEFAULT_SCOPE = "scans:read"
+
+
+def _pat_to_dict(row) -> dict:
+    """Métadonnées publiques d'un jeton — SANS jamais le secret brut."""
+    return {
+        "id": row["id"],
+        "name": row["name"] or "",
+        "scope": row["scope"],
+        "created_at": row["created_at"],
+        "expires_at": row["expires_at"],
+        "last_used_at": row["last_used_at"],
+        "revoked": row["revoked_at"] is not None,
+    }
+
+
+def create_pat(user_id: str, name: str = "", scope: str = PAT_DEFAULT_SCOPE,
+               ttl_days: int | None = None) -> tuple[str, dict]:
+    """Crée un jeton personnel. Retourne (raw, meta) ; `raw` n'est disponible qu'ICI."""
+    raw = PAT_PREFIX + secrets.token_urlsafe(32)
+    pid = uuid.uuid4().hex
+    now = _now()
+    expires = _iso(now + datetime.timedelta(days=ttl_days)) if ttl_days else None
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO personal_tokens "
+            "(id, user_id, name, token_hash, scope, created_at, expires_at, last_used_at, revoked_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+            (pid, user_id, (name or "").strip()[:80], _hash(raw), scope, _iso(now), expires),
+        )
+        row = conn.execute("SELECT * FROM personal_tokens WHERE id=?", (pid,)).fetchone()
+    return raw, _pat_to_dict(row)
+
+
+def list_pats(user_id: str) -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM personal_tokens WHERE user_id=? ORDER BY created_at DESC",
+            (user_id,),
+        ).fetchall()
+    return [_pat_to_dict(r) for r in rows]
+
+
+def revoke_pat(token_id: str, user_id: str) -> bool:
+    """Révoque un jeton de cet utilisateur. Idempotent ; True si une ligne lui
+    appartenant a été révoquée (un id d'un autre owner ne fait rien -> pas d'IDOR)."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE personal_tokens SET revoked_at=? "
+            "WHERE id=? AND user_id=? AND revoked_at IS NULL",
+            (_iso(_now()), token_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
+def resolve_pat(raw: str, required_scope: str | None = None):
+    """Valide un jeton brut et renvoie l'utilisateur propriétaire, sinon None.
+    Refuse : mauvais préfixe, inconnu, révoqué, expiré, scope insuffisant.
+    Met à jour `last_used_at` en cas de succès."""
+    if not raw or not raw.startswith(PAT_PREFIX):
+        return None
+    now_iso = _iso(_now())
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM personal_tokens WHERE token_hash=?", (_hash(raw),)
+        ).fetchone()
+        if not row or row["revoked_at"] is not None:
+            return None
+        if row["expires_at"] is not None and row["expires_at"] <= now_iso:
+            return None
+        if required_scope is not None and required_scope not in (row["scope"] or "").split():
+            return None  # default-deny si on ajoute des scopes plus tard
+        conn.execute(
+            "UPDATE personal_tokens SET last_used_at=? WHERE id=?", (now_iso, row["id"]))
+    return get_user_by_id(row["user_id"])
 
 
 # --------------------------------------------------------------------------- #

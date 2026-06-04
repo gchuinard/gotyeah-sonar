@@ -297,6 +297,13 @@
   .dom-msg { margin-top: 9px; font-size: 12px; color: var(--text-dim); }
   .admin-toggle { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 
+  /* ---- jetons d'accès (MCP) ---- */
+  .tok-intro { font-size: 12px; color: var(--text-dim); margin-bottom: 11px; }
+  .tok-meta { margin-top: 6px; font-size: 11.5px; color: var(--text-faint); }
+  .tok-secret { margin-bottom: 12px; background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 11px; display: flex; flex-direction: column; gap: 8px; }
+  .tok-secret-warn { font-size: 12px; color: var(--accent); font-weight: 600; }
+  .tok-secret-val { font-family: var(--mono); font-size: 12px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; word-break: break-all; }
+
   .feed-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 60px 20px; }
   .feed-empty .mark { width: 56px; height: 56px; opacity: .5; }
   .feed-empty p { margin: 0; max-width: 360px; }
@@ -434,6 +441,35 @@
           <button class="btn-sm" @click="addDomain" :disabled="domainBusy || !newDomain.trim()">{{ T('domains.add', 'Ajouter') }}</button>
         </div>
         <div v-if="domainMsg" class="dom-msg">{{ domainMsg }}</div>
+      </div>
+
+      <div class="panel">
+        <h2>{{ T('tokens.title', 'Jetons d\'accès (MCP)') }}</h2>
+        <div class="tok-intro">{{ T('tokens.intro', 'Pour connecter Sonar à Claude via MCP (lecture seule).') }}</div>
+        <div v-if="newToken" class="tok-secret">
+          <div class="tok-secret-warn">{{ T('tokens.copy_now', 'Copie-le maintenant, il ne sera plus affiché.') }}</div>
+          <code class="tok-secret-val">{{ newToken }}</code>
+          <button class="btn-sm" @click="copyToken">{{ tokenCopied ? T('tokens.copied', 'Copié !') : T('tokens.copy', 'Copier') }}</button>
+        </div>
+        <div class="doms">
+          <div v-if="!tokens.length" class="empty">{{ T('tokens.empty', 'Aucun jeton.') }}</div>
+          <div v-for="tk in tokens" :key="tk.id" class="dom">
+            <div class="dom-top">
+              <span class="dom-name">{{ tk.name || T('tokens.no_name', '(sans nom)') }}</span>
+              <span v-if="tk.revoked" class="dom-badge pending">{{ T('tokens.revoked', 'révoqué') }}</span>
+              <button v-if="!tk.revoked" class="dom-x" @click="revokeToken(tk)" :title="T('tokens.revoke', 'Révoquer')">✕</button>
+            </div>
+            <div class="tok-meta">
+              {{ T('tokens.created', 'Créé') }} {{ fmtDate(tk.created_at) }}
+              · {{ T('tokens.last_used', 'dernière utilisation') }} : {{ tk.last_used_at ? fmtDate(tk.last_used_at) : T('tokens.never', 'jamais') }}
+            </div>
+          </div>
+        </div>
+        <div class="dom-add">
+          <input v-model="newTokenName" @keyup.enter="createToken" :placeholder="T('tokens.name_placeholder', 'nom (optionnel)')" spellcheck="false" />
+          <button class="btn-sm" @click="createToken" :disabled="tokenBusy">{{ T('tokens.generate', 'Générer') }}</button>
+        </div>
+        <div v-if="tokenMsg" class="dom-msg">{{ tokenMsg }}</div>
       </div>
 
       <div class="panel" v-if="hasResult || scanning">
@@ -632,6 +668,8 @@ createApp({
       // affichage du feed uniquement (n'affecte JAMAIS score/jauge/répartition)
       sevFilter: [], catFilter: [], sortBy: 'severity',
       domains: [], newDomain: '', domainBusy: false, domainMsg: '',
+      // jetons d'accès (MCP) — le secret brut (newToken) n'est affiché qu'une fois
+      tokens: [], newTokenName: '', tokenBusy: false, tokenMsg: '', newToken: '', tokenCopied: false,
       // i18n
       ui: ui, lang: SONAR_BOOT.lang || 'fr', langs: SONAR_BOOT.available || ['fr'],
       // remédiation (cartes dépliables)
@@ -847,6 +885,45 @@ createApp({
         await this.loadMe();
       } catch (e) {}
     },
+    async loadTokens() {
+      try {
+        const r = await fetch('/api/tokens');
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        this.tokens = (await r.json()).tokens || [];
+      } catch (e) {}
+    },
+    async createToken() {
+      if (this.tokenBusy) return;
+      this.tokenBusy = true; this.tokenMsg = ''; this.newToken = ''; this.tokenCopied = false;
+      try {
+        const r = await fetch('/api/tokens', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: this.newTokenName.trim() }),
+        });
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        if (!r.ok) { this.tokenMsg = this.T('tokens.error', 'Échec de la génération du jeton.'); return; }
+        const d = await r.json();
+        this.newToken = d.token || '';   // secret brut, affiché une seule fois
+        this.newTokenName = '';
+        await this.loadTokens();
+      } catch (e) {} finally { this.tokenBusy = false; }
+    },
+    async revokeToken(tk) {
+      try {
+        await fetch('/api/tokens/' + tk.id, { method: 'DELETE' });
+        await this.loadTokens();
+      } catch (e) {}
+    },
+    copyToken() {
+      const text = this.newToken;
+      const done = () => { this.tokenCopied = true; setTimeout(() => { this.tokenCopied = false; }, 1800); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => {});
+      } else {
+        const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); done();
+      }
+    },
     async loadHistory() {
       try {
         const r = await fetch('/api/history');
@@ -972,7 +1049,7 @@ createApp({
       }
     },
   },
-  mounted() { this.loadMe(); this.loadDomains(); this.loadHistory(); },
+  mounted() { this.loadMe(); this.loadDomains(); this.loadTokens(); this.loadHistory(); },
 }).mount('#app');
 </script>
 </body>

@@ -299,6 +299,51 @@ async def domains_delete(request: Request, domain_id: str):
 
 
 # --------------------------------------------------------------------------- #
+# Jetons d'accès personnels (PAT) — gestion RÉSERVÉE À LA SESSION (cookie).
+# Un PAT donne un accès LECTURE SEULE à l'API (pour le MCP). Volontairement
+# inaccessible via un PAT : on ne crée/révoque pas de jeton avec un jeton.
+
+@app.get("/api/tokens")
+async def tokens_list(request: Request):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    return JSONResponse({"tokens": auth.list_pats(user["id"])})
+
+
+@app.post("/api/tokens")
+async def tokens_create(request: Request):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    name = body.get("name") or ""
+    raw_ttl = body.get("ttl_days")
+    try:
+        ttl = int(raw_ttl) if raw_ttl not in (None, "") else None
+    except (TypeError, ValueError):
+        ttl = None
+    if ttl is not None and ttl <= 0:
+        ttl = None
+    raw, meta = auth.create_pat(user["id"], name=name, ttl_days=ttl)
+    # `token` (le secret brut) n'est renvoyé qu'ICI, une seule fois.
+    return JSONResponse({"token": raw, **meta}, status_code=201)
+
+
+@app.delete("/api/tokens/{token_id}")
+async def tokens_revoke(request: Request, token_id: str):
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    auth.revoke_pat(token_id, user["id"])
+    return JSONResponse({"ok": True})
+
+
+# --------------------------------------------------------------------------- #
 # Scan + historique (protégés par la session)
 # --------------------------------------------------------------------------- #
 @app.get("/api/scan/stream")

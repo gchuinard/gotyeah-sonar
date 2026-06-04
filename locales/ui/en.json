@@ -92,6 +92,24 @@
     "invalid": "Invalid domain."
   },
 
+  "tokens": {
+    "title": "Access tokens (MCP)",
+    "intro": "To connect Sonar to Claude via MCP (read-only).",
+    "empty": "No tokens.",
+    "no_name": "(no name)",
+    "created": "Created",
+    "last_used": "last used",
+    "never": "never",
+    "revoked": "revoked",
+    "revoke": "Revoke",
+    "name_placeholder": "name (optional)",
+    "generate": "Generate",
+    "copy_now": "Copy it now — it won't be shown again.",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "error": "Failed to generate token."
+  },
+
   "panels": {
     "security": "Security",
     "weakest_link": "Weakest link",
