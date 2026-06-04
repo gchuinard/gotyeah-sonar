@@ -40,6 +40,11 @@
     "scan_any": "Admin free scan (no DNS check)"
   },
 
+  "tabs": {
+    "report": "Report",
+    "history": "History"
+  },
+
   "console": {
     "prompt": "scan ~$",
     "placeholder": "mysite.com",

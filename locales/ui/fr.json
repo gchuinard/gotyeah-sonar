@@ -40,6 +40,11 @@
     "scan_any": "Scan libre admin (sans vérif DNS)"
   },
 
+  "tabs": {
+    "report": "Rapport",
+    "history": "Historique"
+  },
+
   "console": {
     "prompt": "scan ~$",
     "placeholder": "monsite.com",

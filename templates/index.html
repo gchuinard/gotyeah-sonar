@@ -134,6 +134,25 @@
   .weakest b { font-family: var(--display); font-size: 15px; }
   .weakest.muted { color: var(--text-faint); font-family: var(--mono); }
 
+  /* ---- barre d'onglets ---- */
+  .tabs-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+  .tabbtn { display: flex; align-items: center; font-family: var(--display); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; color: var(--text-dim); background: none; border: none; border-bottom: 2px solid transparent; padding: 11px 16px; margin-bottom: -1px; cursor: pointer; transition: color .15s, border-color .15s; }
+  .tabbtn:hover { color: var(--text); }
+  .tabbtn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-count { margin-left: 8px; font-family: var(--mono); font-size: 11px; color: var(--text-faint); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
+
+  /* ---- onglet historique ---- */
+  .hist-empty { color: var(--text-faint); font-size: 14px; padding: 48px 20px; text-align: center; }
+  .hist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 12px; }
+  .hist-card { display: flex; align-items: center; gap: 14px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: pointer; transition: background .15s, border-color .15s; }
+  .hist-card:hover { background: var(--bg-3); border-color: var(--line-2); }
+  .hc-grade { font-family: var(--display); font-weight: 700; font-size: 26px; width: 38px; text-align: center; flex: none; }
+  .hc-meta { min-width: 0; flex: 1; }
+  .hc-target { font-family: var(--mono); font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hc-date { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+  .hc-score { font-family: var(--mono); font-size: 15px; color: var(--text-dim); white-space: nowrap; }
+  .hc-score small { font-size: 11px; color: var(--text-faint); }
+
   /* ---- tally ---- */
   .tally { display: flex; flex-direction: column; gap: 2px; }
   .tally .row { display: flex; align-items: center; gap: 9px; padding: 4px 0; font-size: 13px; }
@@ -301,6 +320,16 @@
     </button>
   </div>
 
+  <nav class="tabs-bar">
+    <button class="tabbtn" :class="{ active: activeTab === 'report' }" @click="activeTab = 'report'">
+      <span class="led" :class="{ live: scanning }" style="margin-right:7px"></span>{{ T('tabs.report', 'Rapport') }}
+    </button>
+    <button class="tabbtn" :class="{ active: activeTab === 'history' }" @click="goHistory">
+      {{ T('tabs.history', 'Historique') }}<span v-if="history.length" class="tab-count">{{ history.length }}</span>
+    </button>
+  </nav>
+
+  <div v-show="activeTab === 'report'">
   <div v-if="errorMsg" class="banner err">{{ errorMsg }}</div>
   <div v-if="isHistorical" class="banner arch">
     {{ T('banners.archived', 'Scan archivé —') }} <b>{{ historical && fmtDate(historical.date) }}</b>
@@ -389,20 +418,6 @@
           <div class="cat" v-for="c in categoriesList" :key="c.name">
             <div class="top"><span class="name">{{ c.label }}</span><span class="num">{{ c.done }}/{{ c.total }}</span></div>
             <div class="bar"><i :style="{ width: c.pct + '%' }"></i></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h2>{{ T('panels.history', 'Historique') }}</h2>
-        <div class="hist">
-          <div v-if="!history.length" class="empty">{{ T('panels.history_empty', 'Aucun scan enregistré.') }}</div>
-          <div class="item" v-for="h in history" :key="h.id" @click="openScan(h.id)">
-            <span class="gr" :style="{ color: colorOf(h.score) }">{{ h.grade }}</span>
-            <div class="meta">
-              <div class="t">{{ h.target.replace(/^https?:\/\//,'') }}</div>
-              <div class="d">{{ fmtDate(h.created_at) }} · {{ h.score }}/100</div>
-            </div>
           </div>
         </div>
       </div>
@@ -498,6 +513,21 @@
       </div>
     </section>
   </div>
+  </div><!-- /onglet Rapport -->
+
+  <div v-show="activeTab === 'history'" class="history-tab">
+    <div v-if="!history.length" class="hist-empty">{{ T('panels.history_empty', 'Aucun scan enregistré.') }}</div>
+    <div class="hist-grid">
+      <div class="hist-card" v-for="h in history" :key="h.id" @click="openScan(h.id)">
+        <span class="hc-grade" :style="{ color: colorOf(h.score) }">{{ h.grade }}</span>
+        <div class="hc-meta">
+          <div class="hc-target">{{ h.target.replace(/^https?:\/\//,'') }}</div>
+          <div class="hc-date">{{ fmtDate(h.created_at) }}</div>
+        </div>
+        <div class="hc-score">{{ h.score }}<small>/100</small></div>
+      </div>
+    </div>
+  </div>
 
 </div>
 
@@ -519,6 +549,8 @@ createApp({
       findings: [], categories: {}, history: [],
       isHistorical: false, historical: null,
       hidePass: false, es: null, me: null,
+      // onglets : 'report' (scan courant / dernier rapport) ou 'history'
+      activeTab: 'report',
       // affichage du feed uniquement (n'affecte JAMAIS score/jauge/répartition)
       sevFilter: [], sortBy: 'severity',
       domains: [], newDomain: '', domainBusy: false, domainMsg: '',
@@ -627,6 +659,7 @@ createApp({
         this.errorMsg = this.T('banners.scan_locked', "Scan verrouillé : ajoute et vérifie un domaine dans « Mes domaines ».");
         return;
       }
+      this.activeTab = 'report';
       this.closeEs();
       this.isHistorical = false; this.historical = null; this.errorMsg = '';
       this.findings = []; this.categories = {}; this.done = 0; this.totalChecks = 0;
@@ -727,6 +760,7 @@ createApp({
         this.history = await r.json();
       } catch (e) {}
     },
+    goHistory() { this.activeTab = 'history'; this.loadHistory(); },
     async openScan(id) {
       try {
         const r = await fetch('/api/scan/' + id + '?lang=' + encodeURIComponent(this.lang));
@@ -735,6 +769,7 @@ createApp({
         this.closeEs(); this.scanning = false; this.finished = true; this.errorMsg = '';
         this.findings = d.findings || []; this.categories = {}; this.totalChecks = 0; this.done = 0;
         this.target = d.target; this.isHistorical = true; this.historical = { date: d.created_at, id: d.id };
+        this.activeTab = 'report';   // ouvrir un scan archivé bascule sur l'onglet Rapport
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (e) {}
     },
