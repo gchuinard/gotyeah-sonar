@@ -148,3 +148,66 @@ dns-caa:
       - "https://datatracker.ietf.org/doc/html/rfc8659"
       - "https://developer.mozilla.org/en-US/docs/Web/Security"
     a_verifier: false
+
+dns-dkim:
+  present:
+    title: "DKIM record present (selector {selector})"
+    detail: "A DKIM record was found on selector `{selector}`: your emails can be cryptographically signed."
+    why: "DKIM signs your outgoing email: the recipient verifies the signature and detects any tampering or spoofing. Combined with SPF and DMARC, it is the foundation of email authentication."
+  none:
+    title: "No DKIM on common selectors"
+    detail: "No DKIM record was found on the most common selectors. (A custom selector would not be detected here.)"
+    why: "Without DKIM, your emails are not signed: it is easier for a third party to spoof your domain, and DMARC cannot rely on DKIM alignment. If you send email, publish a DKIM key."
+    steps:
+      - "Enable DKIM at your sending provider (Google Workspace, Microsoft 365, Brevo, Mailgun…): it gives you a selector and a public key."
+      - "Publish the provided TXT record at `<selector>._domainkey.example.com` (value `v=DKIM1; k=rsa; p=<public key>`)."
+      - "Then check DKIM alignment in your DMARC reports."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc6376"
+
+dns-mtasts:
+  present:
+    title: "MTA-STS present"
+    detail: "An MTA-STS policy is published (`_mta-sts`): inbound SMTP delivery to your domain can be forced over TLS."
+    why: "MTA-STS prevents cleartext downgrade of inbound email delivery (SMTP downgrade attack), by requiring valid TLS from sending servers."
+  none:
+    title: "MTA-STS missing"
+    detail: "No MTA-STS policy (`_mta-sts.example.com`) is published. Optional but recommended for domains that receive mail."
+    why: "Without MTA-STS, a network attacker can try to force your inbound email delivery into cleartext (SMTP downgrade) and intercept it. MTA-STS requires valid TLS from sending servers."
+    steps:
+      - "Publish a TXT record at `_mta-sts.example.com`: `v=STSv1; id=<unique timestamp>`."
+      - "Host the policy at `https://mta-sts.example.com/.well-known/mta-sts.txt` (`testing` mode, then `enforce`)."
+      - "Ideally add TLS-RPT (`_smtp._tls`) to receive TLS failure reports."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc8461"
+
+dns-tlsrpt:
+  present:
+    title: "TLS-RPT present"
+    detail: "A TLS-RPT record (`_smtp._tls`) is published: you receive reports about TLS delivery failures for your email."
+    why: "TLS-RPT surfaces encryption problems in SMTP delivery (downgrade, invalid certificates), useful to detect an attack or a misconfiguration."
+  none:
+    title: "TLS-RPT missing"
+    detail: "No TLS-RPT record (`_smtp._tls.example.com`) is published. Optional, complementary to MTA-STS."
+    why: "Without TLS-RPT, you have no visibility into TLS delivery failures for your inbound email: a downgrade attack or a broken certificate would go unnoticed."
+    steps:
+      - "Publish a TXT record at `_smtp._tls.example.com`: `v=TLSRPTv1; rua=mailto:tlsrpt@example.com`."
+      - "Monitor the reports received to spot encrypted-delivery failures."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc8460"
+
+dns-dnssec:
+  present:
+    title: "DNSSEC enabled"
+    detail: "The zone publishes DNSSEC keys (`DNSKEY`): DNS responses are signed."
+    why: "DNSSEC cryptographically signs your DNS records: a validating resolver detects any tampering (cache poisoning, forged responses), protecting your domain's routing."
+  absent:
+    title: "DNSSEC not enabled"
+    detail: "No DNSSEC key (`DNSKEY`) was found for the domain: DNS responses are not signed."
+    why: "Without DNSSEC, an attacker able to poison DNS can hijack your domain (redirect visitors/email to their infrastructure) undetected. DNSSEC makes such tampering detectable."
+    steps:
+      - "Enable DNSSEC at your DNS host / registrar (often a checkbox that generates the keys)."
+      - "Publish the matching DS record at the registrar (often automatic if DNS and registrar are with the same provider)."
+      - "Verify the chain of trust (e.g. dnsviz.net, or `dig +dnssec example.com`)."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc4033"

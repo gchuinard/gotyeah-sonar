@@ -286,6 +286,23 @@ async def _collect():
         finally:
             DNS._resolve = _orig_resolve
 
+    email_cases = [
+        ("dns_dkim_present", DNS.dkim, {("google._domainkey.example.com", "TXT"): ['"v=DKIM1; k=rsa; p=ABC"']}),
+        ("dns_dkim_none", DNS.dkim, {}),
+        ("dns_mtasts_present", DNS.mtasts, {("_mta-sts.example.com", "TXT"): ['"v=STSv1; id=20240101"']}),
+        ("dns_mtasts_none", DNS.mtasts, {}),
+        ("dns_tlsrpt_present", DNS.tlsrpt, {("_smtp._tls.example.com", "TXT"): ['"v=TLSRPTv1; rua=mailto:t@x"']}),
+        ("dns_tlsrpt_none", DNS.tlsrpt, {}),
+        ("dns_dnssec_present", DNS.dnssec, {("example.com", "DNSKEY"): ["257 3 13 abc"]}),
+        ("dns_dnssec_absent", DNS.dnssec, {}),
+    ]
+    for sid, fn, mapping in email_cases:
+        DNS._resolve = _dns_resolver(mapping)
+        try:
+            await run(sid, fn(mkctx(host="example.com")))
+        finally:
+            DNS._resolve = _orig_resolve
+
     # ---- NUCLEI / ZAP : codes d'état maison (les résultats dynamiques sont EN, hors golden FR) ----
     import os
 

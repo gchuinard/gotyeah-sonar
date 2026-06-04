@@ -148,3 +148,66 @@ dns-caa:
       - "https://datatracker.ietf.org/doc/html/rfc8659"
       - "https://developer.mozilla.org/fr/docs/Web/Security"
     a_verifier: false
+
+dns-dkim:
+  present:
+    title: "Enregistrement DKIM présent (sélecteur {selector})"
+    detail: "Un enregistrement DKIM a été trouvé sur le sélecteur `{selector}` : tes e-mails peuvent être signés cryptographiquement."
+    why: "DKIM signe tes e-mails sortants : le destinataire vérifie la signature et détecte toute altération ou usurpation. Couplé à SPF et DMARC, c'est le socle de l'authentification e-mail."
+  none:
+    title: "Aucun DKIM sur les sélecteurs courants"
+    detail: "Aucun enregistrement DKIM n'a été trouvé sur les sélecteurs les plus répandus. (Un sélecteur personnalisé ne serait pas détecté ici.)"
+    why: "Sans DKIM, tes e-mails ne sont pas signés : il est plus facile pour un tiers d'usurper ton domaine, et DMARC ne peut pas s'appuyer sur l'alignement DKIM. Si tu envoies des e-mails, publie une clé DKIM."
+    steps:
+      - "Active DKIM chez ton fournisseur d'envoi (Google Workspace, Microsoft 365, Brevo, Mailgun…) : il te donne un sélecteur et une clé publique."
+      - "Publie l'enregistrement TXT fourni sur `<sélecteur>._domainkey.example.com` (valeur `v=DKIM1; k=rsa; p=<clé publique>`)."
+      - "Vérifie ensuite l'alignement DKIM dans tes rapports DMARC."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc6376"
+
+dns-mtasts:
+  present:
+    title: "MTA-STS présent"
+    detail: "Une politique MTA-STS est publiée (`_mta-sts`) : la remise SMTP entrante vers ton domaine peut être forcée en TLS."
+    why: "MTA-STS empêche la rétrogradation en clair de la remise des e-mails entrants (attaque par downgrade SMTP), en imposant aux serveurs émetteurs un TLS valide."
+  none:
+    title: "MTA-STS absent"
+    detail: "Aucune politique MTA-STS (`_mta-sts.example.com`) n'est publiée. Optionnel mais recommandé pour les domaines qui reçoivent du courrier."
+    why: "Sans MTA-STS, un attaquant réseau peut tenter de forcer la remise de tes e-mails entrants en clair (downgrade SMTP) et les intercepter. MTA-STS impose un TLS valide aux serveurs émetteurs."
+    steps:
+      - "Publie un TXT sur `_mta-sts.example.com` : `v=STSv1; id=<horodatage unique>`."
+      - "Héberge la politique sur `https://mta-sts.example.com/.well-known/mta-sts.txt` (mode `testing` puis `enforce`)."
+      - "Ajoute idéalement TLS-RPT (`_smtp._tls`) pour recevoir les rapports d'échec TLS."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc8461"
+
+dns-tlsrpt:
+  present:
+    title: "TLS-RPT présent"
+    detail: "Un enregistrement TLS-RPT (`_smtp._tls`) est publié : tu reçois des rapports sur les échecs de remise TLS de tes e-mails."
+    why: "TLS-RPT te fait remonter les problèmes de chiffrement de la remise SMTP (downgrade, certificats invalides), utile pour détecter une attaque ou une mauvaise configuration."
+  none:
+    title: "TLS-RPT absent"
+    detail: "Aucun enregistrement TLS-RPT (`_smtp._tls.example.com`) n'est publié. Optionnel, complémentaire de MTA-STS."
+    why: "Sans TLS-RPT, tu n'as aucune visibilité sur les échecs de remise TLS de tes e-mails entrants : une attaque par downgrade ou un certificat cassé passerait inaperçu."
+    steps:
+      - "Publie un TXT sur `_smtp._tls.example.com` : `v=TLSRPTv1; rua=mailto:tlsrpt@example.com`."
+      - "Surveille les rapports reçus pour repérer les échecs de remise chiffrée."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc8460"
+
+dns-dnssec:
+  present:
+    title: "DNSSEC activé"
+    detail: "La zone publie des clés DNSSEC (`DNSKEY`) : les réponses DNS sont signées."
+    why: "DNSSEC signe cryptographiquement tes enregistrements DNS : un résolveur validant détecte toute falsification (empoisonnement de cache, réponses forgées), ce qui protège la redirection de ton domaine."
+  absent:
+    title: "DNSSEC non activé"
+    detail: "Aucune clé DNSSEC (`DNSKEY`) n'a été trouvée pour le domaine : les réponses DNS ne sont pas signées."
+    why: "Sans DNSSEC, un attaquant en position d'empoisonner le DNS peut détourner ton domaine (rediriger les visiteurs/e-mails vers son infrastructure) sans être détecté. DNSSEC rend ces falsifications détectables."
+    steps:
+      - "Active DNSSEC chez ton hébergeur DNS / registrar (souvent une case à cocher qui génère les clés)."
+      - "Publie l'enregistrement DS correspondant auprès du registrar (souvent automatique si DNS et registrar sont chez le même prestataire)."
+      - "Vérifie la chaîne de confiance (ex. dnsviz.net, ou `dig +dnssec example.com`)."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc4033"

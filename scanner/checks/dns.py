@@ -145,3 +145,81 @@ def _dmarc_policy(record: str) -> str | None:
 def _caa_absent() -> Finding:
     """Finding structuré : aucun enregistrement CAA n'est publié pour le domaine."""
     return Finding("dns-caa", C, Severity.LOW, code="absent")
+
+
+# Sélecteurs DKIM courants (on ne peut pas tous les énumérer → sondage best-effort).
+_DKIM_SELECTORS = ["default", "google", "selector1", "selector2", "k1", "k2",
+                   "mail", "dkim", "s1", "s2", "mandrill", "sendgrid"]
+
+
+@check("dns-dkim", "DKIM (sélecteurs courants)", C)
+async def dkim(ctx):
+    domain = _org_domain(getattr(ctx, "host", "") or "")
+    if not domain:
+        return []
+    for sel in _DKIM_SELECTORS:
+        name = f"{sel}._domainkey.{domain}"
+        try:
+            txts = [_join_txt(v) for v in await asyncio.to_thread(_resolve, name, "TXT")]
+        except Exception:
+            continue
+        if any("v=dkim1" in t.lower() or ("p=" in t.lower() and "k=" in t.lower()) for t in txts):
+            return [Finding("dns-dkim", C, Severity.PASS, code="present",
+                            params={"selector": sel}, evidence=name)]
+    return [Finding("dns-dkim", C, Severity.INFO, code="none")]
+
+
+@check("dns-mtasts", "MTA-STS", C)
+async def mtasts(ctx):
+    domain = _org_domain(getattr(ctx, "host", "") or "")
+    if not domain:
+        return []
+    name = f"_mta-sts.{domain}"
+    try:
+        txts = [_join_txt(v) for v in await asyncio.to_thread(_resolve, name, "TXT")]
+    except _NO_RECORD:
+        return [Finding("dns-mtasts", C, Severity.INFO, code="none")]
+    except _RESOLVE_FAILED as exc:
+        return [_resolution_unavailable(f"`{name}` (MTA-STS)", exc)]
+    except Exception as exc:
+        return [_resolution_unavailable(f"`{name}` (MTA-STS)", exc)]
+    if any("v=stsv1" in t.lower() for t in txts):
+        return [Finding("dns-mtasts", C, Severity.PASS, code="present", evidence=name)]
+    return [Finding("dns-mtasts", C, Severity.INFO, code="none")]
+
+
+@check("dns-tlsrpt", "TLS-RPT", C)
+async def tlsrpt(ctx):
+    domain = _org_domain(getattr(ctx, "host", "") or "")
+    if not domain:
+        return []
+    name = f"_smtp._tls.{domain}"
+    try:
+        txts = [_join_txt(v) for v in await asyncio.to_thread(_resolve, name, "TXT")]
+    except _NO_RECORD:
+        return [Finding("dns-tlsrpt", C, Severity.INFO, code="none")]
+    except _RESOLVE_FAILED as exc:
+        return [_resolution_unavailable(f"`{name}` (TLS-RPT)", exc)]
+    except Exception as exc:
+        return [_resolution_unavailable(f"`{name}` (TLS-RPT)", exc)]
+    if any("v=tlsrptv1" in t.lower() for t in txts):
+        return [Finding("dns-tlsrpt", C, Severity.PASS, code="present", evidence=name)]
+    return [Finding("dns-tlsrpt", C, Severity.INFO, code="none")]
+
+
+@check("dns-dnssec", "DNSSEC", C)
+async def dnssec(ctx):
+    domain = _org_domain(getattr(ctx, "host", "") or "")
+    if not domain:
+        return []
+    try:
+        keys = await asyncio.to_thread(_resolve, domain, "DNSKEY")
+    except _NO_RECORD:
+        keys = []
+    except _RESOLVE_FAILED as exc:
+        return [_resolution_unavailable(f"`{domain}` (DNSSEC)", exc)]
+    except Exception:
+        keys = []
+    if keys:
+        return [Finding("dns-dnssec", C, Severity.PASS, code="present")]
+    return [Finding("dns-dnssec", C, Severity.LOW, code="absent")]
