@@ -248,6 +248,17 @@
   .tally .row.dim { opacity: .35; }
   .sort-sel { font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: var(--bg-3); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
 
+  /* ---- barre de filtre par criticité (au-dessus du feed) ---- */
+  .filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+  .fb-label { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .1em; margin-right: 2px; }
+  .fchip { font-family: var(--mono); font-size: 12px; color: var(--c); background: none; border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; cursor: pointer; transition: background .12s, border-color .12s, opacity .12s, color .12s; }
+  .fchip b { color: var(--c); }
+  .fchip:hover:not(:disabled) { border-color: var(--c); }
+  .fchip.on { background: var(--c); color: var(--bg); border-color: var(--c); }
+  .fchip.on b { color: var(--bg); }
+  .fchip.off { opacity: .4; }
+  .fchip:disabled { opacity: .3; cursor: default; }
+
   .feed-enter-from { opacity: 0; transform: translateY(-10px); }
   .feed-enter-active { transition: opacity .35s ease, transform .35s cubic-bezier(.2,.8,.2,1); }
   .feed-move { transition: transform .4s cubic-bezier(.2,.8,.2,1); }
@@ -467,6 +478,17 @@
           <option value="scan">{{ T('feed.sort_scan', 'Ordre du scan') }}</option>
           <option value="category">{{ T('feed.sort_category', 'Catégorie') }}</option>
         </select>
+      </div>
+
+      <div class="filter-bar" v-if="hasResult">
+        <span class="fb-label">{{ T('feed.filter_by', 'Filtrer') }}</span>
+        <button v-for="s in SEV_ORDER" :key="s" class="fchip"
+                :class="{ on: sevFilter.includes(s), off: sevFilter.length && !sevFilter.includes(s) }"
+                :style="{ '--c': 'var(--sev-' + s + ')' }"
+                :disabled="!counts[s]" @click="toggleSev(s)">
+          {{ sevLabel(s) }} <b>{{ counts[s] }}</b>
+        </button>
+        <button v-if="sevFilter.length" class="reset-link" @click="clearSevFilter">{{ T('feed.show_all', 'Tout afficher') }}</button>
       </div>
 
       <transition-group name="feed" tag="div" class="feed">

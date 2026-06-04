@@ -108,6 +108,7 @@
     "sort_scan": "Scan order",
     "sort_category": "Category",
     "show_all": "Show all",
+    "filter_by": "Filter",
     "filter_hint": "Click a severity to filter the feed"
   },
 
