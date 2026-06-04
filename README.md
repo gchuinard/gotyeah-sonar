@@ -68,20 +68,28 @@ scannables. (La propagation DNS peut prendre quelques minutes.)
 
 | Catégorie | Checks |
 |-----------|--------|
-| En-têtes HTTP | CSP, HSTS (+ max-age), clickjacking (X-Frame-Options / frame-ancestors), nosniff, Referrer-Policy, Permissions-Policy, divulgation de version serveur |
+| En-têtes HTTP | CSP, HSTS (+ max-age), clickjacking (X-Frame-Options / frame-ancestors), nosniff, Referrer-Policy, Permissions-Policy, divulgation de version serveur, **COOP / COEP / CORP**, **Cache-Control des réponses sensibles** |
 | Cookies | Secure / HttpOnly / SameSite sur chaque cookie posé |
-| TLS | version négociée (refus < 1.2), validité et expiration du certificat |
-| DNS | SPF, DMARC (+ détection `p=none`), CAA |
+| TLS | version négociée (refus < 1.2), validité et expiration du certificat, **protocoles obsolètes encore acceptés (TLS 1.0/1.1)** |
+| DNS | SPF, DMARC (+ détection `p=none`), CAA, **DKIM, MTA-STS, TLS-RPT, DNSSEC**, **subdomain takeover** (CNAME dangling vers GitHub Pages / S3 / Heroku…) |
 
 ### Phase 2 — actif léger (quelques requêtes ciblées)
 
 | Catégorie | Checks |
 |-----------|--------|
 | Exposition | fichiers sensibles exposés (`.env`, `.git/HEAD`, `.git/config`, sauvegardes, `.DS_Store`, `phpinfo`…), avec sonde anti soft-404 et **signature de contenu obligatoire** (jamais sur le seul code 200) |
+| Fuites & well-known | **source maps** (`.js.map`), **doc d'API** (Swagger/OpenAPI), **introspection GraphQL**, **listing de répertoire** (autoindex), présence de `/.well-known/security.txt` |
+| Méthodes HTTP | **TRACE** (XST) et verbes d'écriture (PUT/DELETE/PATCH) annoncés — lecture seule |
 | CORS | origine reflétée, `*`, `null`, et combinaison dangereuse avec `Access-Control-Allow-Credentials` |
 | Contenu mixte | ressources `http://` (actives vs passives) chargées sur une page `https://` |
 | Sous-ressources | scripts/CSS même-origine servis sans `X-Content-Type-Options: nosniff` (échantillon récupéré activement) |
 | Technologies | empreinte serveur / framework / CMS (en-têtes, cookies, balise meta generator) + alerte si une version est exposée |
+
+### Réseau — services exposés
+
+| Catégorie | Checks |
+|-----------|--------|
+| Ports / services | **connect-scan async borné** (lecture seule) d'une liste curée de services qui ne devraient jamais être publics (Redis, MongoDB, Elasticsearch, Docker API, MySQL, Postgres, RDP…). **Garde-fou CDN** : derrière Cloudflare, on ne scanne pas l'edge du tiers (renseigne `SONAR_ORIGIN_IP` pour viser ton origine). Coupe-circuit `SONAR_PORTS=off`. |
 
 ### Phase 3 — pentest (nuclei + OWASP ZAP)
 
