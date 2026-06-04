@@ -64,6 +64,13 @@ def _build_args(exe: str, url: str) -> list[str]:
 
 
 def _to_finding(obj: dict, idx: int, fallback_url: str) -> Finding:
+    """Mappe un résultat nuclei vers un Finding structuré EXTERNE.
+
+    Le texte de nuclei (souvent anglais, propre à ses templates) n'est pas figé en
+    `title`/`detail` : il part dans `source_text` et sert de *fallback* si aucune
+    entrée traduite n'existe (`content/nuclei/<template-id>.<lang>.yaml`). La clé de
+    contenu est `(catalog="nuclei", entry_id=template-id, code="result")`.
+    """
     info = obj.get("info") or {}
     sev = _SEV.get(str(info.get("severity") or "info").lower(), Severity.INFO)
     name = info.get("name") or obj.get("template-id") or "Résultat nuclei"
@@ -72,8 +79,9 @@ def _to_finding(obj: dict, idx: int, fallback_url: str) -> Finding:
 
     detail = info.get("description") or ""
     refs = info.get("reference")
-    if isinstance(refs, list) and refs:
-        detail = (detail + "\n" if detail else "") + "Références : " + ", ".join(refs[:4])
+    refs_list = [str(r) for r in refs[:4]] if isinstance(refs, list) else []
+    if refs_list:
+        detail = (detail + "\n" if detail else "") + "Références : " + ", ".join(refs_list)
 
     reco = info.get("remediation") or ""
 
@@ -87,24 +95,28 @@ def _to_finding(obj: dict, idx: int, fallback_url: str) -> Finding:
         check_id=f"nuclei-{idx}-{tid}" if tid else f"nuclei-{idx}",
         category=C,
         severity=sev,
-        title=f"[{tid}] {name}" if tid else name,
-        detail=detail,
-        recommendation=reco,
+        code="result",
+        catalog="nuclei",
+        entry_id=tid or "_",
+        params={"template_id": tid, "name": name},
         evidence=evidence[:400],
+        source_text={
+            "title": f"[{tid}] {name}" if tid else name,
+            "detail": detail,
+            "recommendation": reco,
+            "refs": refs_list,
+        },
     )
 
 
 @check("nuclei", "Pentest (nuclei)", C)
 async def nuclei(ctx):
     if _env("SONAR_NUCLEI", "").lower() == "off":
-        return [Finding("nuclei", C, Severity.INFO, "Pentest nuclei désactivé",
-            "Le check est désactivé par configuration (`SONAR_NUCLEI=off`).")]
+        return [Finding("nuclei", C, Severity.INFO, code="off")]
 
     exe = shutil.which(_env("NUCLEI_BIN", "nuclei"))
     if not exe:
-        return [Finding("nuclei", C, Severity.INFO, "nuclei non installé",
-            "Le binaire `nuclei` n'est pas disponible : l'étape pentest est ignorée.",
-            "Installe nuclei (ProjectDiscovery) dans le PATH — l'image Docker le fait déjà.")]
+        return [Finding("nuclei", C, Severity.INFO, code="not-installed")]
 
     timeout = int(_env("NUCLEI_TIMEOUT", "240") or "240")
     args = _build_args(exe, ctx.url)
@@ -116,8 +128,8 @@ async def nuclei(ctx):
             stderr=asyncio.subprocess.PIPE,
         )
     except Exception as exc:  # binaire illisible, etc.
-        return [Finding("nuclei", C, Severity.INFO, "nuclei indisponible",
-            f"Lancement impossible : {type(exc).__name__}: {exc}")]
+        return [Finding("nuclei", C, Severity.INFO, code="unavailable",
+                        params={"error": f"{type(exc).__name__}: {exc}"})]
 
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -127,9 +139,8 @@ async def nuclei(ctx):
             await proc.wait()
         except ProcessLookupError:
             pass
-        return [Finding("nuclei", C, Severity.INFO, "nuclei : délai dépassé",
-            f"Le scan nuclei a dépassé {timeout}s et a été interrompu.",
-            "Augmente `NUCLEI_TIMEOUT` ou restreins les templates via `NUCLEI_ARGS`.")]
+        return [Finding("nuclei", C, Severity.INFO, code="timeout",
+                        params={"timeout": timeout})]
 
     findings: list[Finding] = []
     for i, line in enumerate(stdout.decode("utf-8", "replace").splitlines()):
@@ -150,7 +161,6 @@ async def nuclei(ctx):
     if proc.returncode not in (0, None):
         msg = stderr.decode("utf-8", "replace").strip().splitlines()
         tail = msg[-1] if msg else f"code de sortie {proc.returncode}"
-        return [Finding("nuclei", C, Severity.INFO, "nuclei : exécution incomplète",
-            f"nuclei s'est terminé sans résultat exploitable ({tail}).")]
-    return [Finding("nuclei", C, Severity.PASS, "nuclei : aucun template déclenché",
-        "Le moteur de pentest n'a remonté aucune vulnérabilité connue sur cette cible.")]
+        return [Finding("nuclei", C, Severity.INFO, code="incomplete",
+                        params={"tail": tail})]
+    return [Finding("nuclei", C, Severity.PASS, code="pass")]

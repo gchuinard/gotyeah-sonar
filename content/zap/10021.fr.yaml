@@ -1,0 +1,20 @@
+alert:
+  title: "En-tête X-Content-Type-Options absent"
+  detail: "L'en-tête anti-MIME-sniffing X-Content-Type-Options n'est pas positionné à 'nosniff' sur la réponse."
+  explanation: "Sans nosniff, certains navigateurs (anciennes versions d'Internet Explorer et de Chrome) « devinent » le type d'un fichier d'après son contenu plutôt que d'après l'en-tête Content-Type déclaré. La réponse peut alors être interprétée et affichée comme un type différent de celui annoncé."
+  why: "Le MIME sniffing ouvre la porte à des attaques : un fichier servi avec un mauvais type — par exemple un upload en apparence anodin contenant du HTML ou du JavaScript — peut être réinterprété et exécuté par le navigateur."
+  steps:
+    - "Assure-toi que l'application ou le serveur web positionne correctement l'en-tête Content-Type de chaque réponse."
+    - "Ajoute l'en-tête X-Content-Type-Options: nosniff sur TOUTES les pages, pas seulement la page principale."
+    - "Configure-le globalement côté serveur ou proxy plutôt que route par route."
+  stacks:
+    nginx: "add_header X-Content-Type-Options \"nosniff\" always;"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : add_header X-Content-Type-Options \"nosniff\" always;"
+    cloudflare: "Rules → Transform Rules → Set static : X-Content-Type-Options = nosniff"
+    apache: "Header always set X-Content-Type-Options \"nosniff\""
+    nextjs: "next.config.js → headers(): { key: 'X-Content-Type-Options', value: 'nosniff' }"
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) n'envoie pas l'en-tête X-Content-Type-Options: nosniff. Explique le MIME sniffing et son risque, puis donne la configuration exacte pour {stack} appliquant nosniff à toutes les réponses, en t'assurant que le Content-Type est correct."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    - "https://cwe.mitre.org/data/definitions/693.html"
+  a_verifier: true

@@ -1,0 +1,22 @@
+alert:
+  title: "En-tête anti-clickjacking absent"
+  detail: "La réponse ne se protège pas contre le clickjacking : ni en-tête X-Frame-Options, ni directive frame-ancestors dans une Content-Security-Policy."
+  explanation: "Le clickjacking consiste à charger ton site dans une iframe invisible posée par-dessus une page piège : la victime croit cliquer sur la page piège mais agit en réalité sur la tienne. Les navigateurs modernes savent l'empêcher via l'en-tête X-Frame-Options ou la directive frame-ancestors de la CSP."
+  why: "Sans protection anti-framing, un attaquant peut détourner les clics d'un utilisateur authentifié pour lui faire exécuter des actions à son insu sur ton site (confirmation, virement, changement de paramètres…)."
+  steps:
+    - "Décide qui a le droit d'embarquer tes pages : en général personne."
+    - "Si tu ne veux JAMAIS que la page soit embarquée, utilise X-Frame-Options: DENY ; si elle ne doit l'être que par ton propre site, utilise SAMEORIGIN."
+    - "En alternative ou en complément (recommandé, plus fin), ajoute la directive Content-Security-Policy: frame-ancestors 'none'."
+    - "Si certaines pages doivent rester intégrables, remplace 'none' / DENY par la liste explicite des origines autorisées."
+    - "Applique la protection sur TOUTES les pages renvoyées par le site."
+  stacks:
+    nginx: "add_header Content-Security-Policy \"frame-ancestors 'none'\" always; add_header X-Frame-Options \"DENY\" always;"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : add_header X-Frame-Options \"DENY\" always;"
+    cloudflare: "Rules → Transform Rules → Set static : X-Frame-Options = DENY (et frame-ancestors via la CSP)."
+    apache: "Header always set X-Frame-Options \"DENY\""
+    nextjs: "next.config.js → headers(): { key: 'X-Frame-Options', value: 'DENY' }"
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne se protège pas contre le clickjacking. Explique le risque, puis donne la configuration exacte pour {stack} ajoutant la directive frame-ancestors 'none' (CSP) et l'en-tête X-Frame-Options: DENY, en couvrant toutes les pages."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options"
+    - "https://cwe.mitre.org/data/definitions/1021.html"
+  a_verifier: true

@@ -1,0 +1,21 @@
+# Généré (transform, pas trad) depuis tools/zap_sources/zap_alerts.json — ZAP pluginId 90022, CWE-550.
+alert:
+  title: "Divulgation de messages d'erreur applicatifs"
+  detail: "La page renvoie un message d'erreur ou d'avertissement qui peut révéler des informations sensibles, comme le chemin du fichier ayant produit l'exception non gérée."
+  explanation: "Quand une exception n'est pas gérée, l'application affiche parfois sa trace brute : chemins de fichiers, fragments de requêtes, noms de composants, voire morceaux de configuration. Ces détails sont destinés au débogage, pas à l'utilisateur final."
+  why: "Ces messages renseignent un attaquant sur l'arborescence du serveur, la pile technique et la structure interne de l'application. Ils servent de point de départ à des attaques plus ciblées (parcours de fichiers, injection, exploitation d'un composant identifié)."
+  steps:
+    - "Relis le code source de la page concernée pour identifier l'exception non gérée à l'origine du message."
+    - "Mets en place des pages d'erreur personnalisées (4xx/5xx) qui n'exposent aucune trace technique à l'utilisateur."
+    - "Implémente un identifiant d'erreur unique : renvoie cette référence au navigateur tout en journalisant les détails complets côté serveur, sans les exposer."
+    - "Désactive l'affichage des traces détaillées en production (mode debug coupé)."
+  stacks:
+    express: "Désactive les stack traces en production (`app.set('env','production')`), ajoute un gestionnaire d'erreurs final qui renvoie un message générique + un identifiant, et journalise les détails côté serveur."
+    fastapi: "Coupe le mode debug (`debug=False`), ajoute un `exception_handler` global qui renvoie une réponse générique avec un identifiant, et logge la trace complète côté serveur."
+    django: "Mets `DEBUG = False` et configure `ALLOWED_HOSTS` ; fournis des templates 404/500 personnalisés et journalise les exceptions via la configuration LOGGING."
+    php: "Mets `display_errors = Off` en production, logge via `error_log`, et définis des pages d'erreur personnalisées (ex. `ErrorDocument` côté serveur)."
+    nextjs: "Désactive l'affichage des erreurs détaillées en production, ajoute des pages `error.tsx` / `not-found.tsx` génériques, et journalise les exceptions côté serveur avec un identifiant renvoyé au client."
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) divulgue des messages d'erreur applicatifs (traces, chemins de fichiers) à l'utilisateur. Aide-moi à mettre en place des pages d'erreur personnalisées, à couper l'affichage des traces en production, et à renvoyer un identifiant d'erreur unique au navigateur tout en journalisant les détails complets côté serveur. Montre la configuration exacte pour {stack}."
+  refs:
+    - "https://cwe.mitre.org/data/definitions/550.html"
+  a_verifier: true

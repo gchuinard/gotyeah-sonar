@@ -1,0 +1,23 @@
+# Généré (transform, pas trad) depuis tools/zap_sources/zap_alerts.json — ZAP pluginId 40018, CWE-89.
+alert:
+  title: "Injection SQL"
+  detail: "Une entrée utilisateur peut manipuler la requête SQL envoyée à la base de données."
+  explanation: "L'injection SQL survient quand une entrée non maîtrisée est concaténée dans une requête SQL : l'attaquant glisse alors des fragments de requête qui détournent la logique prévue. Il peut ainsi lire, modifier ou supprimer des données, voire exécuter des opérations d'administration sur la base."
+  why: "Une injection SQL exploitable donne potentiellement accès à l'ensemble des données de la base : comptes, données personnelles, secrets. Selon les droits, elle permet aussi d'altérer ou d'effacer des données, voire de prendre la main sur le serveur de base de données."
+  steps:
+    - "Ne fais jamais confiance à l'entrée côté client, même si une validation est déjà faite côté navigateur ; revalide tout côté serveur (typage strict de toutes les données)."
+    - "Utilise des requêtes paramétrées / instructions préparées pour TOUS les accès à la base ; ne construis jamais de SQL par concaténation de chaînes contenant de l'entrée utilisateur."
+    - "En JDBC, utilise `PreparedStatement` ou `CallableStatement` avec des paramètres passés par « ? »."
+    - "En ASP, utilise des objets ADO Command avec typage fort et requêtes paramétrées."
+  stacks:
+    express: "Utilise des requêtes paramétrées (placeholders `$1`/`?` selon le pilote) ou un ORM/query builder ; ne concatène jamais d'entrée utilisateur dans la chaîne SQL, et type/valide les entrées côté serveur."
+    fastapi: "Passe par SQLAlchemy avec des paramètres liés (jamais de f-string SQL) ; pour le SQL brut, utilise `text()` avec des paramètres nommés, et valide les entrées via Pydantic."
+    php: "Utilise PDO ou MySQLi en mode préparé avec des paramètres liés (`?` ou paramètres nommés) ; ne construis jamais la requête par concaténation d'entrée utilisateur."
+    java: "Utilise `PreparedStatement` ou `CallableStatement` avec des paramètres passés par « ? » ; type-check toutes les données côté serveur."
+    nextjs: "Côté serveur (route handlers / Server Actions), utilise des requêtes paramétrées du pilote ou un ORM (Prisma/Drizzle) ; ne concatène jamais d'entrée utilisateur dans le SQL et valide les entrées."
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) est vulnérable à une injection SQL : une entrée utilisateur est concaténée dans une requête. Aide-moi à remplacer la concaténation par des requêtes paramétrées / instructions préparées pour tous les accès à la base, à typer et valider strictement les entrées côté serveur, et à n'utiliser aucun SQL construit par concaténation. Montre les correctifs de code pour {stack}."
+  refs:
+    - "https://owasp.org/www-community/attacks/SQL_Injection"
+    - "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/89.html"
+  a_verifier: true

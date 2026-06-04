@@ -1,0 +1,125 @@
+{
+  "_comment": "Matériel SOURCE des alertes OWASP ZAP les plus courantes (baseline passif). Sert à GÉNÉRER (transformer, pas traduire) des entrées de remédiation FR au format maison, strictement grounded sur ces faits (name/description/solution/cwe/refs de ZAP). Interdit d'inventer un fix hors de ces sources. Réutilisable pour d'autres langues. Chaque entrée produit content/zap/<pluginId>.<lang>.yaml (code 'alert', a_verifier: true).",
+  "alerts": [
+    {
+      "pluginId": "10038", "name": "Content Security Policy (CSP) Header Not Set", "risk": "Medium", "cwe": "693",
+      "description": "Content Security Policy (CSP) is an added layer of security that helps to detect and mitigate certain types of attacks, including Cross Site Scripting (XSS) and data injection attacks. These attacks are used for everything from data theft to site defacement to distribution of malware. CSP provides a set of standard HTTP headers that allow website owners to declare approved sources of content that browsers should be allowed to load on that page.",
+      "solution": "Ensure that your web server, application server, load balancer, etc. is configured to set the Content-Security-Policy header.",
+      "refs": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP", "https://owasp.org/www-project-secure-headers/"]
+    },
+    {
+      "pluginId": "10020", "name": "Missing Anti-clickjacking Header", "risk": "Medium", "cwe": "1021",
+      "description": "The response does not protect against 'ClickJacking' attacks. It should include either Content-Security-Policy with 'frame-ancestors' directive or X-Frame-Options.",
+      "solution": "Modern Web browsers support the Content-Security-Policy and X-Frame-Options HTTP headers. Ensure one of them is set on all web pages returned by your site/app. If you expect the page to be framed only by pages on your server (e.g. it's part of a FRAMESET) then you'll want to use SAMEORIGIN, otherwise if you never expect the page to be framed, you should use DENY. Alternatively consider implementing Content Security Policy's 'frame-ancestors' directive.",
+      "refs": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options"]
+    },
+    {
+      "pluginId": "10021", "name": "X-Content-Type-Options Header Missing", "risk": "Low", "cwe": "693",
+      "description": "The Anti-MIME-Sniffing header X-Content-Type-Options was not set to 'nosniff'. This allows older versions of Internet Explorer and Chrome to perform MIME-sniffing on the response body, potentially causing the response body to be interpreted and displayed as a content type other than the declared content type.",
+      "solution": "Ensure that the application/web server sets the Content-Type header appropriately, and that it sets the X-Content-Type-Options header to 'nosniff' for all web pages.",
+      "refs": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"]
+    },
+    {
+      "pluginId": "10035", "name": "Strict-Transport-Security Header Not Set", "risk": "Low", "cwe": "319",
+      "description": "HTTP Strict Transport Security (HSTS) is a web security policy mechanism whereby a web server declares that complying user agents (such as a web browser) are to interact with it using only secure HTTPS connections. HSTS is an IETF standards track protocol and is specified in RFC 6797.",
+      "solution": "Ensure that your web server, application server, load balancer, etc. is configured to enforce Strict-Transport-Security.",
+      "refs": ["https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html"]
+    },
+    {
+      "pluginId": "10063", "name": "Permissions Policy Header Not Set", "risk": "Low", "cwe": "693",
+      "description": "Permissions Policy Header is an added layer of security that helps to restrict from unauthorized access or usage of browser/client features by web resources. This policy ensures the user privacy by limiting or specifying the features of the browsers can be used by the web resources.",
+      "solution": "Ensure that your web server, application server, load balancer, etc. is configured to set the Permissions-Policy header.",
+      "refs": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"]
+    },
+    {
+      "pluginId": "10037", "name": "Server Leaks Information via \"X-Powered-By\" HTTP Response Header Field(s)", "risk": "Low", "cwe": "200",
+      "description": "The web/application server is leaking information via one or more 'X-Powered-By' HTTP response headers. Access to such information may facilitate attackers identifying other frameworks/components your web application is reliant upon and the vulnerabilities such components may be subject to.",
+      "solution": "Ensure that your web server, application server, load balancer, etc. is configured to suppress 'X-Powered-By' headers.",
+      "refs": ["https://owasp.org/www-project-web-security-testing-guide/"]
+    },
+    {
+      "pluginId": "10036", "name": "Server Leaks Version Information via \"Server\" HTTP Response Header Field", "risk": "Low", "cwe": "200",
+      "description": "The web/application server is leaking version information via the 'Server' HTTP response header. Access to such information may facilitate attackers identifying other vulnerabilities your web/application server is subject to.",
+      "solution": "Ensure that your web server, application server, load balancer, etc. is configured to suppress the 'Server' header or provide generic details.",
+      "refs": ["https://owasp.org/www-project-web-security-testing-guide/"]
+    },
+    {
+      "pluginId": "10017", "name": "Cross-Domain JavaScript Source File Inclusion", "risk": "Low", "cwe": "829",
+      "description": "The page includes one or more script files from a third-party domain.",
+      "solution": "Ensure JavaScript source files are loaded from only trusted sources, and the sources can't be controlled by end users of the application. Consider using Subresource Integrity (SRI) for third-party scripts.",
+      "refs": ["https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"]
+    },
+    {
+      "pluginId": "10054", "name": "Cookie Without SameSite Attribute", "risk": "Low", "cwe": "1275",
+      "description": "A cookie has been set without the SameSite attribute, which means that the cookie can be sent as a result of a 'cross-site' request. The SameSite attribute is an effective counter measure to cross-site request forgery, cross-site script inclusion, and timing attacks.",
+      "solution": "Ensure that the SameSite attribute is set to either 'lax' or ideally 'strict' for all cookies.",
+      "refs": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"]
+    },
+    {
+      "pluginId": "10010", "name": "Cookie No HttpOnly Flag", "risk": "Low", "cwe": "1004",
+      "description": "A cookie has been set without the HttpOnly flag, which means that the cookie can be accessed by JavaScript. If a malicious script can be run on this page then the cookie will be accessible and can be transmitted to another site. If this is a session cookie then session hijacking may be possible.",
+      "solution": "Ensure that the HttpOnly flag is set for all cookies.",
+      "refs": ["https://owasp.org/www-community/HttpOnly"]
+    },
+    {
+      "pluginId": "10011", "name": "Cookie Without Secure Flag", "risk": "Low", "cwe": "614",
+      "description": "A cookie has been set without the secure flag, which means that the cookie can be accessed via unencrypted connections.",
+      "solution": "Whenever a cookie contains sensitive information or is a session token, then it should always be passed using an encrypted channel. Ensure that the secure flag is set for cookies containing such sensitive information.",
+      "refs": ["https://owasp.org/www-community/controls/SecureCookieAttribute"]
+    },
+    {
+      "pluginId": "10096", "name": "Timestamp Disclosure", "risk": "Low", "cwe": "200",
+      "description": "A timestamp was disclosed by the application/web server. Unix timestamps were detected in the response body, which may disclose information that could be useful to an attacker.",
+      "solution": "Manually confirm that the timestamp data is not sensitive, and that the data cannot be aggregated to disclose exploitable patterns.",
+      "refs": ["https://cwe.mitre.org/data/definitions/200.html"]
+    },
+    {
+      "pluginId": "10027", "name": "Information Disclosure - Suspicious Comments", "risk": "Informational", "cwe": "200",
+      "description": "The response appears to contain suspicious comments which may help an attacker. Examples of suspicious words include: query, db, admin, password, FIXME, TODO, BUG, etc.",
+      "solution": "Remove all comments that return information that may help an attacker and fix any underlying problems they refer to.",
+      "refs": ["https://cwe.mitre.org/data/definitions/200.html"]
+    },
+    {
+      "pluginId": "10202", "name": "Absence of Anti-CSRF Tokens", "risk": "Medium", "cwe": "352",
+      "description": "No Anti-CSRF tokens were found in a HTML submission form. A cross-site request forgery is an attack that involves forcing a victim to send an HTTP request to a target destination without their knowledge or intent in order to perform an action as the victim.",
+      "solution": "Phase: Architecture and Design. Use a vetted library or framework that does not allow this weakness to occur or provides constructs that make this weakness easier to avoid. Generate a unique nonce for each form, place the nonce into the form, and verify the nonce upon receipt of the form.",
+      "refs": ["https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"]
+    },
+    {
+      "pluginId": "90003", "name": "Sub Resource Integrity Attribute Missing", "risk": "Medium", "cwe": "345",
+      "description": "The integrity attribute is missing on a script or link tag served by an external server. The integrity tag prevents an attacker who have gained access to this server from injecting a malicious content.",
+      "solution": "Provide a valid integrity attribute to the tag.",
+      "refs": ["https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"]
+    },
+    {
+      "pluginId": "10098", "name": "Cross-Domain Misconfiguration", "risk": "Medium", "cwe": "264",
+      "description": "Web browser data loading may be possible, due to a Cross Origin Resource Sharing (CORS) misconfiguration on the web server. The CORS misconfiguration on the web server permits cross-domain read requests from arbitrary third party domains, using unauthenticated APIs on this domain.",
+      "solution": "Ensure that sensitive data is not available in an unauthenticated manner (using IP address white-listing, for instance). Configure the 'Access-Control-Allow-Origin' HTTP header to a more restrictive set of domains, or remove all CORS headers entirely, to allow the web browser to enforce the Same Origin Policy (SOP) in a more restrictive manner.",
+      "refs": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"]
+    },
+    {
+      "pluginId": "90022", "name": "Application Error Disclosure", "risk": "Medium", "cwe": "550",
+      "description": "This page contains an error/warning message that may disclose sensitive information like the location of the file that produced the unhandled exception. This information can be used to launch further attacks against the web application.",
+      "solution": "Review the source code of this page. Implement custom error pages. Consider implementing a mechanism to provide a unique error reference/identifier to the client (browser) while logging the details on the server side and not exposing them to the user.",
+      "refs": ["https://cwe.mitre.org/data/definitions/550.html"]
+    },
+    {
+      "pluginId": "40012", "name": "Cross Site Scripting (Reflected)", "risk": "High", "cwe": "79",
+      "description": "Cross-site Scripting (XSS) is an attack technique that involves echoing attacker-supplied code into a user's browser instance. The code is injected into a vulnerable application and then reflected back in the response, executing in the victim's browser within the security context of the hosting site.",
+      "solution": "Phase: Architecture and Design. Use a vetted library or framework that does not allow this weakness to occur or provides constructs that make this weakness easier to avoid. Phase: Implementation. Ensure that all user supplied input is properly output-encoded for the correct context (HTML, attribute, JavaScript, CSS, URL) and validated on input.",
+      "refs": ["https://owasp.org/www-community/attacks/xss/", "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"]
+    },
+    {
+      "pluginId": "40014", "name": "Cross Site Scripting (Persistent)", "risk": "High", "cwe": "79",
+      "description": "Cross-site Scripting (XSS) is an attack technique that involves echoing attacker-supplied code into a user's browser instance. With persistent (stored) XSS the injected code is stored by the application (e.g. in a database) and later served to other users, executing in their browser within the security context of the hosting site.",
+      "solution": "Phase: Implementation. Ensure that all user supplied input is properly output-encoded for the correct context wherever it is rendered, and validated on input. Use a vetted library/framework's auto-escaping. Apply a Content Security Policy as defense in depth.",
+      "refs": ["https://owasp.org/www-community/attacks/xss/", "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"]
+    },
+    {
+      "pluginId": "40018", "name": "SQL Injection", "risk": "High", "cwe": "89",
+      "description": "SQL injection may be possible. The attacker can manipulate a SQL query sent to the database by injecting input, potentially reading, modifying or deleting data, or executing administrative operations on the database.",
+      "solution": "Do not trust client side input, even if there is client side validation in place. In general, type check all data on the server side. If the application uses JDBC, use PreparedStatement or CallableStatement, with parameters passed by '?'. If the application uses ASP, use ADO Command Objects with strong type checking and parameterized queries. Use parameterized queries / prepared statements for all database access; never build SQL by string concatenation of user input.",
+      "refs": ["https://owasp.org/www-community/attacks/SQL_Injection", "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"]
+    }
+  ]
+}

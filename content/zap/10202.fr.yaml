@@ -1,0 +1,22 @@
+# Généré (transform, pas trad) depuis tools/zap_sources/zap_alerts.json — ZAP pluginId 10202, CWE-352.
+alert:
+  title: "Absence de jeton anti-CSRF"
+  detail: "Un formulaire HTML est soumis sans jeton anti-CSRF : rien ne prouve que la requête vient bien de ton site."
+  explanation: "Le CSRF (Cross-Site Request Forgery) consiste à forcer un utilisateur authentifié à envoyer, à son insu, une requête vers ton application pour y exécuter une action en son nom (changer un mot de passe, valider un paiement…). Un jeton anti-CSRF, unique et imprévisible, prouve que la soumission provient réellement de ton formulaire."
+  why: "Sans jeton anti-CSRF, un site malveillant peut déclencher des actions sur ton application au nom d'un utilisateur connecté, simplement en lui faisant visiter une page piégée. La victime n'a rien à cliquer de visible : le navigateur joint automatiquement ses cookies de session."
+  steps:
+    - "Architecture et conception : appuie-toi sur une bibliothèque ou un framework éprouvé qui empêche cette faiblesse ou fournit des protections anti-CSRF prêtes à l'emploi."
+    - "Génère un nonce (jeton) unique et imprévisible pour chaque formulaire."
+    - "Insère ce nonce dans le formulaire (champ caché)."
+    - "Vérifie le nonce à la réception de la soumission, et rejette toute requête dont le jeton est absent, invalide ou déjà utilisé."
+  stacks:
+    express: "Active une protection CSRF (ex. middleware csrf-csrf / csurf) : génère un jeton par session/formulaire, injecte-le dans un champ caché, et valide-le sur chaque requête mutante (POST/PUT/DELETE)."
+    django: "Le middleware CSRF est activé par défaut : place `{% csrf_token %}` dans chaque <form> et garde `CsrfViewMiddleware` actif ; les vues mutantes rejettent alors les requêtes sans jeton valide."
+    laravel: "Inclus la directive `@csrf` dans chaque formulaire Blade ; le middleware `VerifyCsrfToken` vérifie automatiquement le jeton à la réception."
+    rails: "Garde `protect_from_forgery` actif et utilise les helpers de formulaire (`form_with`) qui insèrent le champ `authenticity_token` vérifié côté serveur."
+    nextjs: "Pour les Server Actions / routes mutantes, génère un jeton anti-CSRF par session, injecte-le dans le formulaire et valide-le côté serveur ; combine avec des cookies `SameSite=Lax/Strict`."
+  ai_prompt: "Tu es un expert en sécurité web. Un formulaire de {host} (servi par {stack}) est soumis sans jeton anti-CSRF. En t'appuyant sur la protection CSRF native de {stack}, montre-moi comment générer un nonce unique et imprévisible par formulaire, l'insérer dans un champ caché, puis le vérifier à la réception en rejetant toute requête dont le jeton est absent ou invalide. Privilégie la bibliothèque/framework éprouvé plutôt qu'une implémentation maison."
+  refs:
+    - "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/352.html"
+  a_verifier: true

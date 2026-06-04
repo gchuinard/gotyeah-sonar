@@ -1,0 +1,23 @@
+# Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
+# pluginId 10010 — Cookie No HttpOnly Flag. a_verifier: true (à relire).
+
+alert:
+  title: "Cookie sans drapeau HttpOnly"
+  detail: "Un cookie est posé sans le drapeau HttpOnly : il est donc lisible par le JavaScript de la page."
+  explanation: "Le drapeau HttpOnly d'un cookie interdit au JavaScript de la page d'y accéder (`document.cookie`). Le cookie continue d'être envoyé au serveur dans les requêtes, mais devient invisible pour les scripts exécutés dans le navigateur."
+  why: "Sans HttpOnly, un script malveillant qui s'exécute sur la page (via une faille XSS) peut lire le cookie et le transmettre à un autre site. S'il s'agit d'un cookie de session, l'attaquant peut alors voler la session et se faire passer pour l'utilisateur."
+  steps:
+    - "Pose le drapeau HttpOnly sur TOUS les cookies, en priorité les cookies de session et d'authentification."
+    - "Ne réserve l'absence de HttpOnly qu'aux cookies qui doivent vraiment être lus par du JavaScript côté client (cas rare) ; sinon, applique-le par défaut."
+    - "Combine-le avec `Secure` et `SameSite` pour durcir la protection des cookies sensibles."
+    - "Vérifie l'en-tête `Set-Cookie` renvoyé pour confirmer la présence de l'attribut `HttpOnly`."
+  stacks:
+    app: "Pose le drapeau à l'émission du cookie, ex. Set-Cookie: session=...; HttpOnly; Secure; SameSite=Strict (côté framework : option httpOnly du cookie de session)."
+    nginx: "Si le cookie vient de l'amont, ajoute le drapeau au passage du proxy : proxy_cookie_flags ~ httponly; (Nginx ≥ 1.19.3)."
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : proxy_cookie_flags ~ httponly;"
+    apache: "Header always edit Set-Cookie ^(.*)$ \"$1; HttpOnly\""
+  ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), un ou plusieurs cookies sont posés sans le drapeau HttpOnly. Explique le risque de vol de session via XSS, puis montre comment poser `HttpOnly` sur les cookies — d'abord à l'émission côté application, sinon via réécriture de l'en-tête Set-Cookie pour {stack}."
+  refs:
+    - "https://owasp.org/www-community/HttpOnly"
+    - "https://cwe.mitre.org/data/definitions/1004.html"
+  a_verifier: true

@@ -1,0 +1,22 @@
+alert:
+  title: "En-tête Strict-Transport-Security (HSTS) absent"
+  detail: "La réponse n'envoie pas l'en-tête Strict-Transport-Security : le serveur ne déclare pas vouloir être contacté uniquement en HTTPS."
+  explanation: "HTTP Strict Transport Security (HSTS) est un mécanisme de sécurité, normalisé par la RFC 6797, par lequel un serveur ordonne aux navigateurs conformes de ne communiquer avec lui qu'en HTTPS. Une fois l'en-tête vu, toutes les requêtes passent en HTTPS, même si l'utilisateur tape http:// ou clique un ancien lien."
+  why: "Sans HSTS, la toute première requête (ou un lien en http://) peut être interceptée et maintenue en clair par un attaquant réseau (Wi-Fi public, proxy hostile) qui rejoue alors un faux site (SSL stripping)."
+  steps:
+    - "Assure-toi que TOUT le site est servi en HTTPS valide et que la redirection http vers https est déjà en place, sinon HSTS rendrait le site inaccessible."
+    - "Configure ton serveur web, serveur d'application ou load balancer pour qu'il impose Strict-Transport-Security."
+    - "Ajoute l'en-tête Strict-Transport-Security: max-age=63072000; includeSubDomains; preload."
+    - "Vérifie que tous les sous-domaines sont bien en HTTPS avant d'activer includeSubDomains."
+    - "Optionnel : soumets le domaine sur hstspreload.org pour un câblage en dur dans les navigateurs."
+  stacks:
+    nginx: "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+    npm: "Proxy Host → SSL → coche « HSTS Enabled » (et « HSTS Subdomains » si tous tes sous-domaines sont en HTTPS)."
+    cloudflare: "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable."
+    apache: "Header always set Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\""
+    nextjs: "next.config.js → headers(): { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }"
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) n'envoie pas d'en-tête HSTS. Explique le risque de SSL stripping, les prérequis (HTTPS partout, redirection http vers https), puis donne la configuration exacte pour {stack} avec un max-age de 2 ans, includeSubDomains et preload."
+  refs:
+    - "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/319.html"
+  a_verifier: true

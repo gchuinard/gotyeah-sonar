@@ -1,0 +1,23 @@
+alert:
+  title: "Content-Security-Policy absent"
+  detail: "La réponse ne contient aucun en-tête Content-Security-Policy : le navigateur n'a aucune liste d'origines autorisées à appliquer."
+  explanation: "La Content-Security-Policy est une couche de sécurité supplémentaire : via un en-tête HTTP, le site déclare les sources de contenu (scripts, styles, images, connexions…) que le navigateur a le droit de charger. Tout ce qui n'est pas explicitement autorisé est bloqué."
+  why: "Sans CSP, une faille de type Cross-Site Scripting (XSS) ou d'injection de contenu s'exploite sans aucun garde-fou : un script injecté s'exécute, peut voler des données, défigurer le site ou distribuer un malware. La CSP réduit fortement la portée de ces attaques."
+  steps:
+    - "Vérifie que ton serveur web, serveur d'application ou load balancer est bien en mesure d'ajouter un en-tête de réponse Content-Security-Policy."
+    - "Commence en mode observation avec Content-Security-Policy-Report-Only pour repérer ce qui casserait, sans rien bloquer."
+    - "Pose une base stricte avec default-src 'self', puis ajoute UNIQUEMENT les origines réellement utilisées (CDN, analytics, polices)."
+    - "Bannis 'unsafe-inline' et 'unsafe-eval' : passe aux nonces ou aux hash pour tes scripts et styles inline."
+    - "Une fois qu'aucune violation n'est rapportée, bascule l'en-tête en Content-Security-Policy (mode bloquant)."
+  stacks:
+    nginx: "add_header Content-Security-Policy \"default-src 'self'; object-src 'none'; base-uri 'self'\" always;"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : add_header Content-Security-Policy \"default-src 'self'\" always;"
+    cloudflare: "Rules → Transform Rules → Modify Response Header → Set static : Content-Security-Policy = default-src 'self'"
+    apache: "Header always set Content-Security-Policy \"default-src 'self'; object-src 'none'\""
+    nextjs: "next.config.js → headers(): { key: 'Content-Security-Policy', value: \"default-src 'self'\" }"
+  ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) n'envoie aucun en-tête Content-Security-Policy. Propose une CSP stricte mais fonctionnelle partant de default-src 'self', explique comment la déployer d'abord en Report-Only puis en bloquant, et montre la configuration exacte pour {stack}. N'invente pas d'origines : laisse des emplacements à compléter pour les domaines tiers."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+    - "https://owasp.org/www-project-secure-headers/"
+    - "https://cwe.mitre.org/data/definitions/693.html"
+  a_verifier: true

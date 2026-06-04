@@ -51,11 +51,13 @@ def test_dedup_groups_and_counts():
     ]
     out = zapmod._dedup_to_findings(alerts)
     assert len(out) == 2
-    a = next(f for f in out if f.title.startswith("A"))
-    assert a.severity == Severity.LOW and "2 occurrence" in a.detail
-    b = next(f for f in out if f.title.startswith("B"))
-    assert b.severity == Severity.HIGH and "CWE-79" in b.title
+    # Finding externe : le texte ZAP (anglais d'origine) vit dans source_text.
+    a = next(f for f in out if f.source_text["title"].startswith("A"))
+    assert a.severity == Severity.LOW and "2 occurrence" in a.source_text["detail"]
+    b = next(f for f in out if f.source_text["title"].startswith("B"))
+    assert b.severity == Severity.HIGH and "CWE-79" in b.source_text["title"]
     assert all(f.category == Category.ZAP for f in out)
+    assert all(f.catalog == "zap" and f.code == "alert" for f in out)
 
 
 # ---- flux complet (API mockée) ----
@@ -75,7 +77,7 @@ async def test_zap_full_flow(monkeypatch):
     out = await zap(SimpleNamespace(url="https://x/"))
     sevs = {f.severity for f in out}
     assert Severity.HIGH in sevs and Severity.MEDIUM in sevs
-    assert len([f for f in out if f.title.startswith("CSP")]) == 1  # dédup des 2 mediums
+    assert len([f for f in out if f.entry_id == "10038"]) == 1  # dédup des 2 mediums (pluginId)
 
 
 async def test_zap_no_alerts_pass(monkeypatch):
@@ -96,7 +98,7 @@ async def test_zap_unreachable(monkeypatch):
     client = httpx.AsyncClient(base_url="http://zap:8090", transport=httpx.MockTransport(boom))
     monkeypatch.setattr(zapmod, "_make_client", lambda base: client)
     out = await zap(SimpleNamespace(url="https://x/"))
-    assert out[0].severity == Severity.INFO and "injoignable" in out[0].title.lower()
+    assert out[0].severity == Severity.INFO and out[0].code == "unreachable"
 
 
 # ---- dégradations de config ----
@@ -105,11 +107,11 @@ async def test_zap_not_configured(monkeypatch):
     monkeypatch.delenv("SONAR_ZAP", raising=False)
     monkeypatch.delenv("ZAP_API_URL", raising=False)
     out = await zap(SimpleNamespace(url="https://x/"))
-    assert out[0].severity == Severity.INFO and "non configuré" in out[0].title.lower()
+    assert out[0].severity == Severity.INFO and out[0].code == "not-configured"
 
 
 async def test_zap_disabled(monkeypatch):
     monkeypatch.setenv("SONAR_ZAP", "off")
     monkeypatch.setenv("ZAP_API_URL", "http://zap:8090")
     out = await zap(SimpleNamespace(url="https://x/"))
-    assert "désactiv" in out[0].title.lower()
+    assert out[0].code == "off"

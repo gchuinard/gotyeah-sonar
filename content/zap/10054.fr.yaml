@@ -1,0 +1,23 @@
+# Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
+# pluginId 10054 — Cookie Without SameSite Attribute. a_verifier: true (à relire).
+
+alert:
+  title: "Cookie sans attribut SameSite"
+  detail: "Un cookie est posé sans attribut SameSite : le navigateur peut donc le renvoyer lors d'une requête « cross-site » (initiée depuis un autre site)."
+  explanation: "L'attribut SameSite d'un cookie indique au navigateur dans quels cas il a le droit d'accompagner une requête vers ton domaine. Avec `SameSite=Lax` ou `SameSite=Strict`, le cookie n'est plus envoyé automatiquement quand la requête part d'un site tiers."
+  why: "Un cookie sans SameSite est joint aux requêtes déclenchées depuis n'importe quel autre site. C'est un levier pour la falsification de requête inter-site (CSRF), l'inclusion de script inter-site et les attaques par mesure de temps : un site malveillant peut faire agir le navigateur de la victime en son nom, avec sa session."
+  steps:
+    - "Pose l'attribut SameSite sur TOUS les cookies, à `Lax` au minimum ou, idéalement, à `Strict`."
+    - "Choisis `Strict` pour les cookies de session sensibles (le cookie n'est jamais envoyé depuis un autre site) ; garde `Lax` si une navigation entrante par lien doit rester connectée."
+    - "Si tu emploies `SameSite=None` pour un usage cross-site légitime, il doit impérativement être accompagné de l'attribut `Secure`."
+    - "Vérifie l'en-tête `Set-Cookie` renvoyé pour confirmer que l'attribut est bien présent sur chaque cookie."
+  stacks:
+    app: "Pose l'attribut à l'émission du cookie, ex. Set-Cookie: session=...; SameSite=Strict; Secure; HttpOnly (côté framework : option SameSite du cookie de session)."
+    nginx: "Si le cookie est posé par l'amont, réécris l'en-tête au passage du proxy : proxy_cookie_flags ~ samesite=strict; (Nginx ≥ 1.19.3)."
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : proxy_cookie_flags ~ samesite=strict;"
+    apache: "Header always edit Set-Cookie ^(.*)$ \"$1; SameSite=Strict\""
+  ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), un ou plusieurs cookies sont posés sans attribut SameSite. Explique le risque de CSRF/inclusion inter-site, puis montre comment poser `SameSite=Strict` (ou `Lax` à défaut) sur les cookies — d'abord à l'émission côté application, sinon via réécriture de l'en-tête Set-Cookie pour {stack}. Rappelle que `SameSite=None` impose l'attribut `Secure`."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
+    - "https://cwe.mitre.org/data/definitions/1275.html"
+  a_verifier: true

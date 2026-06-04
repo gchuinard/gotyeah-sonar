@@ -1,0 +1,15 @@
+# Généré (transform, pas trad) depuis tools/zap_sources/zap_alerts.json — ZAP pluginId 10096, CWE-200.
+alert:
+  title: "Divulgation d'horodatage (timestamp)"
+  detail: "Des horodatages Unix ont été repérés dans le corps des réponses, ce qui peut révéler des informations exploitables par un attaquant."
+  explanation: "Un horodatage Unix est un nombre de secondes qui encode une date et une heure précises. Quand il apparaît tel quel dans une réponse, il peut trahir l'instant exact d'une opération côté serveur."
+  why: "Pris isolément, un horodatage est rarement grave. Mais agrégés, ces timestamps peuvent dévoiler des motifs exploitables : cadence de génération de jetons, séquences prévisibles, ou indices sur le fonctionnement interne de l'application."
+  steps:
+    - "Confirme manuellement que les horodatages détectés ne sont pas sensibles (jetons, sessions, identifiants dérivés d'une date)."
+    - "Vérifie qu'on ne peut pas les agréger pour en déduire des motifs exploitables (séquences prévisibles, fenêtres de génération)."
+    - "Si une valeur sensible dépend du temps, génère-la à partir d'une source aléatoire cryptographique plutôt que d'un horodatage, et ne renvoie pas le timestamp brut."
+  stacks: {}
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) renvoie des horodatages Unix dans le corps de ses réponses. Aide-moi à localiser ces horodatages dans le code, à juger s'ils sont sensibles (jetons, sessions, valeurs dérivées d'une date), et à les retirer ou les remplacer par une valeur non exploitable lorsqu'ils n'ont pas à être exposés."
+  refs:
+    - "https://cwe.mitre.org/data/definitions/200.html"
+  a_verifier: true

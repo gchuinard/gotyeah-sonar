@@ -1,0 +1,21 @@
+alert:
+  title: "En-tête Permissions-Policy absent"
+  detail: "La réponse n'envoie pas l'en-tête Permissions-Policy : les fonctionnalités du navigateur accessibles aux ressources web ne sont pas restreintes."
+  explanation: "Permissions-Policy est une couche de sécurité supplémentaire qui restreint l'accès ou l'usage des fonctionnalités du navigateur (caméra, micro, géolocalisation, paiement…) par les ressources web. Elle protège la vie privée de l'utilisateur en limitant les fonctionnalités que la page — et les iframes qu'elle embarque — ont le droit d'utiliser."
+  why: "Sans cette politique, une iframe tierce ou un script compromis peut tenter d'accéder à des API navigateur sensibles. Désactiver explicitement celles dont tu ne te sers pas est une défense en profondeur peu coûteuse qui réduit la surface d'attaque."
+  steps:
+    - "Configure ton serveur web, serveur d'application ou load balancer pour qu'il ajoute l'en-tête Permissions-Policy."
+    - "Liste les API navigateur réellement utilisées par ton site."
+    - "Désactive explicitement tout le reste avec une valeur vide, par exemple camera=(), microphone=(), geolocation=()."
+    - "Autorise une API uniquement pour ta propre origine si besoin, par exemple geolocation=(self)."
+  stacks:
+    nginx: "add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;"
+    cloudflare: "Rules → Transform Rules → Set static : Permissions-Policy = camera=(), microphone=(), geolocation=()"
+    apache: "Header always set Permissions-Policy \"camera=(), microphone=(), geolocation=()\""
+    nextjs: "next.config.js → headers(): { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' }"
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne définit pas d'en-tête Permissions-Policy. Propose une politique qui désactive les API navigateur inutiles (caméra, micro, géolocalisation, paiement) et donne la configuration exacte pour {stack}."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"
+    - "https://cwe.mitre.org/data/definitions/693.html"
+  a_verifier: true

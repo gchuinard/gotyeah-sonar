@@ -1,0 +1,19 @@
+# Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
+# pluginId 10017 — Cross-Domain JavaScript Source File Inclusion. a_verifier: true (à relire).
+
+alert:
+  title: "Inclusion de script JavaScript depuis un domaine tiers"
+  detail: "La page charge un ou plusieurs fichiers de script depuis un domaine tiers (un domaine que tu ne contrôles pas)."
+  explanation: "Quand une page inclut un script via `<script src=\"...\">` pointant vers un autre domaine, ce code s'exécute avec les pleins droits dans le contexte de ta page. Tu délègues alors une partie de ta sécurité au tiers : ce qu'il sert, ton navigateur l'exécute."
+  why: "Si le domaine tiers est compromis, détourné ou remplacé, le script servi peut être modifié à ton insu et exécuter du code malveillant sur ta page : vol de cookies/session, injection de contenu, redirection. Le risque grandit si la source du script peut être influencée par les utilisateurs."
+  steps:
+    - "Vérifie que tous les fichiers JavaScript ne sont chargés que depuis des sources de confiance, et que ces sources ne peuvent pas être contrôlées par les utilisateurs de l'application."
+    - "Pour chaque script tiers réellement nécessaire, ajoute un attribut Subresource Integrity (`integrity`) afin que le navigateur rejette tout contenu altéré."
+    - "Réduis le nombre de dépendances tierces : héberge en interne les scripts critiques quand c'est possible."
+  stacks:
+    html: "Sur la balise <script src=\"https://cdn.exemple.com/lib.js\"></script>, ajoute integrity=\"sha384-...\" et crossorigin=\"anonymous\" pour figer la version chargée."
+  ai_prompt: "Tu es un expert en sécurité web. La page de {host} (servie par {stack}) inclut un ou plusieurs scripts JavaScript depuis des domaines tiers. Explique le risque lié à un tiers compromis, puis pour chaque script tiers légitime montre comment ajouter un attribut `integrity` (Subresource Integrity) et `crossorigin=\"anonymous\"` dans le HTML, et comment vérifier que les sources de script ne sont pas contrôlables par les utilisateurs. N'invente pas de hash : laisse un emplacement à calculer pour chaque ressource."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
+    - "https://cwe.mitre.org/data/definitions/829.html"
+  a_verifier: true

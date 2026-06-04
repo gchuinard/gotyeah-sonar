@@ -1,0 +1,24 @@
+# Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
+# pluginId 10098 — Cross-Domain Misconfiguration (CORS). a_verifier: true (à relire).
+
+alert:
+  title: "Mauvaise configuration CORS (partage de ressources inter-origine trop permissif)"
+  detail: "La configuration CORS du serveur autorise des requêtes de lecture inter-domaines depuis des domaines tiers arbitraires, sur des API non authentifiées de ce domaine."
+  explanation: "Le mécanisme CORS (Cross Origin Resource Sharing) assouplit la « politique de même origine » du navigateur via l'en-tête `Access-Control-Allow-Origin`. Quand cet en-tête autorise n'importe quelle origine (par exemple `*`, ou un renvoi systématique de l'origine demandée), un site tiers peut lire les réponses de ton domaine depuis le navigateur de la victime."
+  why: "Une configuration CORS trop large laisse un site tiers lire des données servies par ton domaine via le navigateur d'un utilisateur. Si ces données sont accessibles sans authentification, elles fuitent vers des origines arbitraires que tu ne contrôles pas."
+  steps:
+    - "Assure-toi que les données sensibles ne sont pas accessibles de manière non authentifiée (par exemple via une liste blanche d'adresses IP)."
+    - "Restreins l'en-tête `Access-Control-Allow-Origin` à un ensemble de domaines précis et de confiance, au lieu de `*` ou d'un renvoi automatique de l'origine demandée."
+    - "Si aucun partage inter-origine n'est nécessaire, retire complètement les en-têtes CORS pour laisser le navigateur appliquer la politique de même origine de façon stricte."
+    - "Vérifie après changement que les origines légitimes fonctionnent toujours et que les origines arbitraires sont bien refusées."
+  stacks:
+    nginx: "add_header Access-Control-Allow-Origin \"https://app.exemple.com\" always; (une origine de confiance ; ne pas utiliser \"*\" pour des API authentifiées)."
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : add_header Access-Control-Allow-Origin \"https://app.exemple.com\" always;"
+    cloudflare: "Transform Rules → Modify Response Header → Set static : Access-Control-Allow-Origin = https://app.exemple.com (ou supprime l'en-tête si le CORS n'est pas nécessaire)."
+    express: "app.use(cors({ origin: \"https://app.exemple.com\" })) — origine explicite plutôt que origin: true ou \"*\"."
+    fastapi: "CORSMiddleware(allow_origins=[\"https://app.exemple.com\"]) — liste explicite, jamais [\"*\"] avec allow_credentials=True."
+  ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), la configuration CORS est trop permissive : `Access-Control-Allow-Origin` autorise des origines tierces arbitraires. Explique le risque de lecture de données inter-domaines, puis montre comment restreindre `Access-Control-Allow-Origin` à une liste explicite de domaines de confiance pour {stack} (ou comment retirer les en-têtes CORS si aucun partage inter-origine n'est requis). Ne propose pas `*` pour des API authentifiées ; laisse un emplacement à compléter pour les origines réellement autorisées."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+    - "https://cwe.mitre.org/data/definitions/264.html"
+  a_verifier: true

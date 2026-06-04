@@ -1,0 +1,15 @@
+# Généré (transform, pas trad) depuis tools/zap_sources/zap_alerts.json — ZAP pluginId 10027, CWE-200.
+alert:
+  title: "Fuite d'information — commentaires suspects"
+  detail: "La réponse contient des commentaires suspects qui pourraient aider un attaquant. Exemples de termes repérés : query, db, admin, password, FIXME, TODO, BUG…"
+  explanation: "Les commentaires laissés dans le HTML ou le JavaScript livré au navigateur sont visibles de tous. Certains mots-clés (mots de passe, noms de base, notes « à corriger ») peuvent y révéler des détails internes ou des défauts connus de l'application."
+  why: "Un attaquant lit le code source de la page comme n'importe quel visiteur. Un commentaire qui mentionne un correctif en attente, un identifiant, un chemin d'admin ou une faille connue lui offre une piste d'attaque gratuite."
+  steps:
+    - "Retire tous les commentaires qui exposent des informations utiles à un attaquant (identifiants, chemins, notes internes, défauts connus)."
+    - "Corrige le problème de fond auquel ces commentaires font référence (TODO, FIXME, BUG) plutôt que de simplement masquer la note."
+    - "Mets en place une étape de build qui supprime les commentaires des fichiers HTML/JS/CSS servis en production (minification)."
+  stacks: {}
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) expose des commentaires suspects (TODO, FIXME, password, admin…) dans le code livré au navigateur. Aide-moi à les repérer, à retirer ceux qui révèlent des informations sensibles, à traiter le problème de fond qu'ils signalent, et à configurer la minification pour qu'aucun commentaire ne parte en production."
+  refs:
+    - "https://cwe.mitre.org/data/definitions/200.html"
+  a_verifier: true

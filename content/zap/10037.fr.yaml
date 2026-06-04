@@ -1,0 +1,21 @@
+alert:
+  title: "Le serveur divulgue des informations via l'en-tête X-Powered-By"
+  detail: "La réponse contient un ou plusieurs en-têtes X-Powered-By, qui révèlent les frameworks ou composants utilisés par l'application."
+  explanation: "L'en-tête X-Powered-By annonce les technologies sous-jacentes (framework, langage, moteur applicatif…) du serveur. C'est une information de reconnaissance offerte à un attaquant."
+  why: "Connaître les frameworks et composants dont dépend l'application aide un attaquant à identifier les vulnérabilités connues (CVE) de ces composants et à cibler directement les failles publiques correspondantes, sans tâtonner. Masquer ces en-têtes ralentit la reconnaissance."
+  steps:
+    - "Configure ton serveur web, serveur d'application ou load balancer pour supprimer les en-têtes X-Powered-By."
+    - "Sur le serveur d'origine, désactive leur émission à la source (par exemple expose_php = Off pour PHP)."
+    - "Sur le reverse proxy, masque les en-têtes remontés par l'amont (proxy_hide_header)."
+    - "Profites-en pour neutraliser les en-têtes apparentés (X-AspNet-Version, X-AspNetMvc-Version) s'ils sont présents."
+  stacks:
+    nginx: "proxy_hide_header X-Powered-By; (et more_clear_headers X-Powered-By; avec le module headers-more)"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : proxy_hide_header X-Powered-By;"
+    cloudflare: "Rules → Transform Rules → Modify Response Header → Remove : X-Powered-By"
+    apache: "Header always unset X-Powered-By"
+    nextjs: "next.config.js → poweredByHeader: false (désactive l'en-tête X-Powered-By: Next.js)"
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) divulgue ses technologies via un ou plusieurs en-têtes X-Powered-By. Explique le risque de reconnaissance et donne la configuration exacte pour {stack} afin de supprimer X-Powered-By (et les en-têtes de version apparentés)."
+  refs:
+    - "https://owasp.org/www-project-web-security-testing-guide/"
+    - "https://cwe.mitre.org/data/definitions/200.html"
+  a_verifier: true

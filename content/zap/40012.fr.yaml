@@ -1,0 +1,23 @@
+# Généré (transform, pas trad) depuis tools/zap_sources/zap_alerts.json — ZAP pluginId 40012, CWE-79.
+alert:
+  title: "Cross-Site Scripting (réfléchi)"
+  detail: "Une entrée fournie par l'attaquant est renvoyée telle quelle dans la réponse et s'exécute dans le navigateur de la victime."
+  explanation: "Le XSS réfléchi consiste à injecter du code (souvent du JavaScript) dans une application qui le « reflète » immédiatement dans sa réponse — typiquement via un paramètre d'URL ou de formulaire. Ce code s'exécute alors dans le navigateur de la victime, dans le contexte de sécurité du site hébergeur."
+  why: "Un script injecté s'exécute avec les droits de l'utilisateur visé : il peut voler ses cookies et sa session, agir en son nom, falsifier la page ou pivoter sur l'API. Un lien piégé envoyé à une victime authentifiée suffit à déclencher l'attaque."
+  steps:
+    - "Architecture et conception : appuie-toi sur une bibliothèque ou un framework éprouvé qui empêche cette faiblesse ou facilite son évitement (auto-échappement des templates)."
+    - "Implémentation : encode systématiquement toute entrée utilisateur selon le contexte exact où elle est rendue (HTML, attribut, JavaScript, CSS, URL)."
+    - "Valide les entrées dès leur réception (type, format, longueur, liste blanche de valeurs autorisées)."
+    - "En défense en profondeur, déploie une Content-Security-Policy stricte qui neutralise l'exécution de scripts injectés."
+  stacks:
+    express: "N'injecte jamais d'entrée brute dans le HTML : utilise un moteur de templates à auto-échappement, encode selon le contexte, et valide les paramètres (ex. via un schéma)."
+    fastapi: "Avec Jinja2, garde l'auto-échappement actif et ne marque jamais une entrée utilisateur comme `safe` ; valide les entrées via les modèles Pydantic."
+    php: "Échappe toute sortie selon le contexte (`htmlspecialchars` pour le HTML, encodage adapté pour attribut/JS/URL) et valide les entrées avant usage."
+    nextjs: "Laisse React échapper le rendu par défaut et évite `dangerouslySetInnerHTML` ; si tu dois rendre du HTML, assainis-le avec une bibliothèque dédiée et valide les entrées côté serveur."
+    csp: "Ajoute une Content-Security-Policy stricte (`default-src 'self'`, scripts par nonce/hash, sans `unsafe-inline`) comme filet de sécurité contre les scripts injectés."
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) est vulnérable à un XSS réfléchi : une entrée utilisateur est renvoyée sans encodage dans la réponse. Aide-moi à localiser le point d'injection, à appliquer un encodage de sortie adapté au contexte (HTML/attribut/JS/CSS/URL), à valider l'entrée à la réception, et à ajouter une Content-Security-Policy stricte en défense en profondeur. Montre les correctifs de code pour {stack}."
+  refs:
+    - "https://owasp.org/www-community/attacks/xss/"
+    - "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/79.html"
+  a_verifier: true

@@ -1,0 +1,23 @@
+# Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
+# pluginId 10011 — Cookie Without Secure Flag. a_verifier: true (à relire).
+
+alert:
+  title: "Cookie sans drapeau Secure"
+  detail: "Un cookie est posé sans le drapeau Secure : il peut donc transiter sur des connexions non chiffrées (HTTP en clair)."
+  explanation: "Le drapeau Secure d'un cookie ordonne au navigateur de ne l'envoyer que sur des connexions chiffrées (HTTPS). Sans lui, le cookie peut partir en clair, exposé à toute interception sur le réseau."
+  why: "Un cookie sans drapeau Secure peut être lu par un attaquant en position d'écoute sur le réseau (Wi-Fi public, proxy hostile) dès qu'une requête passe en HTTP. Pour un jeton de session ou tout cookie sensible, cela revient à offrir la session à l'attaquant."
+  steps:
+    - "Identifie les cookies qui contiennent des informations sensibles ou un jeton de session : ils doivent toujours transiter sur un canal chiffré."
+    - "Pose le drapeau `Secure` sur ces cookies pour qu'ils ne soient jamais envoyés en HTTP en clair."
+    - "Sers tout le site en HTTPS et redirige http→https, afin que les cookies marqués Secure restent fonctionnels."
+    - "Vérifie l'en-tête `Set-Cookie` renvoyé pour confirmer la présence de l'attribut `Secure`."
+  stacks:
+    app: "Pose le drapeau à l'émission du cookie, ex. Set-Cookie: session=...; Secure; HttpOnly; SameSite=Strict (côté framework : option secure du cookie de session)."
+    nginx: "Si le cookie vient de l'amont, ajoute le drapeau au passage du proxy : proxy_cookie_flags ~ secure; (Nginx ≥ 1.19.3)."
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : proxy_cookie_flags ~ secure;"
+    apache: "Header always edit Set-Cookie ^(.*)$ \"$1; Secure\""
+  ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), un ou plusieurs cookies sensibles sont posés sans le drapeau Secure. Explique le risque d'interception en clair, puis montre comment poser `Secure` sur les cookies contenant un jeton de session ou des données sensibles — d'abord à l'émission côté application, sinon via réécriture de l'en-tête Set-Cookie pour {stack}."
+  refs:
+    - "https://owasp.org/www-community/controls/SecureCookieAttribute"
+    - "https://cwe.mitre.org/data/definitions/614.html"
+  a_verifier: true

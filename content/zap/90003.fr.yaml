@@ -1,0 +1,20 @@
+# Généré par transformation des sources ZAP (tools/zap_sources/zap_alerts.json).
+# pluginId 90003 — Sub Resource Integrity Attribute Missing. a_verifier: true (à relire).
+
+alert:
+  title: "Attribut d'intégrité (SRI) manquant"
+  detail: "L'attribut `integrity` est absent d'une balise `<script>` ou `<link>` servie par un serveur externe."
+  explanation: "Subresource Integrity (SRI) consiste à ajouter sur une balise `<script>` ou `<link>` un attribut `integrity` contenant l'empreinte cryptographique attendue de la ressource. Le navigateur recalcule l'empreinte du fichier téléchargé et refuse de l'exécuter si elle ne correspond pas."
+  why: "Sans attribut `integrity`, un attaquant qui a pris le contrôle du serveur externe (ou du CDN) peut injecter un contenu malveillant dans le fichier servi : ton navigateur l'exécuterait sans broncher. L'attribut SRI bloque cette substitution en rejetant toute ressource altérée."
+  steps:
+    - "Pour chaque balise `<script>` ou `<link>` chargée depuis un serveur externe, fournis un attribut `integrity` valide (empreinte de la ressource, ex. `sha384-...`)."
+    - "Calcule l'empreinte à partir de la version exacte que tu utilises (les générateurs SRI ou `openssl dgst -sha384 -binary | openssl base64 -A` produisent la bonne valeur)."
+    - "Ajoute `crossorigin=\"anonymous\"` aux balises concernées pour que la vérification d'intégrité fonctionne sur les ressources cross-origin."
+    - "Épingle une version figée de la ressource : si le tiers la met à jour, l'empreinte change et il faudra régénérer l'attribut."
+  stacks:
+    html: "Balise <script>: <script src=\"https://cdn.exemple.com/lib.js\" integrity=\"sha384-...\" crossorigin=\"anonymous\"></script>"
+  ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), une balise `<script>` ou `<link>` chargée depuis un serveur externe n'a pas d'attribut `integrity` (SRI). Explique le risque d'injection via un serveur tiers compromis, puis montre comment ajouter un attribut `integrity` valide et `crossorigin=\"anonymous\"` dans le HTML, et comment calculer l'empreinte pour la version exacte utilisée. N'invente pas de hash : laisse un emplacement à calculer."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
+    - "https://cwe.mitre.org/data/definitions/345.html"
+  a_verifier: true

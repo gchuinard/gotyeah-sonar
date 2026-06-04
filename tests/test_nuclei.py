@@ -26,11 +26,14 @@ def test_to_finding_maps_all_fields():
     }
     f = _to_finding(obj, 0, "https://x/")
     assert f.severity == Severity.HIGH
-    assert "CVE-2021-1" in f.title and "RCE" in f.title
-    assert "patch" in f.recommendation
-    assert "Références" in f.detail
-    assert "v1" in f.evidence
     assert f.category == Category.PENTEST
+    # Finding externe : le texte (anglais de nuclei) vit dans source_text (fallback).
+    assert f.code == "result" and f.catalog == "nuclei" and f.entry_id == "CVE-2021-1"
+    st = f.source_text
+    assert "CVE-2021-1" in st["title"] and "RCE" in st["title"]
+    assert "patch" in st["recommendation"]
+    assert "Références" in st["detail"]
+    assert "v1" in f.evidence
 
 
 def test_build_args():
@@ -42,14 +45,14 @@ def test_build_args():
 async def test_disabled_via_env(monkeypatch):
     monkeypatch.setenv("SONAR_NUCLEI", "off")
     out = await nuclei(SimpleNamespace(url="https://x/"))
-    assert out[0].severity == Severity.INFO and "désactiv" in out[0].title.lower()
+    assert out[0].severity == Severity.INFO and out[0].code == "off"
 
 
 async def test_binary_absent(monkeypatch):
     monkeypatch.delenv("SONAR_NUCLEI", raising=False)
     monkeypatch.setenv("NUCLEI_BIN", "nuclei-binaire-absent-zzz")
     out = await nuclei(SimpleNamespace(url="https://x/"))
-    assert out[0].severity == Severity.INFO and "non install" in out[0].title.lower()
+    assert out[0].severity == Severity.INFO and out[0].code == "not-installed"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="faux binaire = script shell (posix)")

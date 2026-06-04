@@ -1,0 +1,20 @@
+alert:
+  title: "Le serveur divulgue sa version via l'en-tête Server"
+  detail: "La réponse contient un en-tête Server qui révèle le numéro de version du serveur web ou d'application."
+  explanation: "L'en-tête Server annonce le logiciel ET souvent sa version exacte. C'est une information de reconnaissance offerte à un attaquant, qui n'a plus qu'à chercher les vulnérabilités connues de cette version."
+  why: "Connaître la version précise du serveur permet à un attaquant de cibler directement les failles publiques (CVE) correspondantes, sans tâtonner. Masquer cette information, ou ne renvoyer qu'un en-tête générique, ralentit la reconnaissance."
+  steps:
+    - "Configure ton serveur web, serveur d'application ou load balancer pour supprimer l'en-tête Server ou n'y laisser qu'un libellé générique."
+    - "Sur le serveur d'origine, désactive l'affichage de version (par exemple server_tokens off pour Nginx, ServerTokens Prod pour Apache)."
+    - "Sur le reverse proxy, masque l'en-tête Server remonté par l'amont (proxy_hide_header / more_clear_headers)."
+  stacks:
+    nginx: "server_tokens off; (et more_clear_headers Server; avec le module headers-more pour effacer complètement l'en-tête)"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration : proxy_hide_header Server;"
+    cloudflare: "Rules → Transform Rules → Modify Response Header → Remove : Server"
+    apache: "ServerTokens Prod ; ServerSignature Off ; Header always unset Server"
+    nextjs: "Masque l'en-tête Server au niveau du reverse proxy en amont (Next.js ne contrôle pas l'en-tête Server du serveur d'origine)."
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) divulgue sa version logicielle via l'en-tête Server. Explique le risque de reconnaissance et donne la configuration exacte pour {stack} afin de masquer l'en-tête Server ou de ne renvoyer qu'une valeur générique sans version."
+  refs:
+    - "https://owasp.org/www-project-web-security-testing-guide/"
+    - "https://cwe.mitre.org/data/definitions/200.html"
+  a_verifier: true

@@ -104,25 +104,38 @@ def _dedup_to_findings(alerts: list[dict]) -> list[Finding]:
         a = g["sample"]
         name = a.get("alert") or a.get("name") or "Alerte ZAP"
         cwe = str(a.get("cweid") or "").strip()
-        title = name + (f" (CWE-{cwe})" if cwe and cwe not in ("-1", "0") else "")
+        cwe = cwe if cwe and cwe not in ("-1", "0") else ""
+        title = name + (f" (CWE-{cwe})" if cwe else "")
 
         detail = (a.get("description") or "").strip()
         refs = (a.get("reference") or "").strip()
-        if refs:
-            detail = (detail + "\n" if detail else "") + "Références : " + ", ".join(refs.split("\n")[:3])
+        refs_list = refs.split("\n")[:3] if refs else []
+        if refs_list:
+            detail = (detail + "\n" if detail else "") + "Références : " + ", ".join(refs_list)
         if g["count"] > 1:
             detail = (detail + "\n" if detail else "") + f"{g['count']} occurrence(s) détectée(s)."
 
         evidence = a.get("evidence") or (g["urls"][0] if g["urls"] else "")
+        pid = str(a.get("pluginId") or "")
 
+        # Finding EXTERNE : la clé de contenu est (catalog="zap", entry_id=pluginId,
+        # code="alert"). Le texte ZAP d'origine (anglais) part dans `source_text` et
+        # sert de fallback si aucune entrée FR n'existe → couverture toujours complète.
         findings.append(Finding(
             check_id=f"zap-{i}-{a.get('pluginId') or 'x'}",
             category=C,
             severity=_map_risk(a.get("risk")),
-            title=title,
-            detail=detail,
-            recommendation=(a.get("solution") or "").strip(),
+            code="alert",
+            catalog="zap",
+            entry_id=pid or "_",
+            params={"cwe": cwe, "count": g["count"], "name": name},
             evidence=str(evidence)[:400] or None,
+            source_text={
+                "title": title,
+                "detail": detail,
+                "recommendation": (a.get("solution") or "").strip(),
+                "refs": refs_list,
+            },
         ))
     return findings
 
@@ -161,8 +174,7 @@ async def _run(ctx, base: str) -> list[Finding]:
 
         if findings:
             return findings
-        return [Finding("zap", C, Severity.PASS, "ZAP : aucune alerte",
-            "Le scan OWASP ZAP n'a remonté aucune alerte sur cette cible.")]
+        return [Finding("zap", C, Severity.PASS, code="pass")]
     finally:
         try:
             await client.aclose()
@@ -173,23 +185,17 @@ async def _run(ctx, base: str) -> list[Finding]:
 @check("zap", "Pentest (OWASP ZAP)", C)
 async def zap(ctx):
     if _env("SONAR_ZAP").lower() == "off":
-        return [Finding("zap", C, Severity.INFO, "Pentest ZAP désactivé",
-            "Le check est désactivé par configuration (`SONAR_ZAP=off`).")]
+        return [Finding("zap", C, Severity.INFO, code="off")]
 
     base = _env("ZAP_API_URL")
     if not base:
-        return [Finding("zap", C, Severity.INFO, "ZAP non configuré",
-            "Aucun démon OWASP ZAP n'est configuré (`ZAP_API_URL` vide) : l'étape ZAP est ignorée.",
-            "Lance un conteneur ZAP en mode démon et renseigne `ZAP_API_URL` (voir le README).")]
+        return [Finding("zap", C, Severity.INFO, code="not-configured")]
 
     timeout = int(_env("ZAP_TIMEOUT", "240") or "240")
     try:
         return await asyncio.wait_for(_run(ctx, base), timeout=timeout)
     except asyncio.TimeoutError:
-        return [Finding("zap", C, Severity.INFO, "ZAP : délai dépassé",
-            f"Le scan ZAP a dépassé {timeout}s et a été interrompu.",
-            "Augmente `ZAP_TIMEOUT`, réduis `ZAP_SPIDER_MAX`, ou désactive le scan actif.")]
+        return [Finding("zap", C, Severity.INFO, code="timeout", params={"timeout": timeout})]
     except Exception as exc:
-        return [Finding("zap", C, Severity.INFO, "ZAP injoignable",
-            f"Impossible de dialoguer avec l'API ZAP ({type(exc).__name__}: {exc}).",
-            "Vérifie `ZAP_API_URL` / `ZAP_API_KEY` et que le démon ZAP est bien démarré.")]
+        return [Finding("zap", C, Severity.INFO, code="unreachable",
+                        params={"error": f"{type(exc).__name__}: {exc}"})]

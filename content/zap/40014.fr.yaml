@@ -1,0 +1,23 @@
+# Généré (transform, pas trad) depuis tools/zap_sources/zap_alerts.json — ZAP pluginId 40014, CWE-79.
+alert:
+  title: "Cross-Site Scripting (persistant)"
+  detail: "Du code injecté par un attaquant est stocké par l'application puis servi à d'autres utilisateurs, où il s'exécute dans leur navigateur."
+  explanation: "Le XSS persistant (ou stocké) consiste à injecter du code qui est enregistré par l'application (par exemple en base de données) puis renvoyé plus tard à d'autres utilisateurs. Il s'exécute dans leur navigateur, dans le contexte de sécurité du site, sans qu'ils aient cliqué sur quoi que ce soit de suspect."
+  why: "Comme le code est stocké et rejoué à chaque consultation, une seule injection peut toucher tous les visiteurs d'une page (vol de session, actions au nom des victimes, défiguration, propagation). C'est l'une des formes de XSS les plus dommageables."
+  steps:
+    - "Implémentation : encode systématiquement toute entrée utilisateur selon le contexte exact où elle est rendue, à CHAQUE affichage (et pas seulement à l'enregistrement)."
+    - "Valide les entrées à leur réception (type, format, longueur, liste blanche de valeurs autorisées)."
+    - "Appuie-toi sur l'auto-échappement d'une bibliothèque/d'un framework éprouvé pour le rendu."
+    - "Applique une Content-Security-Policy stricte en défense en profondeur pour neutraliser l'exécution des scripts injectés."
+  stacks:
+    express: "Encode les données stockées au moment du rendu via un moteur de templates à auto-échappement ; n'injecte jamais de contenu stocké brut dans le HTML, et valide les entrées à l'enregistrement."
+    fastapi: "Avec Jinja2, garde l'auto-échappement actif au rendu des données issues de la base et ne les marque jamais `safe` ; valide via Pydantic à l'entrée."
+    php: "Échappe selon le contexte (`htmlspecialchars`, encodage attribut/JS/URL) à chaque affichage des données stockées, et valide à l'enregistrement."
+    nextjs: "Laisse React échapper le rendu des données issues de la base et évite `dangerouslySetInnerHTML` ; si du HTML stocké doit être rendu, assainis-le avec une bibliothèque dédiée."
+    csp: "Ajoute une Content-Security-Policy stricte (`default-src 'self'`, scripts par nonce/hash, sans `unsafe-inline`) en filet de sécurité contre les scripts injectés."
+  ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) est vulnérable à un XSS persistant : une entrée utilisateur est stockée puis rendue sans encodage à d'autres utilisateurs. Aide-moi à encoder la sortie selon le contexte à chaque affichage, à valider l'entrée à l'enregistrement, à m'appuyer sur l'auto-échappement du framework, et à ajouter une Content-Security-Policy stricte en défense en profondeur. Montre les correctifs de code pour {stack}."
+  refs:
+    - "https://owasp.org/www-community/attacks/xss/"
+    - "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/79.html"
+  a_verifier: true
