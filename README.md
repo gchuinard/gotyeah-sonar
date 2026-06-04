@@ -70,6 +70,65 @@ scannables. (La propagation DNS peut prendre quelques minutes.)
 
 ---
 
+## MCP — lire tes rapports depuis Claude
+
+Un petit **serveur MCP en lecture seule** permet d'interroger tes rapports Sonar
+directement depuis **Claude Code** ou **Claude Desktop** (« liste mes domaines »,
+« montre le dernier scan de X », « priorise les findings critiques du scan `<id>` »).
+Il tourne **en local sur ta machine** et parle à l'API Sonar avec un jeton — **aucune
+nouvelle porte publique** n'est ouverte sur ton instance.
+
+Trois outils : `list_domains`, `list_scans(domain?)`, `get_report(scan_id, lang?)`.
+
+**1. Générer un jeton.** Dans le dashboard, panneau **« Jetons d'accès (MCP) »** →
+*Générer*. Le secret (`sonar_pat_…`) n'est **affiché qu'une fois** : copie-le tout de
+suite. Il est **lecture seule** (scope `scans:read`) : il peut lire tes domaines, ton
+historique et tes rapports — **rien d'autre** (ni écriture, ni lancement de scan, ni
+admin). Révocable à tout moment depuis le même panneau.
+
+**2. Installer le serveur MCP** (sur ta machine, dans un venv) :
+
+```bash
+cd gotyeah_sonar
+python3 -m venv .mcpvenv && . .mcpvenv/bin/activate
+pip install -r requirements-mcp.txt
+```
+
+**3a. Claude Code** — ajoute le serveur (adapte les chemins absolus) :
+
+```bash
+claude mcp add sonar \
+  --env SONAR_TOKEN=sonar_pat_TON_JETON \
+  --env SONAR_BASE_URL=https://sonar.gautierchuinard.com \
+  --env PYTHONPATH=/chemin/vers/gotyeah_sonar \
+  -- /chemin/vers/gotyeah_sonar/.mcpvenv/bin/python -m sonar_mcp
+```
+
+**3b. Claude Desktop** — dans `claude_desktop_config.json` :
+
+```json
+{
+  "mcpServers": {
+    "sonar": {
+      "command": "/chemin/vers/gotyeah_sonar/.mcpvenv/bin/python",
+      "args": ["-m", "sonar_mcp"],
+      "env": {
+        "SONAR_TOKEN": "sonar_pat_TON_JETON",
+        "SONAR_BASE_URL": "https://sonar.gautierchuinard.com",
+        "PYTHONPATH": "/chemin/vers/gotyeah_sonar"
+      }
+    }
+  }
+}
+```
+
+Le serveur se lance via `python -m sonar_mcp` (transport **stdio**) ; `PYTHONPATH` pointe
+sur le dépôt pour rendre le package `sonar_mcp` importable. Les deux variables
+`SONAR_TOKEN` et `SONAR_BASE_URL` sont **obligatoires**. Pour révoquer l'accès : supprime
+le jeton dans le panneau (le serveur reçoit alors un `401` au prochain appel).
+
+---
+
 ## Ce que ça vérifie
 
 ### Phase 1 — passif (une seule requête)
@@ -261,5 +320,9 @@ Procédure complète (réutilisable pour `en`, `de`…) dans `tools/PROMPTS.md`.
   l'instant), cartes de remédiation dépliables + prompt IA, historique re-rendable dans
   n'importe quelle langue. Ajouter une langue ne demande que des fichiers de locale. Le
   catalogue ZAP est transformé en FR (fallback propre sur l'anglais d'origine pour le reste).
+- **MCP (lecture seule)** : ✅ — serveur stdio `sonar_mcp/` (3 outils) pour lire domaines /
+  historique / rapports depuis Claude, via un jeton personnel (PAT) en lecture seule. Le
+  MCP n'est qu'un client de l'API existante. *v1.1 prévue : un outil `run_scan` (action
+  active, bornée aux domaines vérifiés).*
 
 Tout ça se branche sans rien casser, parce que ça reste le même format de sortie.
