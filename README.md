@@ -26,6 +26,11 @@ Le flux live passe par du Server-Sent Events. Le code envoie déjà l'en-tête
 `X-Accel-Buffering: no`, donc **ne touche à rien** côté NPM : surtout n'active pas le
 *proxy buffering*, sinon les résultats n'arriveraient qu'à la toute fin du scan.
 
+Le flux émet aussi un **heartbeat** (commentaire SSE `: keepalive`) toutes les ~15 s tant
+qu'aucun résultat n'arrive : pendant un check long (nuclei peut durer plusieurs minutes),
+ça garde la connexion active pour qu'aucun proxy ne la coupe (nginx ~60 s, Cloudflare ~100 s).
+Sans ça, le scan affichait les checks rapides puis « Connexion interrompue » avant la fin de nuclei.
+
 ---
 
 ## Accès — connexion par lien magique

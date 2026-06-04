@@ -1,4 +1,5 @@
 """Auth par lien magique : unités (tokens/sessions/rate-limit/gate), mailer, endpoints."""
+import asyncio
 import json
 import sqlite3
 
@@ -248,6 +249,26 @@ def test_scan_admin_passes_gate(client, monkeypatch):
     r = c.get("/api/scan/stream?target=example.com")
     assert r.status_code == 200
     assert "event: done" in r.text and "event: saved" in r.text
+
+
+def test_sse_heartbeat_keeps_stream_alive(client, monkeypatch):
+    c, appmod = client
+    admin = auth.create_user("hb@b.com", is_admin=True)
+    c.cookies.set("sonar_session", auth.create_session(admin["id"]))
+    monkeypatch.setattr(appmod, "SSE_HEARTBEAT_SECS", 0.05)
+
+    async def slow_run(target):
+        yield {"event": "started", "data": {"target": target, "total_checks": 1, "categories": {}}}
+        await asyncio.sleep(0.25)   # > heartbeat → au moins un keepalive pendant l'attente
+        yield {"event": "done",
+               "data": {"score": 100, "grade": "A+", "counts": {}, "total": 0, "target": "https://x"},
+               "_findings": []}
+
+    monkeypatch.setattr(appmod, "run_scan", slow_run)
+    r = c.get("/api/scan/stream?target=example.com")
+    assert r.status_code == 200
+    assert ": keepalive" in r.text                       # le flux est resté actif
+    assert "event: done" in r.text and "event: saved" in r.text   # et le scan s'est terminé
 
 
 def test_logout_destroys_session(client):

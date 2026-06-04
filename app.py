@@ -6,6 +6,7 @@ protège le scan + l'historique derrière la session.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
@@ -32,6 +33,11 @@ LOGIN_PAGE = (BASE / "templates" / "login.html").read_text(encoding="utf-8")
 
 SESSION_COOKIE = "sonar_session"
 LANG_COOKIE = "sonar_lang"
+
+# Heartbeat SSE : si aucun event n'arrive pendant ce délai (ex. nuclei qui tourne
+# plusieurs minutes), on émet un commentaire `: ...` pour garder le flux actif et
+# empêcher un proxy (nginx ~60 s, Cloudflare ~100 s) de couper la connexion inactive.
+SSE_HEARTBEAT_SECS = 15.0
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -314,20 +320,45 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
     async def gen():
         summary = None
         findings = None
-        async for ev in run_scan(target):
-            data = ev["data"]
-            if ev["event"] == "finding":
-                # Le finding structuré est rendu dans la langue active pour l'affichage
-                # live ; la forme structurée (`_findings`) reste celle persistée.
-                data = {**data, **i18n.render_finding(data, lang)}
-            elif ev["event"] == "done":
-                summary = ev["data"]
-                findings = ev.get("_findings", [])
-            yield _sse(ev["event"], data)
-        if summary is not None:
-            scan_id = db.save_scan(summary.get("target", target), summary, findings or [],
-                                   user_id=user["id"])
-            yield _sse("saved", {"id": scan_id})
+        agen = run_scan(target)
+        # On attend le prochain event SANS l'annuler au timeout : on émet juste un
+        # heartbeat et on continue d'attendre la même tâche (sinon on casserait le scan).
+        nxt = asyncio.ensure_future(agen.__anext__())
+        try:
+            while True:
+                done, _ = await asyncio.wait({nxt}, timeout=SSE_HEARTBEAT_SECS)
+                if not done:
+                    yield ": keepalive\n\n"          # commentaire SSE (ignoré par EventSource)
+                    continue
+                try:
+                    ev = nxt.result()
+                except StopAsyncIteration:
+                    break
+                nxt = asyncio.ensure_future(agen.__anext__())
+                data = ev["data"]
+                if ev["event"] == "finding":
+                    # Rendu dans la langue active pour l'affichage live ; la forme
+                    # structurée (`_findings`) reste celle persistée.
+                    data = {**data, **i18n.render_finding(data, lang)}
+                elif ev["event"] == "done":
+                    summary = ev["data"]
+                    findings = ev.get("_findings", [])
+                yield _sse(ev["event"], data)
+            if summary is not None:
+                scan_id = db.save_scan(summary.get("target", target), summary, findings or [],
+                                       user_id=user["id"])
+                yield _sse("saved", {"id": scan_id})
+        finally:
+            if not nxt.done():
+                nxt.cancel()
+                try:
+                    await nxt
+                except BaseException:
+                    pass
+            try:
+                await agen.aclose()
+            except Exception:
+                pass
 
     headers = {
         "Cache-Control": "no-cache",
