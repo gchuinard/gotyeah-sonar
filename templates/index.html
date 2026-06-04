@@ -815,13 +815,13 @@ createApp({
         this.history = await r.json();
       } catch (e) {}
     },
-    goHistory() { this.historyFilter = ''; this.activeTab = 'history'; this.loadHistory(); },
+    goHistory() { this.activeTab = 'history'; this.loadHistory(); },
     openDomain(d) {
-      // Clic sur un domaine vérifié → pré-remplit l'input de scan (console, toujours visible)
-      // ET ouvre son historique (vide → bouton « Lancer le scan »).
+      // Clic sur un domaine vérifié → pré-remplit l'input de scan et RESTE sur Rapport
+      // (prêt à lancer). L'onglet Historique est filtré sur ce domaine si on y va ensuite.
       this.target = d.domain;
       this.historyFilter = d.domain;
-      this.activeTab = 'history';
+      this.activeTab = 'report';
       this.loadHistory();
     },
     scanDomain(domain) {
