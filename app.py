@@ -71,6 +71,32 @@ def _current_user(request: Request):
     return auth.get_session_user(request.cookies.get(SESSION_COOKIE))
 
 
+def _bearer_token(request: Request) -> str | None:
+    """Jeton d'un en-tête 'Authorization: Bearer <token>' (insensible à la casse), sinon None."""
+    header = request.headers.get("authorization") or ""
+    if header[:7].lower() == "bearer ":
+        return header[7:].strip() or None
+    return None
+
+
+def _pat_or_session_user(request: Request, scope: str = "scans:read"):
+    """Utilisateur courant pour les endpoints de LECTURE exposés au MCP (concept
+    « require_pat »). Accepte la session (cookie) OU un PAT « Authorization: Bearer
+    sonar_pat_… » portant le `scope` requis. Retourne l'utilisateur ou None.
+
+    On NE touche PAS `_current_user` : les routes d'écriture/admin restent en cookie
+    seul, donc un PAT ne peut JAMAIS les atteindre (default-deny par construction).
+    Le jeton n'est jamais journalisé.
+    """
+    user = _current_user(request)            # session (cookie) d'abord
+    if user:
+        return user
+    token = _bearer_token(request)           # sinon PAT, scope imposé
+    if token:
+        return auth.resolve_pat(token, required_scope=scope)
+    return None
+
+
 def _lang(request: Request, user=None) -> str:
     """Langue active : préférence utilisateur → cookie → Accept-Language → fr.
 
