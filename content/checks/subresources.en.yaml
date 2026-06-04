@@ -1,0 +1,48 @@
+# Security headers on subresources — EN presentation catalogue.
+# `title` / `detail` / `recommendation` mirror the EN-facing text. The rest
+# (explanation, why, steps, stacks, ai_prompt, refs) is the remediation content
+# GTmetrix-style.
+# Placeholders : {missing_count}, {checked}, {note} (sampling note, may be
+# empty). {stack} is filled in by the UI.
+
+subresources:
+  non-html:
+    title: "Subresources not evaluated"
+    detail: "The main page is not HTML: there is no subresource to analyze."
+    recommendation: "No action required for this point."
+
+  pass-none:
+    title: "No same-origin subresource"
+    detail: "The page loads no locally hosted script or stylesheet to verify."
+    why: "No same-origin subresource is loaded: there is no script/CSS header to verify on this side."
+
+  unreachable:
+    title: "Subresources unreachable"
+    detail: "None of the sampled subresources could be retrieved for verification."
+    recommendation: "No action required for this point."
+
+  missing:
+    title: "Subresources without `X-Content-Type-Options: nosniff`"
+    detail: "{missing_count} out of {checked} same-origin subresource(s) (script/CSS) are served without `nosniff`{note}: a file with an ambiguous MIME type can be reinterpreted by the browser (MIME sniffing), even when the main page is properly protected."
+    recommendation: "Add `X-Content-Type-Options: nosniff` on **all** responses, including static files — configure it globally server-side rather than per route."
+    explanation: "`nosniff` prevents the browser from \"guessing\" a file's type from its content rather than its `Content-Type`. On a script or a stylesheet, its absence allows reinterpreting a file with an ambiguous MIME type (MIME sniffing) — and the main page's protection makes no difference, because each response carries its own headers."
+    why: "An inconsistent header config is common: the main page is protected, but the static files (served by another `location`/route) are not. A script or CSS without `nosniff` reopens the door to MIME sniffing, hence to the execution of a reinterpreted file, even when the main document is properly hardened."
+    steps:
+      - "Add `X-Content-Type-Options: nosniff` on ALL responses, including static files (JS, CSS), not just the main page."
+      - "Configure it globally server-side/proxy rather than route by route, to avoid forgotten `location`s."
+      - "Make sure each subresource is served with the correct `Content-Type` (`application/javascript`, `text/css`)."
+    stacks:
+      nginx: "add_header X-Content-Type-Options \"nosniff\" always;  # in the http {} block to cover all locations"
+      npm: "Proxy Host → Advanced → Custom Nginx: add_header X-Content-Type-Options \"nosniff\" always;"
+      apache: "Header always set X-Content-Type-Options \"nosniff\"  # in <VirtualHost>, not just <Location>"
+      cloudflare: "Transform Rules → Modify Response Header → Set static: X-Content-Type-Options = nosniff (on all responses)"
+    ai_prompt: "You are a web security expert. On {host} (served by {stack}), some same-origin subresources (scripts/CSS) are served without `X-Content-Type-Options: nosniff` ({evidence}), while the main page is protected. Explain the MIME sniffing risk on these files and give the exact configuration for {stack} applying `nosniff` GLOBALLY to all responses, including static files."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+      - "https://owasp.org/www-project-secure-headers/"
+    a_verifier: false
+
+  pass-protected:
+    title: "Subresources properly protected"
+    detail: "The {checked} verified same-origin subresource(s) all carry `X-Content-Type-Options: nosniff`."
+    why: "The sampled same-origin subresources all carry `nosniff`: no possible reinterpretation of a script/CSS via MIME sniffing."

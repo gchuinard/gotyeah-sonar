@@ -1,0 +1,227 @@
+# HTTP security headers — EN presentation catalogue.
+# `title` / `detail` / `recommendation` mirror the historical text EXACTLY
+# (anti-regression guard: tests/test_regression_fr.py). The rest (explanation, why,
+# steps, stacks, ai_prompt, refs) is the remediation content GTmetrix-style.
+# Placeholders: {items} (permissive CSP), {maxage} (HSTS). {stack} is filled in by the UI.
+
+hdr-csp:
+  absent:
+    title: "Content-Security-Policy missing"
+    detail: "No CSP is sent: the first line of defence against XSS and content injection is missing."
+    recommendation: "Define a CSP, even a restrictive one at first (`default-src 'self'`), then refine it."
+    explanation: "The Content-Security-Policy is an allowlist that the browser enforces: it declares where code, styles, images and connections are allowed to come from. Anything not explicitly allowed is blocked."
+    why: "Without a CSP, an XSS flaw is exploited with no safeguard whatsoever: an injected script runs, exfiltrates cookies/sessions and pivots to the API. A CSP turns a critical XSS into a blocked attempt."
+    steps:
+      - "Start in observation mode with `Content-Security-Policy-Report-Only` to spot what would break, without blocking anything."
+      - "Set a strict baseline: `default-src 'self'`, then add ONLY the origins actually used (CDN, analytics, fonts)."
+      - "Ban `unsafe-inline`/`unsafe-eval`: move to nonces (`'nonce-...'`) or hashes for your inline scripts/styles."
+      - "Once no violations are reported, switch the header to `Content-Security-Policy` (blocking mode)."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"default-src 'self'; object-src 'none'; base-uri 'self'\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration: add_header Content-Security-Policy \"default-src 'self'\" always;"
+      cloudflare: "Rules → Transform Rules → Modify Response Header → Set static: Content-Security-Policy = default-src 'self'"
+      apache: "Header always set Content-Security-Policy \"default-src 'self'; object-src 'none'\""
+      nextjs: "next.config.js → headers(): { key: 'Content-Security-Policy', value: \"default-src 'self'\" }"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) sends no Content-Security-Policy header. Propose a strict yet functional CSP starting from `default-src 'self'`, explain how to deploy it first in Report-Only mode then in blocking mode, and show the exact configuration for {stack}. Do not invent origins: leave placeholders to fill in for third-party domains."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy"
+      - "https://content-security-policy.com/"
+    a_verifier: false
+  weak:
+    title: "CSP present but permissive"
+    detail: "The CSP allows {items}, which greatly weakens its protection."
+    recommendation: "Remove these directives by moving to nonces/hashes for your scripts."
+    explanation: "`unsafe-inline` allows JS/CSS written directly in the page and `unsafe-eval` allows `eval()` and friends. But that is precisely what an XSS attack injects: with these directives, the CSP lets through the very attack it is meant to block."
+    why: "A CSP that contains `unsafe-inline` gives a false sense of security: an injected script still runs. Real protection only begins once these directives are removed."
+    steps:
+      - "Identify the page's legitimate inline scripts/styles."
+      - "Replace them with external files served from your origin, or tag them with a nonce (`<script nonce=\"...\">`) regenerated on every response."
+      - "Remove `unsafe-inline` and `unsafe-eval` from the `script-src`/`style-src` directive."
+      - "Re-test in Report-Only mode to confirm no legitimate resource is blocked."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'nonce-$request_id'\" always;"
+      cloudflare: "Transform Rules → adjust the Content-Security-Policy value to remove 'unsafe-inline' / 'unsafe-eval'."
+      nextjs: "Generate a per-request nonce (middleware) and inject it into the CSP and the <script> tags."
+    ai_prompt: "You are a web security expert. The CSP of {host} (served by {stack}) allows {items}. Explain the risk, then show how to migrate to a nonce/hash-based CSP to remove these directives, with the exact configuration for {stack}."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src"
+    a_verifier: false
+  ok:
+    title: "Content-Security-Policy present"
+    detail: "A CSP is defined, with no notoriously dangerous directive."
+    why: "A strict CSP is in place: it is the main defence in depth against XSS and content injection."
+
+hdr-hsts:
+  absent:
+    title: "HSTS missing"
+    detail: "Without HSTS, a visitor can be downgraded to HTTP by a network attacker."
+    recommendation: "Add `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`."
+    explanation: "HTTP Strict Transport Security tells the browser to NEVER again contact the site in cleartext: once the header has been seen, all requests go over HTTPS, even if the user types `http://` or clicks an old link."
+    why: "Without HSTS, the very first request (or an http:// link) can be intercepted and kept in cleartext by a network attacker (public Wi-Fi, hostile proxy) who then serves a fake site (SSL stripping)."
+    steps:
+      - "Make sure the WHOLE site is served over valid HTTPS and that http→https already redirects (otherwise HSTS would make the site unreachable)."
+      - "Add the header `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`."
+      - "Check that all subdomains are indeed on HTTPS before enabling `includeSubDomains`."
+      - "Optional: submit the domain on hstspreload.org to hard-wire it into browsers."
+    stacks:
+      nginx: "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      npm: "Proxy Host → SSL → tick \"HSTS Enabled\" (and \"HSTS Subdomains\" if all your subdomains are on HTTPS)."
+      cloudflare: "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable."
+      apache: "Header always set Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\""
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) sends no HSTS header. Explain the SSL stripping risk, the prerequisites (HTTPS everywhere, redirection), then give the exact configuration for {stack} with a max-age of 2 years, includeSubDomains and preload."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      - "https://hstspreload.org/"
+    a_verifier: false
+  ok:
+    title: "HSTS present"
+    detail: "The Strict-Transport-Security header is sent."
+    why: "The browser will force HTTPS for this domain: cleartext downgrade is neutralised."
+
+hdr-hsts-maxage:
+  low:
+    title: "HSTS max-age too low"
+    detail: "max-age={maxage} s, below the recommended threshold (~6 months)."
+    recommendation: "Raise max-age to 63072000 (2 years) once your HTTPS is reliable."
+    explanation: "The `max-age` is the duration (in seconds) for which the browser keeps the \"HTTPS only\" instruction. Too short, and the protection expires quickly, reopening the downgrade window regularly."
+    why: "A low max-age weakens HSTS: if the user does not return before expiry, their next visit can start in cleartext and be intercepted."
+    steps:
+      - "Confirm that your HTTPS is stable and durable (certificate renewed automatically)."
+      - "Increase `max-age` to 63072000 (2 years), the value expected notably for preload."
+      - "Keep `includeSubDomains` if all your subdomains are on HTTPS."
+    stacks:
+      nginx: "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      cloudflare: "SSL/TLS → Edge Certificates → HSTS → raise the Max Age to 12 months or more."
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) sends HSTS with a max-age of {maxage} seconds, too short. Explain why and give the exact configuration for {stack} with max-age=63072000."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+    a_verifier: false
+
+hdr-xfo:
+  absent:
+    title: "Clickjacking protection missing"
+    detail: "Neither X-Frame-Options nor frame-ancestors: the page can be embedded in an iframe."
+    recommendation: "Add `X-Frame-Options: DENY` or `frame-ancestors 'none'` in the CSP."
+    explanation: "Clickjacking consists of loading your site in an invisible iframe placed over a decoy page: the victim thinks they are clicking on the decoy site but actually acts on yours (a \"confirm\" click, a transfer…)."
+    why: "Without anti-framing protection, an attacker can hijack the clicks of an authenticated user to make them perform actions on your site without their knowledge."
+    steps:
+      - "Decide who is allowed to embed your pages (usually nobody)."
+      - "Add `Content-Security-Policy: frame-ancestors 'none'` (recommended, more granular than X-Frame-Options)."
+      - "For compatibility with old browsers, also add `X-Frame-Options: DENY`."
+      - "If some pages must be embeddable, replace `'none'` with the explicit list of allowed origins."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"frame-ancestors 'none'\" always; add_header X-Frame-Options \"DENY\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx: add_header X-Frame-Options \"DENY\" always;"
+      cloudflare: "Transform Rules → Set static: X-Frame-Options = DENY (and frame-ancestors via the CSP)."
+      apache: "Header always set X-Frame-Options \"DENY\""
+      nextjs: "next.config.js → headers(): { key: 'X-Frame-Options', value: 'DENY' }"
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) does not protect against clickjacking. Explain the risk, then give the exact configuration for {stack} adding `frame-ancestors 'none'` (CSP) and `X-Frame-Options: DENY`."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options"
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors"
+    a_verifier: false
+  ok:
+    title: "Clickjacking protection present"
+    detail: "X-Frame-Options or CSP frame-ancestors is defined."
+    why: "Your pages cannot be embedded in a malicious iframe: clickjacking is blocked."
+
+hdr-nosniff:
+  absent:
+    title: "X-Content-Type-Options missing"
+    detail: "MIME sniffing can turn a harmless upload into an executable script."
+    recommendation: "Add `X-Content-Type-Options: nosniff`."
+    explanation: "Without `nosniff`, the browser \"guesses\" a file's type from its content rather than its `Content-Type` header. A seemingly harmless uploaded file can then be reinterpreted as HTML/JS and executed."
+    why: "MIME sniffing opens the door to XSS via files served with the wrong type: an \"image\" upload containing HTML can be executed by the browser."
+    steps:
+      - "Add `X-Content-Type-Options: nosniff` on ALL responses (not just the main page)."
+      - "Configure it globally on the server/proxy side rather than route by route."
+      - "Make sure your files are served with the correct `Content-Type`."
+    stacks:
+      nginx: "add_header X-Content-Type-Options \"nosniff\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx: add_header X-Content-Type-Options \"nosniff\" always;"
+      cloudflare: "Transform Rules → Set static: X-Content-Type-Options = nosniff"
+      apache: "Header always set X-Content-Type-Options \"nosniff\""
+      nextjs: "next.config.js → headers(): { key: 'X-Content-Type-Options', value: 'nosniff' }"
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) does not send `X-Content-Type-Options: nosniff`. Explain MIME sniffing and give the exact configuration for {stack} applying nosniff to all responses."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    a_verifier: false
+  ok:
+    title: "X-Content-Type-Options: nosniff"
+    detail: "The browser will not guess the MIME type."
+    why: "The browser respects the declared Content-Type: no reinterpretation of a file as a script."
+
+hdr-referrer:
+  absent:
+    title: "Referrer-Policy missing"
+    detail: "Without a policy, internal URLs can leak to third-party sites."
+    recommendation: "Add `Referrer-Policy: strict-origin-when-cross-origin`."
+    explanation: "The `Referer` header tells the destination site where the visitor comes from. Without `Referrer-Policy`, the full URL (with any sensitive parameters) can be transmitted to any third-party domain (outbound link, image, script)."
+    why: "Internal URLs — tokens, session identifiers in the URL, private paths — can leak to third parties (analytics, CDN, linked sites), with a confidentiality risk."
+    steps:
+      - "Choose a policy: `strict-origin-when-cross-origin` is a good default (origin only to third parties, full URL internally)."
+      - "Add the `Referrer-Policy` header globally on the server/proxy side."
+      - "For sensitive outbound links, also add `rel=\"noreferrer\"`."
+    stacks:
+      nginx: "add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+      cloudflare: "Transform Rules → Set static: Referrer-Policy = strict-origin-when-cross-origin"
+      apache: "Header always set Referrer-Policy \"strict-origin-when-cross-origin\""
+      nextjs: "next.config.js → headers(): { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }"
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) does not set a Referrer-Policy. Explain the URL leak risk and give the exact configuration for {stack} with `strict-origin-when-cross-origin`."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy"
+    a_verifier: false
+  ok:
+    title: "Referrer-Policy present"
+    detail: "The Referer policy is defined."
+    why: "The transmission of the origin URL to third parties is governed: no internal URL leak."
+
+hdr-permissions:
+  absent:
+    title: "Permissions-Policy missing"
+    detail: "Optional but recommended to disable unused browser APIs."
+    recommendation: "E.g. `Permissions-Policy: camera=(), microphone=(), geolocation=()`."
+    explanation: "`Permissions-Policy` declares which powerful browser APIs (camera, microphone, geolocation, payment…) your page — and the iframes it embeds — are allowed to use. Disabling those you do not use reduces the attack surface."
+    why: "Without a policy, a third-party iframe or a compromised script can try to access sensitive APIs (camera, microphone, geolocation). It is a low-cost defence in depth."
+    steps:
+      - "List the browser APIs your site actually uses."
+      - "Explicitly disable everything else with an empty value, e.g. `camera=(), microphone=(), geolocation=()`."
+      - "Allow an API only for your own origin if needed, e.g. `geolocation=(self)`."
+    stacks:
+      nginx: "add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;"
+      cloudflare: "Transform Rules → Set static: Permissions-Policy = camera=(), microphone=(), geolocation=()"
+      apache: "Header always set Permissions-Policy \"camera=(), microphone=(), geolocation=()\""
+      nextjs: "next.config.js → headers(): { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' }"
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) does not set a Permissions-Policy. Propose a policy that disables unused browser APIs (camera, microphone, geolocation, payment) and give the exact configuration for {stack}."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"
+    a_verifier: false
+  ok:
+    title: "Permissions-Policy present"
+    detail: "Access to browser APIs (camera, microphone, geolocation…) is governed."
+    why: "Sensitive browser APIs are explicitly governed: reduced attack surface."
+
+hdr-disclosure:
+  leak:
+    title: "Software version exposed"
+    detail: "Some headers reveal precise versions, useful for targeting known CVEs."
+    recommendation: "Hide or shorten these headers (`proxy_hide_header`, `server_tokens off`…)."
+    explanation: "Headers like `Server` or `X-Powered-By` announce the software AND its exact version. This is reconnaissance information handed to the attacker: all they have to do is look up the known CVEs for that version."
+    why: "Knowing the precise version of the server/framework lets an attacker directly target the matching public flaws, without trial and error. Hiding these headers slows down reconnaissance."
+    steps:
+      - "Remove or neutralise the `Server`, `X-Powered-By`, `X-AspNet-Version`, `X-AspNetMvc-Version` headers."
+      - "On the origin server, disable version disclosure (`server_tokens off`, `expose_php = Off`…)."
+      - "On the reverse proxy, hide the headers sent back by the upstream (`proxy_hide_header`)."
+    stacks:
+      nginx: "server_tokens off; proxy_hide_header X-Powered-By; more_clear_headers Server; (headers-more module)"
+      npm: "Proxy Host → Advanced → Custom Nginx: proxy_hide_header X-Powered-By; proxy_hide_header Server;"
+      cloudflare: "Transform Rules → Modify Response Header → Remove: Server / X-Powered-By"
+      apache: "ServerTokens Prod ; Header always unset X-Powered-By ; Header always unset Server"
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) discloses software versions via its headers ({evidence}). Explain the reconnaissance risk and give the exact configuration for {stack} to hide Server / X-Powered-By and the versions."
+    refs:
+      - "https://owasp.org/www-project-secure-headers/"
+    a_verifier: false
+  ok:
+    title: "No obvious software version"
+    detail: "No header discloses an exploitable version number."
+    why: "No exploitable software version is announced: reconnaissance via headers is limited."

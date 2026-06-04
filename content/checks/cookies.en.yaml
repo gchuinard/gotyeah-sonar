@@ -1,0 +1,112 @@
+# Cookie security attributes — EN presentation catalogue.
+# `title` / `detail` / `recommendation` mirror the FR remediation content.
+# The rest (explanation, why, steps, stacks, ai_prompt, refs) is GTmetrix-style
+# remediation content.
+# Placeholder: {name} (name of the cookie concerned). {stack} is filled in by the UI.
+
+cookies:
+  none:
+    title: "No cookie set"
+    detail: "The response sets no `Set-Cookie` header: there is no cookie-side attack surface (theft via XSS, network leak, CSRF)."
+    why: "No cookie is issued: the cookie-side attack surface (theft via XSS, network interception, CSRF) is nil."
+
+cookie-secure:
+  missing:
+    title: "Cookie \"{name}\" without `Secure`"
+    detail: "The `{name}` cookie has no `Secure` attribute: on an HTTPS target, it can be sent in clear text over an HTTP request and intercepted on the network."
+    recommendation: "Add the `Secure` attribute to the `{name}` cookie."
+    explanation: "The `Secure` attribute forbids the browser from sending the cookie over an unencrypted connection: it is only attached to HTTPS requests. Without it, the cookie can travel in clear text."
+    why: "On an HTTPS site, a cookie without `Secure` can be transmitted in clear text on an HTTP request (an http:// link, mixed content, an insecure subdomain) and captured by a network attacker (public Wi-Fi, hostile proxy), who then replays the session."
+    steps:
+      - "Locate the code (or proxy) that sets the `{name}` cookie."
+      - "Add the `Secure` attribute to its `Set-Cookie` declaration."
+      - "Make sure the whole site is HTTPS (otherwise the cookie would no longer be sent at all)."
+      - "Reload and confirm in DevTools (Application tab → Cookies) that the `Secure` column is checked for `{name}`."
+    stacks:
+      nginx: "proxy_cookie_flags ~ secure; (to flag Secure on cookies sent by the upstream)"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration: proxy_cookie_flags ~ secure;"
+      cloudflare: "Enable \"Always Use HTTPS\"; the Secure flag must be set by the application that issues the cookie."
+      apache: "Header always edit Set-Cookie ^(.*)$ \"$1; Secure\""
+      nextjs: "cookies().set('{name}', value, { secure: true, httpOnly: true, sameSite: 'lax' })"
+      express: "res.cookie('{name}', value, { secure: true, httpOnly: true, sameSite: 'lax' })"
+    ai_prompt: "You are a web security expert. The `{name}` cookie on the site {host} (served by {stack}) is set without the `Secure` attribute even though the site is on HTTPS. Explain the risk of network interception, then show how to add `Secure` (ideally with `HttpOnly` and `SameSite`) to the cookie declaration for {stack}."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#secure"
+      - "https://owasp.org/www-community/controls/SecureCookieAttribute"
+    a_verifier: false
+
+cookie-httponly:
+  missing:
+    title: "Cookie \"{name}\" without `HttpOnly`"
+    detail: "The `{name}` cookie is accessible to JavaScript (`document.cookie`): an XSS flaw would allow it to be stolen and the session hijacked."
+    recommendation: "Add the `HttpOnly` attribute to the `{name}` cookie (unless it genuinely needs to be read client-side)."
+    explanation: "The `HttpOnly` attribute makes the cookie invisible to JavaScript (`document.cookie`): only the browser attaches it to requests, never the page's code. It is the reference defence for a session cookie."
+    why: "Without `HttpOnly`, a single XSS flaw is enough to read the cookie via `document.cookie`, exfiltrate it and hijack the user's session. `HttpOnly` cuts off this theft vector even if an XSS exists."
+    steps:
+      - "Locate the code (or proxy) that sets the `{name}` cookie."
+      - "Add the `HttpOnly` attribute to its `Set-Cookie` declaration."
+      - "If JavaScript genuinely needs this value, expose it another way (a separate non-sensitive cookie, a dedicated endpoint) rather than removing `HttpOnly` from the session cookie."
+      - "Confirm in DevTools (Application → Cookies) that the `HttpOnly` column is checked for `{name}`."
+    stacks:
+      nginx: "proxy_cookie_flags ~ httponly; (to flag HttpOnly on cookies sent by the upstream)"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration: proxy_cookie_flags ~ httponly;"
+      apache: "Header always edit Set-Cookie ^(.*)$ \"$1; HttpOnly\""
+      nextjs: "cookies().set('{name}', value, { httpOnly: true, secure: true, sameSite: 'lax' })"
+      express: "res.cookie('{name}', value, { httpOnly: true, secure: true, sameSite: 'lax' })"
+    ai_prompt: "You are a web security expert. The `{name}` cookie on the site {host} (served by {stack}) is set without the `HttpOnly` attribute, so it is readable by JavaScript. Explain the risk of session theft via XSS, then show how to add `HttpOnly` (ideally with `Secure` and `SameSite`) to the cookie declaration for {stack}."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#httponly"
+      - "https://owasp.org/www-community/HttpOnly"
+    a_verifier: false
+
+cookie-samesite:
+  missing:
+    title: "Cookie \"{name}\" without `SameSite`"
+    detail: "The `{name}` cookie has no `SameSite` attribute: it is attached to cross-site requests, which opens the door to CSRF."
+    recommendation: "Add `SameSite=Lax` (or `Strict`) to the `{name}` cookie."
+    explanation: "The `SameSite` attribute decides whether the cookie accompanies requests coming from another site. `Lax` (a good default) does not send it on \"silent\" cross-site requests (POST, iframe, image), which blocks most CSRF."
+    why: "Without `SameSite`, the cookie is attached to every cross-site request: a malicious site can trigger an authenticated action without the user's knowledge (CSRF), for example a password change or a money transfer."
+    steps:
+      - "Locate the code (or proxy) that sets the `{name}` cookie."
+      - "Add `SameSite=Lax` to its `Set-Cookie` declaration (`Strict` if the cookie never needs to be sent during cross-site navigation)."
+      - "If the cookie really must be sent cross-site (SSO, third-party widget), use `SameSite=None` BUT always with `Secure`."
+      - "Confirm in DevTools (Application → Cookies) that the `SameSite` column shows `Lax`/`Strict` for `{name}`."
+    stacks:
+      nginx: "proxy_cookie_flags ~ samesite=lax; (to flag SameSite on cookies sent by the upstream)"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration: proxy_cookie_flags ~ samesite=lax;"
+      apache: "Header always edit Set-Cookie ^(.*)$ \"$1; SameSite=Lax\""
+      nextjs: "cookies().set('{name}', value, { sameSite: 'lax', secure: true, httpOnly: true })"
+      express: "res.cookie('{name}', value, { sameSite: 'lax', secure: true, httpOnly: true })"
+    ai_prompt: "You are a web security expert. The `{name}` cookie on the site {host} (served by {stack}) is set without a `SameSite` attribute. Explain the risk of CSRF, then show how to add `SameSite=Lax` (or `Strict`) to the cookie declaration for {stack}, and when to prefer `SameSite=None; Secure`."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
+      - "https://owasp.org/www-community/attacks/csrf"
+    a_verifier: false
+  none-insecure:
+    title: "Cookie \"{name}\" with `SameSite=None` but no `Secure`"
+    detail: "The `{name}` cookie is `SameSite=None` (sent cross-site) but without `Secure`: recent browsers reject it, and it remains exposed to CSRF."
+    recommendation: "Switch the `{name}` cookie to `SameSite=Lax`/`Strict`, or keep `SameSite=None` only with `Secure`."
+    explanation: "`SameSite=None` explicitly states that the cookie should be sent cross-site; browsers then require `Secure`. Without `Secure`, the combination is invalid: the cookie is ignored, and the CSRF protection collapses."
+    why: "A `SameSite=None` cookie without `Secure` is simply rejected by recent browsers (the cookie is not stored), which breaks functionality; and as long as it is accepted, it stays attached to cross-site requests, so it remains exposed to CSRF."
+    steps:
+      - "Decide whether the `{name}` cookie really needs to be sent cross-site."
+      - "If not: switch it back to `SameSite=Lax` (or `Strict`) — the safest option."
+      - "If yes (SSO, third-party widget): keep `SameSite=None` but you must add `Secure` (and `HttpOnly` if it is a session cookie)."
+      - "Confirm in DevTools (Application → Cookies) that the cookie is now accepted and correctly attributed."
+    stacks:
+      nginx: "proxy_cookie_flags ~ samesite=lax; (or samesite=none secure; if cross-site is genuinely required)"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration: proxy_cookie_flags ~ samesite=lax;"
+      apache: "Header always edit Set-Cookie ^(.*)$ \"$1; SameSite=Lax\" (or \"$1; SameSite=None; Secure\")"
+      nextjs: "cookies().set('{name}', value, { sameSite: 'lax', secure: true, httpOnly: true }) // or sameSite: 'none' + secure: true"
+      express: "res.cookie('{name}', value, { sameSite: 'lax', secure: true, httpOnly: true }) // or sameSite: 'none' + secure: true"
+    ai_prompt: "You are a web security expert. The `{name}` cookie on the site {host} (served by {stack}) is `SameSite=None` but without `Secure`, so it is rejected by recent browsers and exposed to CSRF. Explain the problem, then show how to either switch it back to `SameSite=Lax`/`Strict`, or keep `SameSite=None` with `Secure`, for {stack}."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite#none"
+      - "https://owasp.org/www-community/attacks/csrf"
+    a_verifier: false
+
+cookie-ok:
+  ok:
+    title: "Cookie \"{name}\" correctly protected"
+    detail: "The `{name}` cookie carries `Secure`, `HttpOnly` and an explicit `SameSite`: compliant configuration."
+    why: "The cookie combines `Secure`, `HttpOnly` and an explicit `SameSite`: no clear-text sending, no reading by JavaScript, no silent cross-site sending."

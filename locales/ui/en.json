@@ -1,0 +1,135 @@
+{
+  "lang_name": "English",
+  "dir": "ltr",
+
+  "sev_label": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "info": "Info",
+    "pass": "Pass"
+  },
+
+  "cat_label": {
+    "headers": "HTTP headers",
+    "cookies": "Cookies",
+    "tls": "TLS / Cert",
+    "dns": "DNS",
+    "exposure": "Exposure",
+    "cors": "CORS",
+    "content": "Mixed content",
+    "subresource": "Subresources",
+    "tech": "Technologies",
+    "pentest": "Pentest (nuclei)",
+    "zap": "Pentest (ZAP)",
+    "transport": "Transport",
+    "info": "Info"
+  },
+
+  "topbar": {
+    "subtitle": "reconnaissance console",
+    "version": "v0.1 · phase 1",
+    "logout": "Sign out",
+    "language": "Language"
+  },
+
+  "console": {
+    "prompt": "scan ~$",
+    "placeholder": "mysite.com",
+    "scan": "Run",
+    "scanning": "Scanning…"
+  },
+
+  "gauge": {
+    "waiting": "waiting",
+    "of_100": "/ 100",
+    "analyzing": "scanning · {done}/{total}",
+    "summary": "{issues} issue(s) · {pass} pass",
+    "idle_caption": "exposure surface index"
+  },
+
+  "domains": {
+    "title": "My domains",
+    "empty": "Add a domain and verify it to unlock scanning.",
+    "verified": "✓ verified",
+    "pending": "pending",
+    "delete": "Delete",
+    "howto": "Publish this TXT record on your DNS zone, then click Verify:",
+    "verify": "Verify",
+    "add_placeholder": "example.com",
+    "add": "Add",
+    "invalid": "Invalid domain."
+  },
+
+  "panels": {
+    "breakdown": "Breakdown",
+    "progress": "Progress",
+    "history": "History",
+    "history_empty": "No scan recorded yet."
+  },
+
+  "feed": {
+    "checks_progress": "{done}/{total} checks",
+    "observations": "{count} observations on",
+    "hide_pass": "hide passing",
+    "empty": "Enter the URL of one of your own sites and run a scan. Observations will appear here as the analysis progresses, and the gauge will measure your exposure surface.",
+    "sort_by": "Sort by",
+    "sort_severity": "Severity (critical first)",
+    "sort_scan": "Scan order",
+    "sort_category": "Category",
+    "show_all": "Show all",
+    "filter_hint": "Click a severity to filter the feed"
+  },
+
+  "remediation": {
+    "expand": "How to fix",
+    "collapse": "Collapse",
+    "explanation": "In plain terms",
+    "why": "Why it matters",
+    "steps": "Steps",
+    "stacks": "By stack",
+    "evidence": "Evidence",
+    "ai_prompt": "AI prompt",
+    "copy_prompt": "Copy AI prompt",
+    "copied": "Copied!",
+    "refs": "References",
+    "pass_why": "Why it passes",
+    "to_review": "to review",
+    "untranslated": "original description (untranslated)",
+    "detected_stack": "detected"
+  },
+
+  "stacks": {
+    "nginx": "Nginx",
+    "npm": "Nginx Proxy Manager",
+    "cloudflare": "Cloudflare",
+    "apache": "Apache",
+    "nextjs": "Next.js",
+    "express": "Express",
+    "fastapi": "FastAPI",
+    "django": "Django",
+    "laravel": "Laravel",
+    "rails": "Rails",
+    "php": "PHP",
+    "java": "Java",
+    "caddy": "Caddy",
+    "html": "HTML",
+    "app": "Application",
+    "csp": "CSP",
+    "generic": "Generic"
+  },
+
+  "banners": {
+    "archived": "Archived scan —",
+    "new_scan": "New scan",
+    "scan_locked": "Scanning locked: add and verify a domain in “My domains”.",
+    "scan_interrupted": "Connection interrupted — target unreachable?",
+    "scan_error": "Error during scan."
+  },
+
+  "fallback": {
+    "title": "No description available",
+    "detail": "The localized description for this result isn't available yet in this language."
+  }
+}

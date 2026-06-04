@@ -1,0 +1,150 @@
+# Email security / PKI DNS records (SPF / DMARC / CAA) — EN presentation catalogue.
+# `title` / `detail` / `recommendation` mirror EXACTLY the historical text
+# (anti-regression guard: tests/test_regression_fr.py). The rest (explanation, why,
+# steps, stacks, refs) is the GTmetrix-style remediation content.
+# Placeholders: {dmarc_name} (the `_dmarc.<domain>` name), {policy} (applied DMARC policy),
+# {label} / {error_type} (resolution unavailable).
+# NO ai_prompt key for the dns-* family: a DNS record = we publish an exact
+# value (the `steps` carry the TXT / commands to copy), not a coding agent.
+
+dns-resolve:
+  no-host:
+    title: "DNS resolution unavailable"
+    detail: "No target host could be determined to query DNS."
+    recommendation: "Provide a valid hostname to scan."
+    explanation: "Without a host name to query, no DNS request (SPF, DMARC, CAA) can be launched: there is simply no domain to check."
+    why: "This line is not a flaw of the target domain but a limit of the scan: lacking a valid host, the email security / PKI records could not be checked."
+    steps:
+      - "Re-run the scan providing a complete and valid hostname (e.g. `example.com`)."
+      - "Verify that the URL entered does contain a resolvable domain, with no typo or missing scheme."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Glossary/DNS"
+    a_verifier: false
+  unavailable:
+    title: "DNS resolution unavailable"
+    detail: "DNS resolution for {label} could not complete ({error_type}). The records concerned could not be verified."
+    recommendation: "Try again later or check the DNS connectivity of the scan environment."
+    explanation: "The DNS request failed (timeout, no responding name server, etc.) before the record could be read. This is not proof that the record is missing: it is the inability to conclude."
+    why: "A resolution failure masks the real result: as long as it lasts, one can affirm neither that the record is present nor that it is absent. The check must be replayed under good network conditions."
+    steps:
+      - "Check the DNS connectivity of the scan environment (reachable name server, no outbound filtering on port 53)."
+      - "Try the scan again a little later: a `Timeout` or a `NoNameservers` is often transient (error encountered: {error_type})."
+      - "If needed, test resolution manually from another network, e.g. `dig example.com TXT` or `dig example.com CAA`."
+    stacks:
+      registrar: "Confirm that the zone is properly delegated to active name servers (NS fields at the registrar)."
+      "zone DNS": "Verify that the authoritative servers respond (no expired zone or stale SOA)."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Glossary/DNS"
+    a_verifier: false
+
+dns-spf:
+  present:
+    title: "SPF record present"
+    detail: "A `v=spf1` record declares the servers authorized to send mail for this domain."
+    why: "A published SPF lets recipients reject mail sent from unlisted servers: it is the first barrier against sender spoofing."
+  absent:
+    title: "SPF record absent"
+    detail: "No `v=spf1` record: a third party can spoof the domain's sender address."
+    recommendation: "Publish an SPF TXT record, e.g. `v=spf1 include:_spf.exemple.com -all`."
+    explanation: "SPF (Sender Policy Framework) is a TXT record that lists the servers authorized to send mail for your domain. The recipient server compares the sending IP to this list: anything not on it is considered unauthorized."
+    why: "Without SPF, anyone can send emails pretending to be `@yourdomain`: the recipient has no way to verify the sender, which makes phishing easier and hurts your deliverability."
+    steps:
+      - "List ALL the services that send mail on your behalf (mail server, transactional ESP, CRM, support…)."
+      - "Publish a single TXT record at the root of the domain listing these sources via `include:` or `ip4:`/`ip6:`, e.g. `v=spf1 include:_spf.example.com -all`."
+      - "End with a `-all` (hard reject) once you are sure you have listed all your legitimate sources (you may start with `~all`, softfail)."
+      - "Verify that there is only ONE SPF record (multiple `v=spf1` invalidate the policy)."
+    stacks:
+      registrar: "Add a TXT record at the root (`@`): value `v=spf1 include:_spf.example.com -all`."
+      "zone DNS": "@  IN  TXT  \"v=spf1 include:_spf.example.com -all\""
+      cloudflare: "DNS → Records → Add record → Type TXT, Name `@`, Content `v=spf1 include:_spf.example.com -all`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7208"
+      - "https://developer.mozilla.org/en-US/docs/Glossary/DNS"
+    a_verifier: false
+
+dns-dmarc:
+  enforced:
+    title: "DMARC enforced"
+    detail: "The DMARC policy is at `p={policy}`, it is effectively enforced."
+    why: "DMARC is in enforced mode (`quarantine`/`reject`): messages failing SPF/DKIM are quarantined or rejected, which closes the door to domain spoofing."
+  monitor:
+    title: "DMARC in monitoring mode (`p=none`)"
+    detail: "The DMARC policy is at `p=none`: fraudulent messages are reported but no measure is enforced."
+    recommendation: "Move progressively to `p=quarantine` then `p=reject` once the legitimate flows are validated."
+    explanation: "With `p=none`, DMARC only observes: you receive reports (`rua`) about what passes or fails, but fraudulent messages are still delivered. It is a transition step, not a protection."
+    why: "As long as the policy stays at `p=none`, a spoofer can keep sending mail in your name without being blocked: the domain is only protected from `quarantine`/`reject` onward."
+    steps:
+      - "Analyze the DMARC reports (`rua`) to identify all your legitimate sending sources and fix their SPF/DKIM alignment."
+      - "Once the legitimate flows are aligned, set the policy to `p=quarantine` (non-conforming messages sent to spam)."
+      - "When quarantine is stable without false positives, harden to `p=reject` (plain rejection)."
+      - "Keep the `rua=mailto:` address to continue receiving aggregate reports, e.g. `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+    stacks:
+      registrar: "Edit the `_dmarc` TXT record: change `p=none` to `p=quarantine` then `p=reject`."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → edit the `_dmarc` TXT → replace `p=none` with `p=quarantine` (then `p=reject`)."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+  absent:
+    title: "DMARC record absent"
+    detail: "No `v=DMARC1` policy on `{dmarc_name}`: nothing tells recipients how to handle messages failing SPF/DKIM."
+    recommendation: "Publish a DMARC policy, e.g. `v=DMARC1; p=quarantine; rua=mailto:dmarc@exemple.com`."
+    explanation: "DMARC relies on SPF and DKIM to decide the fate of unauthenticated messages and signal it to recipients. The policy is published in a TXT record on the `_dmarc.<domain>` subdomain."
+    why: "Without DMARC, even with SPF/DKIM in place, each recipient applies its own heuristic: nothing tells it to reject a message spoofing your domain, and you receive no report about spoofing attempts."
+    steps:
+      - "First make sure SPF (and ideally DKIM) are published and aligned for your legitimate sends."
+      - "Publish a TXT record on `{dmarc_name}` starting with `v=DMARC1`, e.g. `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+      - "Start cautiously with `p=none` and a `rua=mailto:` to collect reports without blocking."
+      - "Then harden toward `p=quarantine` then `p=reject` once the legitimate flows are confirmed."
+    stacks:
+      registrar: "Add a TXT record named `_dmarc`: value `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → Add record → Type TXT, Name `_dmarc`, Content `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+  no-policy:
+    title: "DMARC without enforcement policy"
+    detail: "A `v=DMARC1` record exists but its `p=` tag is absent or invalid, so no measure is enforced."
+    recommendation: "Explicitly set `p=quarantine` or `p=reject`."
+    explanation: "The `p=` tag is the heart of DMARC: it tells the recipient what to do with non-conforming messages. If it is missing or contains an unknown value, the record is treated as inoperative — as if there were no policy."
+    why: "A `v=DMARC1` without a valid `p=` gives a false impression of protection: no measure is enforced, spoofing remains possible exactly as in the absence of DMARC."
+    steps:
+      - "Edit the `_dmarc` TXT record and add an explicit `p=` tag."
+      - "Choose `p=quarantine` (send to spam) or `p=reject` (rejection) depending on your maturity; you may revert to `p=none` while validating your flows."
+      - "Verify the complete syntax, e.g. `v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com`."
+    stacks:
+      registrar: "Edit the `_dmarc` TXT and add `p=quarantine` (or `p=reject`) to the existing value."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → edit the `_dmarc` TXT → add `p=quarantine` to the value."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+
+dns-caa:
+  present:
+    title: "CAA record present"
+    detail: "A CAA record restricts the certificate authorities allowed to issue certificates for this domain."
+    why: "A CAA record limits certificate issuance to only the authorities you have declared: a third-party CA cannot issue a valid certificate for your domain, which reduces the risk of a fraudulent certificate."
+  absent:
+    title: "CAA record absent"
+    detail: "No CAA record: any certificate authority can issue a certificate for this domain. Optional but recommended."
+    recommendation: "Add a CAA record, e.g. `0 issue \"letsencrypt.org\"`."
+    explanation: "A CAA (Certification Authority Authorization) record lists the certificate authorities entitled to issue certificates for your domain. Compliant CAs check this DNS before issuing: without CAA, none is restricted."
+    why: "Without CAA, any public certificate authority can issue a valid certificate for your domain. Restricting the list limits the impact of a compromised CA or of an abusive issuance (mis-issuance)."
+    steps:
+      - "Identify the authority or authorities you actually use (e.g. `letsencrypt.org`, `digicert.com`)."
+      - "Publish a CAA record at the root of the domain authorizing only these CAs via the `issue` tag."
+      - "Add an `iodef` tag (`mailto:`) to be notified of unauthorized issuance attempts."
+      - "If you use wildcard certificates, add an `issuewild` tag for the relevant CA. Typical record: `0 issue \"letsencrypt.org\"`."
+    stacks:
+      registrar: "Add a CAA record at the root (`@`): flag `0`, tag `issue`, value `letsencrypt.org`."
+      "zone DNS": "@  IN  CAA  0 issue \"letsencrypt.org\""
+      cloudflare: "DNS → Records → Add record → Type CAA, Name `@`, Tag `Only allow specific hostnames`, CA domain `letsencrypt.org`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc8659"
+      - "https://developer.mozilla.org/en-US/docs/Web/Security"
+    a_verifier: false

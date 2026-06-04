@@ -1,0 +1,194 @@
+# TLS / Certificate — EN presentation catalogue.
+# `title` / `detail` / `recommendation` mirror EXACTLY the historical text
+# (anti-regression guard: tests/test_regression_fr.py, "tls_*" scenarios). The rest
+# (explanation, why, steps, stacks, ai_prompt, refs) is the GTmetrix-style remediation
+# content.
+# Placeholders: {url} (HTTP), {error} (validation), {host}/{port}/{error_type}
+# (connection), {version} (protocol), {not_before}/{not_after}/{issuer}/{days}
+# (certificate). {stack} is filled in on the UI side.
+# ai_prompt policy: FORBIDDEN for every `tls-cert-*` (we apply an exact value
+# /command, not a coding agent). ALLOWED for `tls` and `tls-version`.
+
+tls:
+  http:
+    title: "Unencrypted connection (HTTP)"
+    detail: "The final URL is `{url}`: traffic travels in clear text, exposed to interception and tampering."
+    recommendation: "Serve the site exclusively over HTTPS and redirect all HTTP to HTTPS."
+    explanation: "Without TLS, everything that travels between the browser and the server (credentials, session cookies, page content) is sent in clear text over the network: any intermediate device can read AND modify it on the fly."
+    why: "A clear-text connection exposes visitors to interception (password/session theft) and to content injection (ads, malware) by a network attacker (public Wi-Fi, ISP, proxy). It is also a distrust signal for browsers and for search ranking."
+    steps:
+      - "Obtain a free TLS certificate (Let's Encrypt) for the domain."
+      - "Enable HTTPS on the server/proxy and verify that the certificate is valid (complete chain, correct hostname)."
+      - "Redirect all `http://` traffic to `https://` (301 redirect)."
+      - "Once HTTPS is stable, add the HSTS header to prevent any fallback to clear text."
+    stacks:
+      nginx: "server { listen 80; server_name {host}; return 301 https://$host$request_uri; }"
+      npm: "Proxy Host → SSL → request a Let's Encrypt certificate, then check \"Force SSL\" (automatic HTTP→HTTPS redirect)."
+      cloudflare: "SSL/TLS → Overview → \"Full (strict)\" mode, then Edge Certificates → \"Always Use HTTPS\" → On."
+      apache: "<VirtualHost *:80> ServerName {host} ; Redirect permanent / https://{host}/ </VirtualHost>"
+    ai_prompt: "You are a web security expert. The site {host} is served in clear text (HTTP): the final URL is {url}. Explain the risks (interception, injection), then give the exact procedure for {stack} to obtain a TLS certificate, enable HTTPS and redirect all HTTP traffic to HTTPS."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+      - "https://letsencrypt.org/"
+    a_verifier: false
+  verify-failed:
+    title: "Certificate validation failed"
+    detail: "The chain or the hostname could not be validated: `{error}`. The browser will display a security warning."
+    recommendation: "Deploy a valid trusted certificate for this hostname (complete chain, correct hostname, not expired)."
+    explanation: "A browser only accepts a certificate if it is issued by a trusted authority, if it actually covers the requested domain name and if the intermediate chain is complete. If any of these points fails, the connection is considered untrusted."
+    why: "An invalid certificate (self-signed, wrong hostname, incomplete chain, unknown authority) triggers a blocking security warning: visitors leave and, worse, get used to \"clicking through\", which defeats the protection against impersonation."
+    steps:
+      - "Identify the exact cause of the failure (hostname not covered, incomplete chain, unrecognized authority, expiration)."
+      - "Issue a trusted certificate covering the correct hostname (Let's Encrypt or a recognized CA)."
+      - "Serve the COMPLETE chain (certificate + intermediates), not only the leaf certificate."
+      - "Re-test with a third-party tool (SSL Labs) to confirm that the chain and the hostname are valid."
+    stacks:
+      nginx: "ssl_certificate /etc/letsencrypt/live/{host}/fullchain.pem; ssl_certificate_key /etc/letsencrypt/live/{host}/privkey.pem;"
+      npm: "Proxy Host → SSL → \"Request a new SSL Certificate\" (Let's Encrypt) for the correct domain, then save."
+      cloudflare: "SSL/TLS → \"Full (strict)\" mode and verify that the origin presents a valid certificate (Cloudflare Origin Certificate if needed)."
+      apache: "SSLCertificateFile /etc/letsencrypt/live/{host}/fullchain.pem ; SSLCertificateKeyFile /etc/letsencrypt/live/{host}/privkey.pem"
+    ai_prompt: "You are a web security expert. The TLS certificate of {host} fails validation: `{error}`. Explain the likely cause, then give the exact procedure for {stack} to deploy a trusted certificate covering the correct hostname with the complete chain."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+      - "https://www.ssllabs.com/ssltest/"
+    a_verifier: false
+  unreachable:
+    title: "TLS not verifiable"
+    detail: "Could not establish a TLS connection to `{host}:{port}`: {error_type}."
+    recommendation: "Verify that the port is open and that a TLS service answers on it."
+    explanation: "The scanner could not open a TLS session on the tested port: connection refused, timeout, or no TLS service listening. This is not necessarily a flaw — but the encryption analysis could not be performed."
+    why: "Without a completed TLS handshake, it is impossible to check the protocol version or the certificate validity: the result is purely informational. A filtered port or an absent service may be normal depending on the architecture."
+    steps:
+      - "Confirm that the service is indeed listening over TLS on `{host}:{port}` (e.g. `openssl s_client -connect {host}:{port}`)."
+      - "Check the firewall / security groups: the port must be reachable from the outside."
+      - "If the site sits behind a proxy/CDN, make sure it is the one that should answer over TLS on this port."
+    stacks:
+      nginx: "Check `listen 443 ssl;` and that the server is indeed listening on the public interface."
+      npm: "Verify that the Proxy Host exists and that SSL is enabled; test direct access to port 443."
+      cloudflare: "SSL/TLS → verify that the origin answers over TLS; a filtered port on the origin side breaks the handshake."
+      apache: "Check `Listen 443` and the `<VirtualHost *:443>` directive with SSLEngine on."
+    ai_prompt: "You are a web security expert. The scanner could not establish a TLS connection to {host}:{port} (error {error_type}). Explain the possible causes (closed/filtered port, absent service, wrong proxy) and give, for {stack}, how to diagnose and correctly expose a TLS service on this port."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+    a_verifier: false
+  error:
+    title: "TLS not verifiable"
+    detail: "Unexpected error during the TLS test: {error_type}."
+    explanation: "An unexpected error occurred during the TLS test. The scanner caught it so as not to interrupt the analysis, but it prevents any conclusion about the state of the encryption."
+    why: "This result is informational: it signals that the TLS test could not complete for an unusual reason. You generally need to re-run the scan or diagnose the TLS service manually."
+    steps:
+      - "Re-run the scan: some errors are transient (network, timeout)."
+      - "If it persists, test the TLS service manually (e.g. `openssl s_client -connect {host}:443`)."
+      - "Check the TLS configuration on the server/proxy side (certificate, protocols, SNI)."
+    stacks:
+      nginx: "Check the SSL configuration of the `server { ... }` block and the error logs."
+      cloudflare: "SSL/TLS → check the encryption mode and the state of the origin."
+    ai_prompt: "You are a web security expert. The TLS test of {host} failed with an unexpected error ({error_type}). Suggest a diagnostic approach and, for {stack}, the TLS configuration points to check."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+    a_verifier: false
+
+tls-version:
+  obsolete:
+    title: "Obsolete TLS version negotiated"
+    detail: "The server accepts `{version}`, a deprecated and vulnerable protocol (BEAST, POODLE…)."
+    recommendation: "Disable all protocols < TLS 1.2 and favor TLS 1.3."
+    explanation: "The SSLv2, SSLv3, TLS 1.0 and TLS 1.1 versions suffer from known cryptographic weaknesses (BEAST, POODLE, obsolete cipher suites). As long as the server accepts them, an attacker can try to force a negotiation toward the weakest link (downgrade)."
+    why: "Accepting a deprecated protocol exposes sessions to decryption/tampering attacks and fails compliance audits (PCI-DSS in particular). The real security level is that of the weakest protocol still accepted."
+    steps:
+      - "Explicitly limit the protocols to TLS 1.2 and TLS 1.3 on the server/proxy side."
+      - "Disable SSLv3, TLS 1.0 and TLS 1.1."
+      - "Also align the cipher suites with modern suites (Mozilla \"intermediate\" configuration)."
+      - "Re-test with SSL Labs to confirm that the obsolete protocols are gone."
+    stacks:
+      nginx: "ssl_protocols TLSv1.2 TLSv1.3;"
+      npm: "Proxy Host → SSL → NPM's modern configuration already forces TLS 1.2+; verify that no old protocol is re-enabled in a custom config."
+      cloudflare: "SSL/TLS → Edge Certificates → Minimum TLS Version → set to 1.2 (or 1.3)."
+      apache: "SSLProtocol -all +TLSv1.2 +TLSv1.3"
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) accepts an obsolete protocol ({version}). Explain the risks (BEAST, POODLE, downgrade), then give the exact configuration for {stack} limiting the protocols to TLS 1.2 and TLS 1.3 with modern suites."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+      - "https://ssl-config.mozilla.org/"
+    a_verifier: false
+  ok:
+    title: "Correct TLS version"
+    detail: "The connection negotiates `{version}` (>= TLS 1.2)."
+    why: "The server negotiates a modern version of TLS (>= 1.2): the known vulnerable protocols are not used for this session."
+
+tls-cert-validity:
+  not-yet-valid:
+    title: "Certificate not yet valid"
+    detail: "The certificate only takes effect on `{not_before}` (`notBefore` date in the future)."
+    recommendation: "Check the server clock or deploy the correct certificate."
+    explanation: "A certificate carries a start-of-validity date (`notBefore`): before this date, it is considered invalid by browsers. A `notBefore` date in the future most often reveals a misconfigured server clock or a certificate deployed too early."
+    why: "As long as the start date has not been reached, visitors see a blocking security warning, exactly as for an expired certificate: the site is effectively inaccessible with any confidence."
+    steps:
+      - "Check the server clock (NTP): a lagging time can make a valid certificate appear as \"not yet valid\"."
+      - "Inspect the `notBefore` date of the deployed certificate (`openssl x509 -noout -dates`)."
+      - "If the certificate is genuinely post-dated, wait for its effective date or issue a currently valid one."
+    stacks:
+      nginx: "Check the time: `timedatectl`; reload after correction: `nginx -s reload`."
+      cloudflare: "SSL/TLS → Edge Certificates → check the certificate state; on the origin side, check the clock."
+      apache: "Check the time (`timedatectl`) then reload: `apachectl graceful`."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+    a_verifier: false
+
+tls-cert-expiry:
+  expired:
+    title: "Certificate expired"
+    detail: "The certificate expired on `{not_after}` (issued by {issuer})."
+    recommendation: "Renew the certificate immediately."
+    explanation: "A TLS certificate has a limited lifetime (`notAfter`). Past this date, browsers refuse the connection and display a blocking security warning: the site becomes inaccessible with any confidence."
+    why: "An expired certificate cuts off access to the site for all visitors (blocking warning) and breaks automated integrations (API, webhooks). It is an availability outage as much as a security defect."
+    steps:
+      - "Renew the certificate without delay (`certbot renew` for Let's Encrypt)."
+      - "Reload the server/proxy so it serves the new certificate."
+      - "Set up automatic renewal to avoid any new expiration."
+      - "Monitor the deadline (alert 30 days before) to stay ahead."
+    stacks:
+      nginx: "certbot renew then `nginx -s reload`."
+      npm: "Proxy Host → SSL → \"Renew\" the Let's Encrypt certificate (NPM normally renews automatically)."
+      cloudflare: "SSL/TLS → Edge Certificates for the edge; on the origin side, renew the certificate then reload the service."
+      apache: "certbot renew then `apachectl graceful`."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+      - "https://certbot.eff.org/"
+    a_verifier: false
+  soon:
+    title: "Certificate close to expiration"
+    detail: "The certificate expires in {days} day(s) (on `{not_after}`)."
+    recommendation: "Renew it before the deadline; aim for automatic renewal."
+    explanation: "The certificate is still valid but is approaching its deadline. Beyond the `notAfter` date, browsers will block the connection: you must renew beforehand to avoid any outage."
+    why: "A certificate that expires soon is a scheduled outage: without renewal, the site will become inaccessible on the day with a blocking warning. Automatic renewal removes this risk."
+    steps:
+      - "Renew the certificate right now (`certbot renew` for Let's Encrypt)."
+      - "Reload the server/proxy to serve the renewed certificate."
+      - "Enable automatic renewal (timer/cron) so you no longer have to think about it."
+      - "Set a deadline alert (30 days before) as a safety net."
+    stacks:
+      nginx: "certbot renew then `nginx -s reload`; check the timer `systemctl status certbot.timer`."
+      npm: "Proxy Host → SSL: NPM renews automatically; check the certificate state."
+      cloudflare: "SSL/TLS → Edge Certificates for the edge; on the origin side, schedule automatic renewal."
+      apache: "certbot renew then `apachectl graceful`."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+      - "https://certbot.eff.org/"
+    a_verifier: false
+  ok:
+    title: "Certificate valid"
+    detail: "The certificate is valid for another {days} day(s) (until `{not_after}`)."
+    why: "The certificate is valid and its deadline is still far off: no action required, just keep an eye on the automatic renewal."
+  unparseable:
+    title: "Certificate expiration date unreadable"
+    detail: "Could not parse the `notAfter` date (`{not_after}`)."
+    recommendation: ""
+    explanation: "The scanner could not interpret the expiration date (`notAfter`) as presented by the certificate. The format is unusual: the deadline analysis could not be performed automatically."
+    why: "This result is informational: it does not indicate a flaw but a date unreadable by the tool. It is better to check the certificate deadline manually to make sure it is neither expired nor close to it."
+    steps:
+      - "Inspect the certificate manually (`openssl x509 -noout -enddate`) to read the real deadline."
+      - "If the date is inconsistent, re-issue a clean certificate from a recognized authority."
+      - "Monitor the deadline via a third-party tool (SSL Labs) as well."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+    a_verifier: false

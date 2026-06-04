@@ -1,0 +1,147 @@
+# CORS configuration — EN presentation catalogue.
+# `title` / `detail` / `recommendation` mirror the EN-facing text (scenarios "cors_*").
+# The rest (explanation, why, steps, stacks, ai_prompt, refs) is the remediation
+# content GTmetrix-style.
+# All codes share the check_id "cors" (single probe with a bogus Origin).
+# `pass-none` and `restricted` have the SAME title ("No CORS exposure") but a
+# DIFFERENT detail → two distinct entries.
+# {error_type} (probe failure) ; {evidence} carries the observed ACAO/ACAC headers.
+# {stack} is filled in by the UI. ai_prompt policy: ALLOWED (app/proxy CORS config).
+
+cors:
+  error:
+    title: "CORS check impossible"
+    detail: "The CORS probe request failed ({error_type}): impossible to conclude on the cross-origin policy."
+    recommendation: "Retry the scan; verify that the host responds to requests carrying an `Origin` header."
+    explanation: "To test the cross-origin policy, the scanner sends a request with a bogus `Origin` header and observes the returned `Access-Control-Allow-Origin`. Here the probe request did not succeed (network error, timeout, unreachable host): no conclusion can be drawn."
+    why: "Without a response to the probe, it is impossible to know whether the API reflects the `Origin`, allows a wildcard, or stays restricted. The result is purely informational and does not affect the score: a one-off failure may come from the network, not a flaw."
+    steps:
+      - "Re-run the scan: a one-off failure (timeout, network drop) is often resolved by retrying."
+      - "Verify that the host indeed responds to requests carrying an `Origin` header (some firewalls or WAFs filter cross-origin requests)."
+      - "Test manually with `curl -H \"Origin: https://example.test\" -I <url>` and observe the `Access-Control-Allow-Origin` header."
+    stacks:
+      nginx: "Verify that the `location` block does not reject requests with an `Origin` header (no overly broad `if ($http_origin) { return 403; }`)."
+      npm: "Proxy Host → Advanced → Custom Nginx: make sure no rule blocks cross-origin requests before reaching the upstream."
+      cloudflare: "WAF → verify that no managed/custom rule blocks requests carrying an unknown `Origin` header."
+    ai_prompt: "You are a web security expert. The CORS probe of {host} (served by {stack}) failed ({error_type}). Explain the possible causes (network, WAF filtering the Origin header, unreachable host) and give the exact procedure for {stack} to manually test the CORS policy with an Origin header."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+    a_verifier: false
+  reflected-creds:
+    title: "Origin reflected with credentials"
+    detail: "The server reflects the sent `Origin` identically while responding `Access-Control-Allow-Credentials: true`: any site can read the victim's authenticated responses (cookies, sessions)."
+    recommendation: "Never reflect the received `Origin` with `Allow-Credentials: true`; use a strict allowlist of trusted domains."
+    explanation: "When the server copies the received `Origin` into `Access-Control-Allow-Origin` and adds `Access-Control-Allow-Credentials: true`, it authorizes ANY site to make authenticated requests (with cookies) and to read the response. It is the equivalent of a wildcard, but bypassing the ban on a wildcard with credentials."
+    why: "An attacker only has to host a page: when a logged-in victim visits it, their browser sends their cookies to your API and the attacker's script reads the response (personal data, tokens, authenticated actions). It is a high-severity cross-origin session leak."
+    steps:
+      - "Stop reflecting the received `Origin`: compare it against an explicit allowlist of trusted domains and only return the header for an exact match."
+      - "Only combine `Access-Control-Allow-Credentials: true` with a single, validated origin, never with a reflected value or `*`."
+      - "If the API is public and session-less, remove `Allow-Credentials` and do not allow cross-origin cookies."
+      - "Re-test with a bogus `Origin`: the `Access-Control-Allow-Origin` header must NOT reflect it."
+    stacks:
+      nginx: "Replace any `add_header Access-Control-Allow-Origin $http_origin` with an allowlist (`map $http_origin $cors_ok { default \"\"; \"https://app.example.com\" $http_origin; }`) and only emit the header if `$cors_ok` is non-empty."
+      npm: "Proxy Host → Advanced → Custom Nginx: only allow trusted origins via a `map`, never reflect `$http_origin` with `Allow-Credentials: true`."
+      cloudflare: "Transform Rules / Workers: validate the `Origin` against an allowlist before emitting `Access-Control-Allow-Origin`, and only return `Allow-Credentials: true` for a known origin."
+      express: "cors({ origin: ['https://app.example.com'], credentials: true }) — pass an explicit list, never `origin: true` (which reflects the Origin) with `credentials: true`."
+      fastapi: "CORSMiddleware(allow_origins=['https://app.example.com'], allow_credentials=True) — never use `allow_origins=['*']` nor a broad regex with `allow_credentials=True`."
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) reflects the received `Origin` in `Access-Control-Allow-Origin` with `Access-Control-Allow-Credentials: true` ({evidence}). Explain the risk of cross-origin session theft, then give the exact configuration for {stack} to replace the reflection with a strict allowlist of trusted domains."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+      - "https://portswigger.net/web-security/cors"
+    a_verifier: false
+  wildcard-creds:
+    title: "CORS wildcard with credentials"
+    detail: "The combination `Access-Control-Allow-Origin: *` and `Access-Control-Allow-Credentials: true` is invalid for browsers, but dangerous depending on server-side implementations / non-compliant clients."
+    recommendation: "Replace the `*` with an explicit allowlist and limit `Allow-Credentials` to trusted origins."
+    explanation: "Compliant browsers REFUSE the combination `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true`. But emitting it reveals a dangerous intent: some non-browser clients, old browsers, or non-compliant libraries may accept it, and it is often the sign of a poorly mastered CORS configuration."
+    why: "This combination should never exist: either the API is public without credentials (then `Allow-Credentials` has no reason to be), or it serves authenticated responses (then the `*` must be an allowlist). The presence of both betrays a risk of exposing authenticated data."
+    steps:
+      - "Decide whether the API should accept cross-origin authenticated requests (cookies): if not, remove `Access-Control-Allow-Credentials`."
+      - "If yes, replace `*` with an explicit allowlist and only return `Access-Control-Allow-Origin` for a validated trusted origin."
+      - "Only combine `Allow-Credentials: true` with a single origin, never with `*` nor a reflected value."
+      - "Re-test: the `Access-Control-Allow-Origin` header must no longer be `*` when `Allow-Credentials` is present."
+    stacks:
+      nginx: "Remove `add_header Access-Control-Allow-Origin *;` when credentials are involved; use a `map $http_origin` restricted to your allowlist."
+      npm: "Proxy Host → Advanced → Custom Nginx: replace the `*` with an allowlist via `map`, and only emit `Allow-Credentials: true` for trusted origins."
+      cloudflare: "Transform Rules / Workers: never emit `Access-Control-Allow-Origin: *` together with `Allow-Credentials: true`; validate the `Origin` against an allowlist."
+      express: "cors({ origin: ['https://app.example.com'], credentials: true }) — never use `origin: '*'` with `credentials: true`."
+      fastapi: "CORSMiddleware(allow_origins=['https://app.example.com'], allow_credentials=True) — `allow_origins=['*']` is incompatible with `allow_credentials=True`."
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) returns `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true` ({evidence}). Explain why this combination is invalid and dangerous, then give the exact configuration for {stack} to replace the `*` with an allowlist and to scope `Allow-Credentials`."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+      - "https://portswigger.net/web-security/cors"
+    a_verifier: false
+  reflected:
+    title: "Arbitrary origin reflected"
+    detail: "The server reflects any `Origin` value (here our bogus probe): any cross-origin site can read the responses, even without credentials."
+    recommendation: "Do not reflect the received `Origin`; restrict `Access-Control-Allow-Origin` to a strict allowlist."
+    explanation: "The server copies the received `Origin` into `Access-Control-Allow-Origin` without validation: it therefore accepts all origins, including our bogus probe. Without credentials, cookie-authenticated responses remain protected, but any content accessible without authentication becomes readable by any site."
+    why: "Reflecting the `Origin` amounts to opening the API to all origins. Even without cookies, a third-party site can read responses that were not meant to be public (internal data, responses indexed by IP/token in the URL), and it is a step toward the credentials variant, far more severe."
+    steps:
+      - "Stop copying the received `Origin`: compare it against an explicit allowlist and only return the header for an exact match."
+      - "If the resource is truly public, prefer `Access-Control-Allow-Origin: *` (more honest) over a reflection, and never allow credentials."
+      - "Restrict the allowlist to the domains that actually consume the API."
+      - "Re-test with a bogus `Origin`: the header must NOT reflect it."
+    stacks:
+      nginx: "Replace `add_header Access-Control-Allow-Origin $http_origin` with a `map $http_origin $cors_ok { default \"\"; \"https://app.example.com\" $http_origin; }` and only emit the header if `$cors_ok` is non-empty."
+      npm: "Proxy Host → Advanced → Custom Nginx: restrict origins via a `map`, never reflect `$http_origin` as-is."
+      cloudflare: "Transform Rules / Workers: validate the `Origin` against an allowlist before emitting `Access-Control-Allow-Origin`."
+      express: "cors({ origin: ['https://app.example.com'] }) — avoid `origin: true` or a function that returns the Origin without validating it."
+      fastapi: "CORSMiddleware(allow_origins=['https://app.example.com']) — do not use an overly broad `allow_origin_regex` nor `allow_origins=['*']` if the resource is not public."
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) reflects any `Origin` in `Access-Control-Allow-Origin` ({evidence}). Explain the risk, then give the exact configuration for {stack} to replace the reflection with a strict allowlist of trusted domains."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+      - "https://portswigger.net/web-security/cors"
+    a_verifier: false
+  "null":
+    title: "Origin `null` allowed"
+    detail: "`Access-Control-Allow-Origin: null` is spoofable: a sandboxed page, a `data:` URI, or an iframe can present itself as `null` and pass the check."
+    recommendation: "Never allow the `null` origin; use an allowlist of explicit domains."
+    explanation: "Several contexts send `Origin: null`: sandboxed iframes (`sandbox` without `allow-same-origin`), documents opened via `data:` or `file:`, certain redirects. Allowing `null` therefore amounts to trusting content whose real origin is unknown and that an attacker can easily fabricate."
+    why: "An attacker can force their code to run in a `null` origin context (an iframe they sandbox themselves) and thus benefit from the CORS authorization, as if they were a trusted origin. It is a classic bypass of naive allowlists."
+    steps:
+      - "Remove `null` from any CORS origin allowlist."
+      - "Explicitly list the trusted origins (scheme + domain + port) and only allow those."
+      - "Do not generate the `Access-Control-Allow-Origin` header when the received `Origin` is `null`."
+      - "Re-test by sending `Origin: null`: no authorization must be returned."
+    stacks:
+      nginx: "In your `map $http_origin`, never declare a `\"null\"` entry; leave the default empty for this value."
+      npm: "Proxy Host → Advanced → Custom Nginx: explicitly exclude `null` from the origin allowlist."
+      cloudflare: "Workers / Transform Rules: reject the `null` `Origin` instead of copying it into `Access-Control-Allow-Origin`."
+      express: "cors({ origin: ['https://app.example.com'] }) — never add `'null'` to the list of allowed origins."
+      fastapi: "CORSMiddleware(allow_origins=['https://app.example.com']) — do not include `'null'` in `allow_origins`."
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) allows the `null` origin via CORS ({evidence}). Explain why `null` is spoofable (sandboxed iframe, `data:` URI) and give the exact configuration for {stack} to remove it in favor of an allowlist of explicit domains."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+      - "https://portswigger.net/web-security/cors"
+    a_verifier: false
+  wildcard:
+    title: "Permissive CORS (wildcard)"
+    detail: "`Access-Control-Allow-Origin: *` opens access to all origins, but without credentials: authenticated responses remain protected."
+    recommendation: "Limit access to the origins actually needed if the resource is not meant to be public."
+    explanation: "`Access-Control-Allow-Origin: *` allows any site to read this resource's responses. Without `Allow-Credentials`, requests do not carry the victim's cookies: authenticated responses therefore remain protected. This is acceptable for a truly public API or resources, problematic for the rest."
+    why: "The wildcard is safe for content meant for everyone (CDN, fonts, open API), but if it covers data that was not meant to be readable by all, it exposes it to any site. The risk depends on the resource's sensitivity."
+    steps:
+      - "Determine whether the resource is truly meant to be public (readable by any site)."
+      - "If yes, the `*` is acceptable — keep it, and above all never add `Allow-Credentials: true`."
+      - "If not, replace `*` with an explicit allowlist of the origins that actually consume it."
+      - "Re-test to confirm that only the intended origins receive the header."
+    stacks:
+      nginx: "To restrict: replace `add_header Access-Control-Allow-Origin *;` with a `map $http_origin` listing your trusted origins."
+      npm: "Proxy Host → Advanced → Custom Nginx: replace the `*` with an allowlist via `map` if the resource is not public."
+      cloudflare: "Transform Rules / Workers: emit `Access-Control-Allow-Origin` only for the intended origins rather than `*` if the resource is sensitive."
+      express: "cors({ origin: ['https://app.example.com'] }) instead of cors() (which sets `*`) if the resource is not public."
+      fastapi: "CORSMiddleware(allow_origins=['https://app.example.com']) instead of `allow_origins=['*']` if the resource is not public."
+    ai_prompt: "You are a web security expert. {host} (served by {stack}) returns `Access-Control-Allow-Origin: *` ({evidence}). Explain when the wildcard is acceptable (public resource) and when it is not, then give the exact configuration for {stack} to restrict access to an allowlist of origins if the resource is not meant to be public."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin"
+    a_verifier: false
+  pass-none:
+    title: "No CORS exposure"
+    detail: "No `Access-Control-Allow-Origin` header is returned for a third-party origin: the API does not open up to cross-origin sites."
+    why: "No `Access-Control-Allow-Origin` header is emitted for a third-party origin: by default, browsers prevent any cross-origin site from reading the responses. The CORS attack surface is nil."
+  restricted:
+    title: "No CORS exposure"
+    detail: "The returned `Access-Control-Allow-Origin` header does not match our probe origin: the policy seems restricted to an allowlist."
+    why: "The server did not reflect our bogus `Origin`: it likely applies an allowlist of trusted origins rather than a blind reflection. The cross-origin policy appears to be under control."

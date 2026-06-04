@@ -1,0 +1,64 @@
+# Mixed content — EN presentation catalogue.
+# `title` / `detail` / `recommendation` mirror the EN-facing text. The rest
+# (explanation, why, steps, stacks, ai_prompt, refs) is the remediation content
+# GTmetrix-style.
+# Placeholders : {count} (number of resources), {reason} (non-evaluation),
+# {error} (exception). {stack} is filled in by the UI.
+
+mixed:
+  not-evaluated:
+    title: "Mixed content not evaluated"
+    detail: "Mixed content only concerns HTTPS pages in HTML format; here, {reason}."
+    recommendation: "No action required for this point."
+  pass:
+    title: "No mixed content"
+    detail: "No `http://` resource detected in the HTML of this `https://` page."
+    why: "All of the page's resources are served over HTTPS: no cleartext link that a network attacker could alter or intercept."
+  error:
+    title: "Mixed content not evaluated"
+    detail: "HTML analysis failed: `{error}`."
+    recommendation: "No action required for this point."
+
+mixed-active:
+  active:
+    title: "Active mixed content"
+    detail: "{count} active resource(s) (script, iframe, stylesheet, object) are loaded over `http://` on an `https://` page. A network attacker can alter them and compromise the entire page."
+    recommendation: "Serve these resources over `https://` (or as a protocol-relative URL `//`), and add `upgrade-insecure-requests` to the CSP to force the upgrade."
+    explanation: "\"Active\" mixed content refers to executable code (script, stylesheet, iframe, object) loaded over `http://` within an `https://` page. Since this link travels in cleartext, anyone on the network can replace it with their own version, which then runs with all the privileges of your page."
+    why: "A script loaded in cleartext on a secure page nullifies HTTPS: a network attacker (public Wi-Fi, hostile proxy) can inject their own code, steal sessions, modify content, or redirect the user. Browsers also increasingly block this type of resource."
+    steps:
+      - "Locate the active resources loaded over `http://` (script, link/stylesheet, iframe, object) in the HTML."
+      - "Fix the URLs: switch them to `https://`, or to a protocol-relative URL `//` if the host indeed serves both."
+      - "For third parties that do not offer HTTPS, change provider or host the resource yourself over HTTPS."
+      - "Add `upgrade-insecure-requests` to the CSP so the browser automatically upgrades the remaining requests."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"upgrade-insecure-requests\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration: add_header Content-Security-Policy \"upgrade-insecure-requests\" always;"
+      cloudflare: "Rules → Transform Rules → Modify Response Header → Set static: Content-Security-Policy = upgrade-insecure-requests (and fix the URLs to // or https at the source)."
+    ai_prompt: "You are a web security expert. The page {host} (served by {stack}) loads {count} active resource(s) over `http://` (e.g. {evidence}) while it is served over HTTPS. Explain the risk of active mixed content, show how to fix the URLs (switch to https:// or protocol-relative //) in the templates/config, and give the exact configuration for {stack} to add `upgrade-insecure-requests` to the CSP. You are authorized to fix the templates and the configuration."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content"
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests"
+    a_verifier: false
+
+mixed-passive:
+  passive:
+    title: "Passive mixed content"
+    detail: "{count} passive resource(s) (image, audio, video, `source`) are loaded over `http://` on an `https://` page. The risk is lower but the browser may block the display or show a warning."
+    recommendation: "Serve these resources over `https://` (or as a protocol-relative URL `//`), and add `upgrade-insecure-requests` to the CSP to force the upgrade."
+    explanation: "\"Passive\" mixed content refers to display resources (image, audio, video, `source`) loaded over `http://` on an `https://` page. They cannot execute code, but they travel in cleartext: a network attacker can alter them, and the browser often degrades or blocks their display."
+    why: "The risk is lower than with an active resource, but real: the image or video can be substituted by a network attacker, and above all the browser flags the page as \"not fully secure\" (struck-through padlock), which erodes trust."
+    steps:
+      - "Locate the passive resources loaded over `http://` (img, audio, video, source) in the HTML."
+      - "Fix the URLs: switch them to `https://`, or to a protocol-relative URL `//` if the host indeed serves both."
+      - "For media hosted at a third party without HTTPS, bring them back onto your origin served over HTTPS."
+      - "Add `upgrade-insecure-requests` to the CSP so the browser automatically upgrades the remaining requests."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"upgrade-insecure-requests\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx Configuration: add_header Content-Security-Policy \"upgrade-insecure-requests\" always;"
+      cloudflare: "Rules → Transform Rules → Modify Response Header → Set static: Content-Security-Policy = upgrade-insecure-requests (and fix the URLs to // or https at the source)."
+    ai_prompt: "You are a web security expert. The page {host} (served by {stack}) loads {count} passive resource(s) over `http://` (e.g. {evidence}) while it is served over HTTPS. Explain the risk of passive mixed content, show how to fix the URLs (switch to https:// or protocol-relative //) in the templates/config, and give the exact configuration for {stack} to add `upgrade-insecure-requests` to the CSP. You are authorized to fix the templates and the configuration."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content"
+      - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests"
+    a_verifier: false

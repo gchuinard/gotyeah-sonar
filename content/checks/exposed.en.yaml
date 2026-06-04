@@ -1,0 +1,333 @@
+# Sensitive files/paths exposed — EN presentation catalogue.
+# `title` / `detail` / `recommendation` mirror the EN-facing text. The rest
+# (explanation, why, steps, stacks, ai_prompt, refs) is the remediation content
+# GTmetrix-style.
+# The `title` is shared across the 14 paths (only {path} changes) ; detail/reco are
+# specific. Placeholders : {path} (the probed path) ; {stack} is filled in by the UI.
+
+exposed-env:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "An `.env` file is served publicly: it typically contains secrets (API keys, database credentials, tokens)."
+    recommendation: "Move `.env` out of the webroot and block the path server-side (`location ~ /\\.env { deny all; }`)."
+    explanation: "An `.env` file gathers an application's sensitive configuration: API keys, database credentials, session secrets, tokens. Served over HTTP, its contents are readable by anyone with a simple `curl`, which is equivalent to publishing your passwords."
+    why: "With the secrets from a `.env`, an attacker directly accesses the database, impersonates the application to third-party APIs, and can take complete control of the service. It is one of the most directly exploitable leaks."
+    steps:
+      - "Move the `.env` file out of the webroot: place it in a directory not served by the web server."
+      - "Add a rule that denies access to files starting with a dot (`location ~ /\\.` deny all)."
+      - "Treat the contained secrets as compromised: regenerate API keys, passwords, and tokens."
+      - "Then verify that a `curl https://{host}/.env` returns 403/404."
+    stacks:
+      nginx: "location ~ /\\.env { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~ /\\.env { deny all; return 404; }"
+      apache: "<FilesMatch \"^\\.env\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"/.env\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) publicly exposes the file `{path}`, which contains application secrets. Explain the risk, give the exact configuration for {stack} that blocks access to this path, and remind that the secrets must be treated as compromised and regenerated."
+    refs:
+      - "https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url"
+      - "https://cwe.mitre.org/data/definitions/538.html"
+    a_verifier: false
+
+exposed-env-bak:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "An `.env.bak` backup is accessible: even if stale, it can reveal still-valid secrets."
+    recommendation: "Delete this backup from the webroot and block `.bak` extensions."
+    explanation: "Backup files (`.bak`, `.old`, `~`…) are served as-is by the web server: unlike the original file that may be interpreted, their raw content is returned. A copy of `.env` exposed this way discloses the secrets it contains."
+    why: "A backup is not necessarily up to date, but the secrets it contains (passwords, keys) are often still valid: an attacker retrieves them and uses them immediately against the production service."
+    steps:
+      - "Delete the `{path}` file from the webroot."
+      - "Block all backup extensions server-side (`.bak`, `.old`, `.save`, `~`)."
+      - "Regenerate the secrets if the backup could have been downloaded."
+      - "Verify that `curl https://{host}/{path}` returns 403/404."
+    stacks:
+      nginx: "location ~* \\.(bak|old|save|swp|~)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* \\.(bak|old|save)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(bak|old|save)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path matches \"\\.(bak|old|save)$\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes the backup file `{path}`, whose raw content can reveal secrets. Explain the risk, give the exact configuration for {stack} that blocks backup extensions, and remind to regenerate the exposed secrets."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-git:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A Git repository appears exposed (`.git/HEAD` readable): the entire source-code history can be reconstructed and downloaded."
+    recommendation: "Prevent access to `.git/` server-side (`location ~ /\\.git { deny all; }`) and never deploy the repository inside the webroot."
+    explanation: "If the `.git/` directory is accessible, automated tools (git-dumper…) reconstruct the entire repository: source code, history, branches, and everything ever committed — including secrets removed since but still present in the history."
+    why: "Retrieving the repository means obtaining the complete source code (business logic, exploitable vulnerabilities) and often secrets forgotten in the history. It is a massive and fully automatable leak."
+    steps:
+      - "Block access to the `.git/` directory server-side."
+      - "Never deploy the Git repository inside the webroot: deploy a copy without `.git/` (export/build)."
+      - "Audit the history for committed secrets and revoke them."
+      - "Verify that `curl https://{host}/.git/HEAD` returns 403/404."
+    stacks:
+      nginx: "location ~ /\\.git { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~ /\\.git { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.git\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"/.git/\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes its Git repository via `{path}`, which allows reconstructing the entire source code and history. Explain the risk, give the exact configuration for {stack} that blocks access to `.git/`, and advise never deploying the repository inside the webroot."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-git-config:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "The `.git/config` file is readable: it confirms an exposed Git repository and can disclose remote URLs (sometimes with credentials)."
+    recommendation: "Block access to the `.git/` directory server-side."
+    explanation: "The `.git/config` file describes the repository configuration: its remotes, their URLs, and sometimes credentials encoded in them (`https://user:token@host/...`). Its readability confirms that the entire `.git/` directory is accessible."
+    why: "Beyond confirming the repository's exposure, `.git/config` can reveal remote URLs containing access tokens: an attacker reuses them to access other repositories or internal services."
+    steps:
+      - "Block access to the `.git/` directory server-side."
+      - "If a remote URL contained credentials, revoke that token immediately."
+      - "Do not deploy the Git repository inside the webroot."
+      - "Verify that `curl https://{host}/.git/config` returns 403/404."
+    stacks:
+      nginx: "location ~ /\\.git { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~ /\\.git { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.git\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"/.git/\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes `{path}`, which confirms an accessible Git repository and can disclose remote URLs with credentials. Explain the risk, give the exact configuration for {stack} that blocks `.git/`, and advise revoking any potentially exposed token."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-svn:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "Subversion metadata (`.svn/entries`) is exposed: the source code and its directory tree can be reconstructed."
+    recommendation: "Block access to the `.svn/` directory server-side."
+    explanation: "The `.svn/` directory contains the metadata of a Subversion working copy: the list of files, their directory tree, and often a local copy of their content. Exposed, it allows reconstructing the project's source code."
+    why: "As with Git, exposing the SVN metadata allows retrieving the complete source code and its tree: application logic, internal paths, and any cleartext secrets."
+    steps:
+      - "Block access to the `.svn/` directory server-side."
+      - "Deploy an exported copy (`svn export`) without the `.svn/` directory."
+      - "Verify that `curl https://{host}/.svn/entries` returns 403/404."
+    stacks:
+      nginx: "location ~ /\\.svn { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~ /\\.svn { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.svn\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"/.svn/\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes Subversion metadata via `{path}`, which allows reconstructing the source code. Explain the risk, give the exact configuration for {stack} that blocks `.svn/`, and advise deploying an exported copy without metadata."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-hg:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "Mercurial metadata (`.hg/requires`) is exposed: the repository and its source code can be retrieved."
+    recommendation: "Block access to the `.hg/` directory server-side."
+    explanation: "The `.hg/` directory contains the metadata of a Mercurial repository: its capabilities (`requires`), its store, and the revision history. Exposed, it allows cloning the repository and retrieving its source code and history."
+    why: "Exposing the Mercurial metadata gives access to the complete source code and the project's history, with the same risks of leaking business logic and secrets as with Git or SVN."
+    steps:
+      - "Block access to the `.hg/` directory server-side."
+      - "Deploy an exported copy (`hg archive`) without the `.hg/` directory."
+      - "Audit the history for secrets and revoke them if needed."
+      - "Verify that `curl https://{host}/.hg/requires` returns 403/404."
+    stacks:
+      nginx: "location ~ /\\.hg { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~ /\\.hg { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.hg\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"/.hg/\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes Mercurial metadata via `{path}`, which allows retrieving the repository and its source code. Explain the risk, give the exact configuration for {stack} that blocks `.hg/`, and advise deploying an exported copy without metadata."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-compose:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A `docker-compose.yml` file is accessible: it reveals the service architecture, internal ports, and sometimes sensitive variables."
+    recommendation: "Remove this file from the webroot; it has no business being online."
+    explanation: "A `docker-compose.yml` describes the entire containerized infrastructure: services, images, internal ports, volumes, and — frequently — environment variables with cleartext passwords or keys. It is a deployment file that has no reason to be served over HTTP."
+    why: "Reading this file gives the attacker a map of the architecture (internal services, ports, dependencies) and sometimes secrets directly: it is very high-value reconnaissance, even an immediate compromise."
+    steps:
+      - "Remove `{path}` from the webroot: this deployment file must not be served."
+      - "As a precaution, block `.yml`/`.yaml` files at the root server-side."
+      - "If secrets appeared in cleartext, treat them as compromised and regenerate them."
+      - "Verify that `curl https://{host}/{path}` returns 403/404."
+    stacks:
+      nginx: "location ~* /(docker-compose\\.ya?ml|\\.env)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* /docker-compose\\.ya?ml$ { deny all; return 404; }"
+      apache: "<FilesMatch \"docker-compose\\.ya?ml$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"docker-compose.yml\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes `{path}`, which reveals the service architecture and sometimes secrets. Explain the risk, give the exact configuration for {stack} that blocks this file, and remind that a deployment file must never be served over HTTP."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-dockerfile:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A `Dockerfile` is accessible: it exposes the build chain, versions, and sometimes secrets passed as arguments."
+    recommendation: "Remove this file from the webroot."
+    explanation: "A `Dockerfile` describes how the application image is built: base image and its version, installed packages, build steps, and arguments. It can reveal vulnerable versions and, when secrets are passed as `ARG`/`ENV`, expose them directly."
+    why: "Knowing the build chain and exact versions helps the attacker target known CVEs; and any secret left in the `Dockerfile` (token, password) becomes directly exploitable."
+    steps:
+      - "Remove `{path}` from the webroot: this build file should not be served."
+      - "Verify that no secret is passed as `ARG`/`ENV` in the Dockerfile (use dedicated build secrets)."
+      - "As a precaution, block `Dockerfile` at the root server-side."
+      - "Verify that `curl https://{host}/{path}` returns 403/404."
+    stacks:
+      nginx: "location ~* /Dockerfile { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* /Dockerfile { deny all; return 404; }"
+      apache: "<FilesMatch \"^Dockerfile\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"/Dockerfile\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes `{path}`, which reveals the build chain and sometimes secrets. Explain the risk, give the exact configuration for {stack} that blocks this file, and remind that a secret must never appear in cleartext in a Dockerfile."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-backup-zip:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A `backup.zip` archive is downloadable: it may contain the entire source code and sensitive data."
+    recommendation: "Delete this archive from the webroot and store backups offline."
+    explanation: "A backup archive left in the webroot is downloadable in one click. It typically contains a complete copy of the site: source code, configuration files with secrets, and sometimes a database dump."
+    why: "Downloading a complete backup means obtaining the entire site at once: code, configuration, secrets, user data. It is one of the most severe and simplest leaks to exploit."
+    steps:
+      - "Delete the `{path}` archive from the webroot immediately."
+      - "Store backups offline or in a private storage space not served over HTTP."
+      - "Treat the content as exfiltrated: regenerate the secrets and notify if personal data was included."
+      - "As a precaution, block archive extensions at the root."
+    stacks:
+      nginx: "location ~* \\.(zip|tar|tar\\.gz|tgz|gz|7z|rar)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* \\.(zip|tar|gz|7z|rar)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(zip|tar|gz|7z|rar)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path matches \"\\.(zip|tar|gz|7z|rar)$\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes the backup archive `{path}`, downloadable and potentially complete. Explain the risk, give the exact configuration for {stack} that blocks archives, and advise storing backups offline."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-backup-sql:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A `backup.sql` SQL dump is downloadable: it likely exposes the entire database."
+    recommendation: "Delete this dump from the webroot; never store a database backup accessible over HTTP."
+    explanation: "An SQL dump left in the webroot is downloadable directly. It contains the complete export of the database: schema, but above all all the data — user accounts, passwords (sometimes poorly hashed), e-mails, business data."
+    why: "Retrieving a database dump means exfiltrating all the data in one request: credentials, personal data, application secrets. The impact (GDPR, account takeover) is immediate and major."
+    steps:
+      - "Delete the `{path}` dump from the webroot immediately."
+      - "Never store a database backup accessible over HTTP: use private offline storage."
+      - "Treat the data as exfiltrated: force a password reset and apply your notification obligations."
+      - "As a precaution, block `.sql`/`.dump` extensions at the root."
+    stacks:
+      nginx: "location ~* \\.(sql|dump|db|sqlite)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* \\.(sql|dump|db|sqlite)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(sql|dump|db|sqlite)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path matches \"\\.(sql|dump|db|sqlite)$\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes the SQL dump `{path}`, which likely contains the entire database. Explain the risk (data exfiltration, GDPR), give the exact configuration for {stack} that blocks dumps, and advise storing backups offline."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-database-sql:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A `database.sql` SQL dump is downloadable: it likely exposes the entire database."
+    recommendation: "Delete this dump from the webroot."
+    explanation: "An SQL dump left in the webroot is downloadable directly. It contains the complete export of the database: schema, but above all all the data — user accounts, passwords (sometimes poorly hashed), e-mails, business data."
+    why: "Retrieving a database dump means exfiltrating all the data in one request: credentials, personal data, application secrets. The impact (GDPR, account takeover) is immediate and major."
+    steps:
+      - "Delete the `{path}` dump from the webroot immediately."
+      - "Never store a database backup accessible over HTTP: use private offline storage."
+      - "Treat the data as exfiltrated: force a password reset and apply your notification obligations."
+      - "As a precaution, block `.sql`/`.dump` extensions at the root."
+    stacks:
+      nginx: "location ~* \\.(sql|dump|db|sqlite)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* \\.(sql|dump|db|sqlite)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(sql|dump|db|sqlite)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path matches \"\\.(sql|dump|db|sqlite)$\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes the SQL dump `{path}`, which likely contains the entire database. Explain the risk (data exfiltration, GDPR), give the exact configuration for {stack} that blocks dumps, and advise storing backups offline."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-config-bak:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A `config.php.bak` backup is served in cleartext: unlike the executed `.php`, the `.bak` is returned as-is and can reveal credentials and keys."
+    recommendation: "Delete this backup and block `.bak` extensions server-side."
+    explanation: "A `.php` config file is normally interpreted by the server: its source code is never returned. But its `.bak` backup is not recognized as PHP: the server returns it as-is, code and secrets included (database credentials, keys)."
+    why: "The `.bak` backup bypasses the natural protection of the executed `.php`: an attacker reads the configuration code in cleartext and retrieves still-valid database credentials and keys."
+    steps:
+      - "Delete the `{path}` backup from the webroot."
+      - "Block all backup extensions server-side (`.bak`, `.old`, `.save`, `~`)."
+      - "Regenerate the credentials and keys that appeared in the config file."
+      - "Verify that `curl https://{host}/{path}` returns 403/404."
+    stacks:
+      nginx: "location ~* \\.(bak|old|save|swp|~)$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* \\.(bak|old|save)$ { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.(bak|old|save)$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path matches \"\\.(bak|old|save)$\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes `{path}`, a config backup served in cleartext that reveals credentials and keys. Explain the risk, give the exact configuration for {stack} that blocks backup extensions, and remind to regenerate the exposed secrets."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/530.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-dsstore:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A `.DS_Store` file is exposed: it lists the directory's file names and facilitates the enumeration of hidden paths."
+    recommendation: "Delete `.DS_Store` files from the webroot and block this name server-side."
+    explanation: "The `.DS_Store` file is generated by macOS in every folder it displays. It records the directory's file list — including those not linked anywhere. Exposed, it reveals \"hidden\" paths an attacker would not have guessed."
+    why: "Path enumeration facilitates reconnaissance: an attacker discovers administrative files, backups, or non-public entry points, and focuses tests on real targets rather than guessing blindly."
+    steps:
+      - "Delete all `.DS_Store` files from the webroot."
+      - "Block this file name server-side."
+      - "Add `.DS_Store` to your `.gitignore`/deployment pipeline to prevent it from coming back."
+      - "Verify that `curl https://{host}/.DS_Store` returns 403/404."
+    stacks:
+      nginx: "location ~ /\\.DS_Store$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~ /\\.DS_Store$ { deny all; return 404; }"
+      apache: "<FilesMatch \"^\\.DS_Store$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"/.DS_Store\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes `{path}`, which lists the directory's files and facilitates path enumeration. Explain the reconnaissance risk, give the exact configuration for {stack} that blocks this file, and advise ignoring it at deployment."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/527.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed-phpinfo:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A `phpinfo()` page is accessible: it discloses the PHP configuration, server paths, modules, and environment variables."
+    recommendation: "Delete this diagnostic file; it must never remain in production."
+    explanation: "The `phpinfo()` function displays a detailed report of the PHP environment: exact version, loaded modules, absolute server paths, and the content of environment variables — which may include secrets. It is a diagnostic tool that has no business in production."
+    why: "This page gives the attacker complete reconnaissance: PHP version (targeted CVEs), server paths (for file inclusions), and sometimes secrets exposed via environment variables."
+    steps:
+      - "Delete `{path}` (and any other file calling `phpinfo()`) from the production server."
+      - "Disable the function in production via `disable_functions = phpinfo` in the `php.ini`."
+      - "As a precaution, block this path server-side."
+      - "Verify that `curl https://{host}/{path}` no longer returns the phpinfo report."
+    stacks:
+      nginx: "location ~* /phpinfo\\.php$ { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* /phpinfo\\.php$ { deny all; return 404; }"
+      apache: "<FilesMatch \"phpinfo\\.php$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"phpinfo.php\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes `{path}`, a phpinfo() page that discloses the entire PHP configuration and sometimes secrets. Explain the reconnaissance risk, give the exact configuration for {stack} that blocks this file, and remind that a diagnostic page must never remain in production."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+
+exposed:
+  clean:
+    title: "No sensitive file exposed"
+    detail: "None of the probed sensitive paths (`.env`, `.git/HEAD`, backups…) is publicly accessible."
+    why: "No classic sensitive file is served publicly: the exposure surface from forgotten files is under control."
