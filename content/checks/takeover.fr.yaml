@@ -1,0 +1,35 @@
+# Prise de contrôle de sous-domaine. Correctif = DNS/infra (supprimer le CNAME ou
+# revendiquer la ressource) → pas de prompt IA. Placeholders : {service}, {cname}.
+
+takeover:
+  vulnerable:
+    title: "Prise de contrôle de sous-domaine possible ({service})"
+    detail: "Ce sous-domaine pointe (CNAME) vers `{cname}` ({service}), mais la ressource n'y est plus revendiquée : la réponse affiche la signature « introuvable » propre à {service}."
+    explanation: "Un « subdomain takeover » survient quand un sous-domaine garde un CNAME vers un hébergement tiers (GitHub Pages, S3, Heroku…) alors que la ressource a été supprimée. Comme le nom est encore libre côté {service}, n'importe qui peut le recréer et servir son propre contenu sous TON domaine."
+    why: "Un attaquant qui revendique `{cname}` sert le contenu de son choix sur ton sous-domaine : hameçonnage crédible (c'est ton vrai domaine), vol de cookies si le domaine parent les partage, contournement de CSP/CORS basés sur le domaine, atteinte à la réputation."
+    steps:
+      - "Si ce sous-domaine n'est plus utilisé : SUPPRIME l'enregistrement CNAME `{cname}` de ta zone DNS — c'est le correctif définitif."
+      - "Si tu veux le conserver : RECRÉE/revendique immédiatement la ressource côté {service} et associe-y ce domaine, avant qu'un tiers ne le fasse."
+      - "Mets en place un réflexe : ne jamais supprimer une ressource tierce sans retirer d'abord le CNAME qui pointe dessus."
+    refs:
+      - "https://owasp.org/www-community/attacks/Subdomain_takeover"
+      - "https://github.com/EdOverflow/can-i-take-over-xyz"
+    a_verifier: false
+  dangling:
+    title: "Sous-domaine suspect ({service}) — à vérifier"
+    detail: "Ce sous-domaine pointe (CNAME) vers `{cname}` ({service}) et la ressource répond en erreur, sans signature de takeover formelle. À vérifier manuellement."
+    why: "Un CNAME vers un service tiers qui renvoie une erreur peut être un takeover en puissance (ressource supprimée mais nom encore libre). Le doute mérite une vérification avant qu'un attaquant ne s'en empare."
+    steps:
+      - "Vérifie côté {service} si la ressource (`{cname}`) existe encore et t'appartient toujours."
+      - "Si elle n'existe plus : supprime le CNAME, ou revendique la ressource si tu veux garder le sous-domaine."
+    refs:
+      - "https://github.com/EdOverflow/can-i-take-over-xyz"
+    a_verifier: false
+  ok:
+    title: "Pas de prise de contrôle de sous-domaine"
+    detail: "Le CNAME `{cname}` pointe vers une ressource active et revendiquée : pas de surface de takeover détectée."
+    why: "Le sous-domaine pointe vers une cible vivante et contrôlée : pas de ressource tierce abandonnée à récupérer."
+  no-cname:
+    title: "Pas de CNAME externe"
+    detail: "Cet hôte n'a pas de CNAME vers un hébergement tiers : il n'y a pas de surface de prise de contrôle de sous-domaine."
+    why: "Sans CNAME vers un service tiers, il n'y a aucune ressource externe abandonnée à revendiquer."

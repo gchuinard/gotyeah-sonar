@@ -64,6 +64,7 @@ async def _collect():
     from scanner.checks import tls as TLS
     from scanner.checks import dns as DNS
     from scanner.checks import ports as PORTS
+    from scanner.checks import takeover as TK
     from scanner.checks import nuclei as NU
     from scanner.checks import zap as ZP
 
@@ -351,6 +352,28 @@ async def _collect():
         finally:
             PORTS._resolve_ips, PORTS._probe_port = _orig_resolve, _orig_probe
             rr()
+
+    # ---- TAKEOVER (seam _cname ; signature lue dans ctx.response) ----
+    _orig_cname = TK._cname
+
+    def fake_cname(value):
+        async def f(host):
+            return value
+        return f
+
+    _GH_SIG = "There isn't a GitHub Pages site here."
+    for sid, cn, status, body in [
+        ("takeover_no_cname", None, 200, "ok"),
+        ("takeover_vulnerable", "myapp.github.io", 404, "<html>" + _GH_SIG + "</html>"),
+        ("takeover_dangling", "myapp.github.io", 404, "<html>generic not found</html>"),
+        ("takeover_ok", "myapp.github.io", 200, "<html>live site</html>"),
+    ]:
+        TK._cname = fake_cname(cn)
+        try:
+            await run(sid, TK.takeover(mkctx(
+                response=mkresp(status, {"content-type": "text/html"}, body), host="blog.x.com")))
+        finally:
+            TK._cname = _orig_cname
 
     return out
 

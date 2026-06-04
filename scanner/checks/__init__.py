@@ -7,6 +7,7 @@ from . import headers   # noqa: F401  Phase 1
 from . import cookies   # noqa: F401  Phase 1
 from . import tls       # noqa: F401  Phase 1
 from . import dns       # noqa: F401  Phase 1
+from . import takeover  # noqa: F401  Réseau — subdomain takeover (CNAME dangling)
 from . import exposed   # noqa: F401  Phase 2
 from . import cors      # noqa: F401  Phase 2
 from . import mixed     # noqa: F401  Phase 2

@@ -1,0 +1,35 @@
+# Subdomain takeover. Fix = DNS/infra (remove the CNAME or reclaim the resource)
+# → no AI prompt. Placeholders: {service}, {cname}.
+
+takeover:
+  vulnerable:
+    title: "Subdomain takeover possible ({service})"
+    detail: "This subdomain points (CNAME) to `{cname}` ({service}), but the resource is no longer claimed there: the response shows {service}'s “not found” signature."
+    explanation: "A subdomain takeover happens when a subdomain keeps a CNAME to a third-party host (GitHub Pages, S3, Heroku…) after the resource has been deleted. Since the name is still free on {service}, anyone can re-create it and serve their own content under YOUR domain."
+    why: "An attacker who claims `{cname}` serves arbitrary content on your subdomain: convincing phishing (it really is your domain), cookie theft if the parent domain shares them, bypass of domain-based CSP/CORS, reputational damage."
+    steps:
+      - "If this subdomain is no longer used: REMOVE the `{cname}` CNAME record from your DNS zone — that is the definitive fix."
+      - "If you want to keep it: immediately RE-CREATE/claim the resource on {service} and attach this domain to it, before a third party does."
+      - "Build the reflex: never delete a third-party resource without first removing the CNAME that points to it."
+    refs:
+      - "https://owasp.org/www-community/attacks/Subdomain_takeover"
+      - "https://github.com/EdOverflow/can-i-take-over-xyz"
+    a_verifier: false
+  dangling:
+    title: "Suspicious subdomain ({service}) — needs review"
+    detail: "This subdomain points (CNAME) to `{cname}` ({service}) and the resource responds with an error, without a formal takeover signature. Verify manually."
+    why: "A CNAME to a third-party service returning an error can be a takeover waiting to happen (resource deleted but name still free). The doubt is worth checking before an attacker claims it."
+    steps:
+      - "Check on {service} whether the resource (`{cname}`) still exists and is still yours."
+      - "If it no longer exists: remove the CNAME, or reclaim the resource if you want to keep the subdomain."
+    refs:
+      - "https://github.com/EdOverflow/can-i-take-over-xyz"
+    a_verifier: false
+  ok:
+    title: "No subdomain takeover"
+    detail: "The CNAME `{cname}` points to an active, claimed resource: no takeover surface detected."
+    why: "The subdomain points to a live, controlled target: no abandoned third-party resource to reclaim."
+  no-cname:
+    title: "No external CNAME"
+    detail: "This host has no CNAME to a third-party host: there is no subdomain-takeover surface."
+    why: "Without a CNAME to a third-party service, there is no abandoned external resource to claim."
