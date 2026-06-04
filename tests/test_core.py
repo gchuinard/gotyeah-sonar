@@ -131,7 +131,8 @@ def test_db_roundtrip(tmp_path, monkeypatch):
 
     row = dbmod.list_scans()[0]
     assert row["id"] == sid and row["score"] == 82 and row["grade"] == "B"
-    assert "findings" not in row  # la liste latérale ne porte pas les findings
+    assert "findings" not in row                 # la liste latérale ne porte pas les findings
+    assert row["counts"] == {"low": 2}           # mais bien les compteurs de sévérité (pastilles)  # la liste latérale ne porte pas les findings
 
     one = dbmod.get_scan(sid)
     assert one["target"] == "https://x"

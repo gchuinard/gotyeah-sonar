@@ -45,6 +45,13 @@
     "history": "Historique"
   },
 
+  "history": {
+    "for": "Historique de",
+    "show_all": "Tout l'historique",
+    "none_for": "Aucun scan pour ce domaine.",
+    "scan_now": "Lancer le scan"
+  },
+
   "console": {
     "prompt": "scan ~$",
     "placeholder": "monsite.com",
@@ -66,6 +73,7 @@
     "verified": "✓ vérifié",
     "pending": "en attente",
     "delete": "Supprimer",
+    "open_history": "Voir l'historique de ce domaine",
     "howto": "Publie ce TXT sur ta zone DNS, puis clique Vérifier :",
     "verify": "Vérifier",
     "add_placeholder": "exemple.com",

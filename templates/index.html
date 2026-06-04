@@ -152,6 +152,13 @@
   .hc-date { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
   .hc-score { font-family: var(--mono); font-size: 15px; color: var(--text-dim); white-space: nowrap; }
   .hc-score small { font-size: 11px; color: var(--text-faint); }
+  .hc-sev { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+  .hc-badge { font-family: var(--mono); font-size: 10px; font-weight: 600; border: 1px solid; border-radius: 5px; padding: 1px 6px; line-height: 1.4; }
+  .hist-filter { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 13px; color: var(--text-dim); }
+  .hist-filter b { font-family: var(--mono); color: var(--text); }
+  .hist-empty p { margin: 0 0 16px; }
+  .dom-link { cursor: pointer; transition: color .15s; }
+  .dom-link:hover { color: var(--accent); text-decoration: underline; }
 
   /* ---- tally ---- */
   .tally { display: flex; flex-direction: column; gap: 2px; }
@@ -378,7 +385,9 @@
           <div v-if="!domains.length" class="empty">{{ T('domains.empty', 'Ajoute un domaine et vérifie-le pour débloquer le scan.') }}</div>
           <div v-for="d in domains" :key="d.id" class="dom">
             <div class="dom-top">
-              <span class="dom-name">{{ d.domain }}</span>
+              <span v-if="d.verified" class="dom-name dom-link" @click="openDomain(d)"
+                    :title="T('domains.open_history', 'Voir l\'historique de ce domaine')">{{ d.domain }}</span>
+              <span v-else class="dom-name">{{ d.domain }}</span>
               <span class="dom-badge" :class="d.verified ? 'ok' : 'pending'">{{ d.verified ? T('domains.verified', '✓ vérifié') : T('domains.pending', 'en attente') }}</span>
               <button class="dom-x" @click="deleteDomain(d)" :title="T('domains.delete', 'Supprimer')">✕</button>
             </div>
@@ -516,13 +525,28 @@
   </div><!-- /onglet Rapport -->
 
   <div v-show="activeTab === 'history'" class="history-tab">
-    <div v-if="!history.length" class="hist-empty">{{ T('panels.history_empty', 'Aucun scan enregistré.') }}</div>
-    <div class="hist-grid">
-      <div class="hist-card" v-for="h in history" :key="h.id" @click="openScan(h.id)">
+    <div v-if="historyFilter" class="hist-filter">
+      {{ T('history.for', 'Historique de') }} <b>{{ historyFilter }}</b>
+      <button class="reset-link" @click="clearHistoryFilter">{{ T('history.show_all', "Tout l'historique") }}</button>
+    </div>
+    <div v-if="!filteredHistory.length" class="hist-empty">
+      <template v-if="historyFilter">
+        <p>{{ T('history.none_for', 'Aucun scan pour ce domaine.') }}</p>
+        <button class="btn" @click="scanDomain(historyFilter)">{{ T('history.scan_now', 'Lancer le scan') }}</button>
+      </template>
+      <template v-else>{{ T('panels.history_empty', 'Aucun scan enregistré.') }}</template>
+    </div>
+    <div v-else class="hist-grid">
+      <div class="hist-card" v-for="h in filteredHistory" :key="h.id" @click="openScan(h.id)">
         <span class="hc-grade" :style="{ color: colorOf(h.score) }">{{ h.grade }}</span>
         <div class="hc-meta">
           <div class="hc-target">{{ h.target.replace(/^https?:\/\//,'') }}</div>
           <div class="hc-date">{{ fmtDate(h.created_at) }}</div>
+          <div class="hc-sev" v-if="sevCounts(h).length">
+            <span v-for="b in sevCounts(h)" :key="b.s" class="hc-badge"
+                  :style="{ color: 'var(--sev-' + b.s + ')', borderColor: 'var(--sev-' + b.s + ')' }"
+                  :title="sevLabel(b.s)">{{ b.n }}</span>
+          </div>
         </div>
         <div class="hc-score">{{ h.score }}<small>/100</small></div>
       </div>
@@ -551,6 +575,8 @@ createApp({
       hidePass: false, es: null, me: null,
       // onglets : 'report' (scan courant / dernier rapport) ou 'history'
       activeTab: 'report',
+      historyFilter: '',   // si défini, l'historique est filtré sur ce domaine
+
       // affichage du feed uniquement (n'affecte JAMAIS score/jauge/répartition)
       sevFilter: [], sortBy: 'severity',
       domains: [], newDomain: '', domainBusy: false, domainMsg: '',
@@ -649,6 +675,15 @@ createApp({
       if (!scored.length) return null;
       const min = scored.reduce((a, b) => (b.score < a.score ? b : a));
       return { score: min.score, grade: this.gradeOf(min.score), color: this.colorOf(min.score) };
+    },
+    // Historique éventuellement filtré sur un domaine (sa cible == domaine ou un sous-domaine).
+    filteredHistory() {
+      if (!this.historyFilter) return this.history;
+      const dom = this.historyFilter.toLowerCase();
+      return this.history.filter(h => {
+        const host = (h.target || '').replace(/^https?:\/\//, '').replace(/[\/:].*$/, '').toLowerCase();
+        return host === dom || host.endsWith('.' + dom);
+      });
     },
   },
   methods: {
@@ -760,7 +795,23 @@ createApp({
         this.history = await r.json();
       } catch (e) {}
     },
-    goHistory() { this.activeTab = 'history'; this.loadHistory(); },
+    goHistory() { this.historyFilter = ''; this.activeTab = 'history'; this.loadHistory(); },
+    openDomain(d) {
+      // Clic sur un domaine vérifié → son historique (vide → bouton « Lancer le scan »).
+      this.historyFilter = d.domain;
+      this.activeTab = 'history';
+      this.loadHistory();
+    },
+    scanDomain(domain) {
+      this.target = domain;
+      this.historyFilter = '';
+      this.startScan();   // bascule sur Rapport + lance le scan
+    },
+    clearHistoryFilter() { this.historyFilter = ''; },
+    sevCounts(h) {
+      const c = h.counts || {};
+      return this.SEV_ORDER.filter(s => c[s]).map(s => ({ s, n: c[s] }));
+    },
     async openScan(id) {
       try {
         const r = await fetch('/api/scan/' + id + '?lang=' + encodeURIComponent(this.lang));

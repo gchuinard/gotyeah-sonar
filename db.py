@@ -101,16 +101,21 @@ def list_scans(user_id: str | None = None) -> list[dict]:
         conn.row_factory = sqlite3.Row
         if user_id is None:
             rows = conn.execute(
-                "SELECT id, target, score, grade, created_at "
+                "SELECT id, target, score, grade, counts, created_at "
                 "FROM scans ORDER BY created_at DESC LIMIT 50"
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, target, score, grade, created_at "
+                "SELECT id, target, score, grade, counts, created_at "
                 "FROM scans WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
                 (user_id,),
             ).fetchall()
-    return [dict(row) for row in rows]
+    out = []
+    for row in rows:
+        d = dict(row)
+        d["counts"] = json.loads(d["counts"]) if d["counts"] else {}
+        out.append(d)
+    return out
 
 
 def get_scan(scan_id: str, user_id: str | None = None) -> dict | None:
