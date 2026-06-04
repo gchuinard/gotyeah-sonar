@@ -1,0 +1,23 @@
+# Generated (transform, not translation) from tools/zap_sources/zap_alerts.json — ZAP pluginId 40012, CWE-79.
+alert:
+  title: "Cross-Site Scripting (Reflected)"
+  detail: "An attacker-supplied input is returned as-is in the response and executes in the victim's browser."
+  explanation: "Reflected XSS consists of injecting code (often JavaScript) into an application that immediately \"reflects\" it back in its response — typically via a URL or form parameter. This code then executes in the victim's browser, in the security context of the hosting site."
+  why: "An injected script runs with the rights of the targeted user: it can steal their cookies and session, act on their behalf, tamper with the page or pivot to the API. A booby-trapped link sent to an authenticated victim is enough to trigger the attack."
+  steps:
+    - "Architecture and design: rely on a proven library or framework that prevents this weakness or makes it easier to avoid (template auto-escaping)."
+    - "Implementation: systematically encode every user input according to the exact context where it is rendered (HTML, attribute, JavaScript, CSS, URL)."
+    - "Validate inputs as soon as they are received (type, format, length, allowlist of permitted values)."
+    - "As defense in depth, deploy a strict Content-Security-Policy that neutralizes the execution of injected scripts."
+  stacks:
+    express: "Never inject raw input into HTML: use an auto-escaping template engine, encode according to context, and validate parameters (e.g. via a schema)."
+    fastapi: "With Jinja2, keep auto-escaping enabled and never mark a user input as `safe`; validate inputs via Pydantic models."
+    php: "Escape every output according to context (`htmlspecialchars` for HTML, appropriate encoding for attribute/JS/URL) and validate inputs before use."
+    nextjs: "Let React escape rendering by default and avoid `dangerouslySetInnerHTML`; if you must render HTML, sanitize it with a dedicated library and validate inputs server-side."
+    csp: "Add a strict Content-Security-Policy (`default-src 'self'`, scripts by nonce/hash, without `unsafe-inline`) as a safety net against injected scripts."
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) is vulnerable to reflected XSS: a user input is returned without encoding in the response. Help me locate the injection point, apply context-appropriate output encoding (HTML/attribute/JS/CSS/URL), validate the input on receipt, and add a strict Content-Security-Policy as defense in depth. Show the code fixes for {stack}."
+  refs:
+    - "https://owasp.org/www-community/attacks/xss/"
+    - "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/79.html"
+  a_verifier: false

@@ -1,0 +1,21 @@
+# Generated (transform, not translation) from tools/zap_sources/zap_alerts.json — ZAP pluginId 90022, CWE-550.
+alert:
+  title: "Application Error Disclosure"
+  detail: "The page returns an error or warning message that may reveal sensitive information, such as the path of the file that produced the unhandled exception."
+  explanation: "When an exception goes unhandled, the application sometimes displays its raw trace: file paths, query fragments, component names, even pieces of configuration. These details are meant for debugging, not for the end user."
+  why: "These messages inform an attacker about the server's directory tree, the technology stack and the application's internal structure. They serve as a starting point for more targeted attacks (file traversal, injection, exploiting an identified component)."
+  steps:
+    - "Review the source code of the affected page to identify the unhandled exception behind the message."
+    - "Set up custom error pages (4xx/5xx) that expose no technical trace to the user."
+    - "Implement a unique error identifier: return this reference to the browser while logging the full details server-side, without exposing them."
+    - "Disable display of detailed traces in production (debug mode off)."
+  stacks:
+    express: "Disable stack traces in production (`app.set('env','production')`), add a final error handler that returns a generic message + an identifier, and log the details server-side."
+    fastapi: "Turn off debug mode (`debug=False`), add a global `exception_handler` that returns a generic response with an identifier, and log the full trace server-side."
+    django: "Set `DEBUG = False` and configure `ALLOWED_HOSTS`; provide custom 404/500 templates and log exceptions via the LOGGING configuration."
+    php: "Set `display_errors = Off` in production, log via `error_log`, and define custom error pages (e.g. `ErrorDocument` server-side)."
+    nextjs: "Disable display of detailed errors in production, add generic `error.tsx` / `not-found.tsx` pages, and log exceptions server-side with an identifier returned to the client."
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) leaks application error messages (traces, file paths) to the user. Help me set up custom error pages, turn off trace display in production, and return a unique error identifier to the browser while logging the full details server-side. Show the exact configuration for {stack}."
+  refs:
+    - "https://cwe.mitre.org/data/definitions/550.html"
+  a_verifier: false

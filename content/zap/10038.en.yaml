@@ -1,0 +1,23 @@
+alert:
+  title: "Content-Security-Policy missing"
+  detail: "The response contains no Content-Security-Policy header: the browser has no list of allowed origins to enforce."
+  explanation: "Content-Security-Policy is an extra layer of security: through an HTTP header, the site declares the content sources (scripts, styles, images, connections…) that the browser is allowed to load. Anything not explicitly allowed is blocked."
+  why: "Without a CSP, a Cross-Site Scripting (XSS) or content injection flaw can be exploited with no safeguards: an injected script runs, can steal data, deface the site or distribute malware. A CSP greatly reduces the impact of such attacks."
+  steps:
+    - "Make sure your web server, application server or load balancer is actually able to add a Content-Security-Policy response header."
+    - "Start in observation mode with Content-Security-Policy-Report-Only to spot what would break, without blocking anything."
+    - "Set a strict baseline with default-src 'self', then add ONLY the origins actually used (CDN, analytics, fonts)."
+    - "Ban 'unsafe-inline' and 'unsafe-eval': switch to nonces or hashes for your inline scripts and styles."
+    - "Once no violation is reported, flip the header to Content-Security-Policy (blocking mode)."
+  stacks:
+    nginx: "add_header Content-Security-Policy \"default-src 'self'; object-src 'none'; base-uri 'self'\" always;"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration: add_header Content-Security-Policy \"default-src 'self'\" always;"
+    cloudflare: "Rules → Transform Rules → Modify Response Header → Set static: Content-Security-Policy = default-src 'self'"
+    apache: "Header always set Content-Security-Policy \"default-src 'self'; object-src 'none'\""
+    nextjs: "next.config.js → headers(): { key: 'Content-Security-Policy', value: \"default-src 'self'\" }"
+  ai_prompt: "You are a web security expert. The site {host} (served by {stack}) sends no Content-Security-Policy header. Propose a strict but functional CSP starting from default-src 'self', explain how to deploy it first in Report-Only mode then in blocking mode, and show the exact configuration for {stack}. Do not invent origins: leave placeholders to fill in for third-party domains."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+    - "https://owasp.org/www-project-secure-headers/"
+    - "https://cwe.mitre.org/data/definitions/693.html"
+  a_verifier: false

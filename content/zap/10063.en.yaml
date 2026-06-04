@@ -1,0 +1,21 @@
+alert:
+  title: "Permissions-Policy header missing"
+  detail: "The response does not send the Permissions-Policy header: the browser features accessible to web resources are not restricted."
+  explanation: "Permissions-Policy is an extra layer of security that restricts access to or use of browser features (camera, microphone, geolocation, payment…) by web resources. It protects the user's privacy by limiting the features that the page — and the iframes it embeds — are allowed to use."
+  why: "Without this policy, a third-party iframe or a compromised script can try to access sensitive browser APIs. Explicitly disabling the ones you do not use is a cheap defense in depth that reduces the attack surface."
+  steps:
+    - "Configure your web server, application server or load balancer to add the Permissions-Policy header."
+    - "List the browser APIs actually used by your site."
+    - "Explicitly disable everything else with an empty value, for example camera=(), microphone=(), geolocation=()."
+    - "Allow an API only for your own origin if needed, for example geolocation=(self)."
+  stacks:
+    nginx: "add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration: add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;"
+    cloudflare: "Rules → Transform Rules → Set static: Permissions-Policy = camera=(), microphone=(), geolocation=()"
+    apache: "Header always set Permissions-Policy \"camera=(), microphone=(), geolocation=()\""
+    nextjs: "next.config.js → headers(): { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' }"
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) does not set a Permissions-Policy header. Propose a policy that disables unused browser APIs (camera, microphone, geolocation, payment) and give the exact configuration for {stack}."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"
+    - "https://cwe.mitre.org/data/definitions/693.html"
+  a_verifier: false

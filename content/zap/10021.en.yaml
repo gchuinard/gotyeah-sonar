@@ -1,0 +1,20 @@
+alert:
+  title: "X-Content-Type-Options header missing"
+  detail: "The anti-MIME-sniffing header X-Content-Type-Options is not set to 'nosniff' on the response."
+  explanation: "Without nosniff, some browsers (older versions of Internet Explorer and Chrome) \"guess\" a file's type from its content rather than from the declared Content-Type header. The response can then be interpreted and displayed as a type different from the one announced."
+  why: "MIME sniffing opens the door to attacks: a file served with the wrong type — for example a seemingly harmless upload containing HTML or JavaScript — can be reinterpreted and executed by the browser."
+  steps:
+    - "Make sure the application or web server correctly sets the Content-Type header of every response."
+    - "Add the X-Content-Type-Options: nosniff header to ALL pages, not just the main page."
+    - "Configure it globally on the server or proxy rather than route by route."
+  stacks:
+    nginx: "add_header X-Content-Type-Options \"nosniff\" always;"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration: add_header X-Content-Type-Options \"nosniff\" always;"
+    cloudflare: "Rules → Transform Rules → Set static: X-Content-Type-Options = nosniff"
+    apache: "Header always set X-Content-Type-Options \"nosniff\""
+    nextjs: "next.config.js → headers(): { key: 'X-Content-Type-Options', value: 'nosniff' }"
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) does not send the X-Content-Type-Options: nosniff header. Explain MIME sniffing and its risk, then give the exact configuration for {stack} applying nosniff to all responses, making sure the Content-Type is correct."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    - "https://cwe.mitre.org/data/definitions/693.html"
+  a_verifier: false

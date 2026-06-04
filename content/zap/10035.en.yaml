@@ -1,0 +1,22 @@
+alert:
+  title: "Strict-Transport-Security (HSTS) header missing"
+  detail: "The response does not send the Strict-Transport-Security header: the server does not declare that it wants to be contacted over HTTPS only."
+  explanation: "HTTP Strict Transport Security (HSTS) is a security mechanism, standardized by RFC 6797, by which a server instructs compliant browsers to communicate with it only over HTTPS. Once the header has been seen, all requests go through HTTPS, even if the user types http:// or clicks an old link."
+  why: "Without HSTS, the very first request (or an http:// link) can be intercepted and kept in cleartext by a network attacker (public Wi-Fi, hostile proxy) who then serves a fake site (SSL stripping)."
+  steps:
+    - "Make sure the ENTIRE site is served over valid HTTPS and that the http to https redirect is already in place, otherwise HSTS would make the site unreachable."
+    - "Configure your web server, application server or load balancer to enforce Strict-Transport-Security."
+    - "Add the Strict-Transport-Security: max-age=63072000; includeSubDomains; preload header."
+    - "Check that all subdomains are indeed on HTTPS before enabling includeSubDomains."
+    - "Optional: submit the domain on hstspreload.org for hardcoding into browsers."
+  stacks:
+    nginx: "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+    npm: "Proxy Host → SSL → check \"HSTS Enabled\" (and \"HSTS Subdomains\" if all your subdomains are on HTTPS)."
+    cloudflare: "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable."
+    apache: "Header always set Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\""
+    nextjs: "next.config.js → headers(): { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }"
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) does not send an HSTS header. Explain the SSL stripping risk, the prerequisites (HTTPS everywhere, http to https redirect), then give the exact configuration for {stack} with a 2-year max-age, includeSubDomains and preload."
+  refs:
+    - "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/319.html"
+  a_verifier: false

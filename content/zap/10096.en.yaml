@@ -1,0 +1,15 @@
+# Generated (transform, not translation) from tools/zap_sources/zap_alerts.json — ZAP pluginId 10096, CWE-200.
+alert:
+  title: "Timestamp Disclosure"
+  detail: "Unix timestamps were found in response bodies, which can reveal information exploitable by an attacker."
+  explanation: "A Unix timestamp is a number of seconds that encodes a precise date and time. When it appears as-is in a response, it can betray the exact moment of a server-side operation."
+  why: "Taken in isolation, a timestamp is rarely serious. But aggregated, these timestamps can reveal exploitable patterns: token generation cadence, predictable sequences, or hints about the application's inner workings."
+  steps:
+    - "Manually confirm that the detected timestamps are not sensitive (tokens, sessions, identifiers derived from a date)."
+    - "Verify that they cannot be aggregated to infer exploitable patterns (predictable sequences, generation windows)."
+    - "If a sensitive value depends on time, generate it from a cryptographically secure random source rather than from a timestamp, and do not return the raw timestamp."
+  stacks: {}
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) returns Unix timestamps in its response bodies. Help me locate these timestamps in the code, judge whether they are sensitive (tokens, sessions, date-derived values), and remove them or replace them with a non-exploitable value when they don't need to be exposed."
+  refs:
+    - "https://cwe.mitre.org/data/definitions/200.html"
+  a_verifier: false

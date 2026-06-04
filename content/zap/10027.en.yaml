@@ -1,0 +1,15 @@
+# Generated (transform, not translation) from tools/zap_sources/zap_alerts.json — ZAP pluginId 10027, CWE-200.
+alert:
+  title: "Information Disclosure — Suspicious Comments"
+  detail: "The response contains suspicious comments that could help an attacker. Examples of terms spotted: query, db, admin, password, FIXME, TODO, BUG…"
+  explanation: "Comments left in the HTML or JavaScript delivered to the browser are visible to everyone. Some keywords (passwords, database names, \"to fix\" notes) can reveal internal details or known flaws in the application."
+  why: "An attacker reads the page source like any other visitor. A comment mentioning a pending fix, an identifier, an admin path or a known flaw hands them a free attack lead."
+  steps:
+    - "Remove all comments that expose information useful to an attacker (identifiers, paths, internal notes, known flaws)."
+    - "Fix the underlying issue these comments refer to (TODO, FIXME, BUG) rather than simply hiding the note."
+    - "Set up a build step that strips comments from the HTML/JS/CSS files served in production (minification)."
+  stacks: {}
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) exposes suspicious comments (TODO, FIXME, password, admin…) in the code delivered to the browser. Help me spot them, remove those that reveal sensitive information, address the underlying issue they flag, and configure minification so that no comment ships to production."
+  refs:
+    - "https://cwe.mitre.org/data/definitions/200.html"
+  a_verifier: false

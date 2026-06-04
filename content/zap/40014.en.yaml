@@ -1,0 +1,23 @@
+# Generated (transform, not translation) from tools/zap_sources/zap_alerts.json — ZAP pluginId 40014, CWE-79.
+alert:
+  title: "Cross-Site Scripting (Persistent)"
+  detail: "Code injected by an attacker is stored by the application then served to other users, where it executes in their browser."
+  explanation: "Persistent (or stored) XSS consists of injecting code that is saved by the application (for example in a database) then returned later to other users. It executes in their browser, in the site's security context, without their having clicked on anything suspicious."
+  why: "Since the code is stored and replayed on every view, a single injection can affect all visitors of a page (session theft, actions on behalf of victims, defacement, propagation). It is one of the most damaging forms of XSS."
+  steps:
+    - "Implementation: systematically encode every user input according to the exact context where it is rendered, on EVERY display (and not only at save time)."
+    - "Validate inputs on receipt (type, format, length, allowlist of permitted values)."
+    - "Rely on the auto-escaping of a proven library/framework for rendering."
+    - "Apply a strict Content-Security-Policy as defense in depth to neutralize the execution of injected scripts."
+  stacks:
+    express: "Encode stored data at render time via an auto-escaping template engine; never inject raw stored content into HTML, and validate inputs at save time."
+    fastapi: "With Jinja2, keep auto-escaping enabled when rendering data from the database and never mark it `safe`; validate via Pydantic on input."
+    php: "Escape according to context (`htmlspecialchars`, attribute/JS/URL encoding) on every display of stored data, and validate at save time."
+    nextjs: "Let React escape the rendering of data from the database and avoid `dangerouslySetInnerHTML`; if stored HTML must be rendered, sanitize it with a dedicated library."
+    csp: "Add a strict Content-Security-Policy (`default-src 'self'`, scripts by nonce/hash, without `unsafe-inline`) as a safety net against injected scripts."
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) is vulnerable to persistent XSS: a user input is stored then rendered without encoding to other users. Help me encode the output according to context on every display, validate the input at save time, rely on the framework's auto-escaping, and add a strict Content-Security-Policy as defense in depth. Show the code fixes for {stack}."
+  refs:
+    - "https://owasp.org/www-community/attacks/xss/"
+    - "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/79.html"
+  a_verifier: false

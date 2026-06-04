@@ -29,6 +29,14 @@ def test_all_curated_plugins_have_fr_entry():
     assert not missing, f"pluginIds ZAP sans entrée FR : {missing}"
 
 
+def test_all_curated_plugins_have_en_entry():
+    # Couverture EN complète → en mode anglais une alerte ZAP est rendue en anglais
+    # (et ne retombe pas sur le FR).
+    cat = loader.content_catalog("en")
+    missing = [pid for pid in PLUGIN_IDS if ("zap", pid, "alert") not in cat]
+    assert not missing, f"pluginIds ZAP sans entrée EN : {missing}"
+
+
 def test_zap_entries_have_explicit_a_verifier():
     # Chaque entrée porte un drapeau a_verifier booléen explicite (true = à relire,
     # false = relu). Les 20 entrées curées sont relues → a_verifier: false.

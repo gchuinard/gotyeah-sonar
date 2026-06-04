@@ -1,0 +1,22 @@
+# Generated (transform, not translation) from tools/zap_sources/zap_alerts.json — ZAP pluginId 10202, CWE-352.
+alert:
+  title: "Absence of Anti-CSRF Token"
+  detail: "An HTML form is submitted without an anti-CSRF token: nothing proves that the request really comes from your site."
+  explanation: "CSRF (Cross-Site Request Forgery) consists of forcing an authenticated user to send, without their knowledge, a request to your application in order to perform an action on their behalf (changing a password, confirming a payment…). A unique, unpredictable anti-CSRF token proves that the submission genuinely originates from your form."
+  why: "Without an anti-CSRF token, a malicious site can trigger actions on your application on behalf of a logged-in user, simply by getting them to visit a booby-trapped page. The victim doesn't have to click anything visible: the browser automatically attaches their session cookies."
+  steps:
+    - "Architecture and design: rely on a proven library or framework that prevents this weakness or provides ready-to-use anti-CSRF protections."
+    - "Generate a unique, unpredictable nonce (token) for each form."
+    - "Insert this nonce into the form (hidden field)."
+    - "Verify the nonce when the submission is received, and reject any request whose token is missing, invalid, or already used."
+  stacks:
+    express: "Enable CSRF protection (e.g. csrf-csrf / csurf middleware): generate a token per session/form, inject it into a hidden field, and validate it on every mutating request (POST/PUT/DELETE)."
+    django: "The CSRF middleware is enabled by default: place `{% csrf_token %}` in each <form> and keep `CsrfViewMiddleware` active; mutating views then reject requests without a valid token."
+    laravel: "Include the `@csrf` directive in each Blade form; the `VerifyCsrfToken` middleware automatically checks the token on receipt."
+    rails: "Keep `protect_from_forgery` active and use the form helpers (`form_with`) that insert the `authenticity_token` field verified server-side."
+    nextjs: "For Server Actions / mutating routes, generate an anti-CSRF token per session, inject it into the form and validate it server-side; combine with `SameSite=Lax/Strict` cookies."
+  ai_prompt: "You are a web security expert. A form on {host} (served by {stack}) is submitted without an anti-CSRF token. Relying on {stack}'s native CSRF protection, show me how to generate a unique, unpredictable nonce per form, insert it into a hidden field, then verify it on receipt by rejecting any request whose token is missing or invalid. Favor the proven library/framework over a homegrown implementation."
+  refs:
+    - "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/352.html"
+  a_verifier: false

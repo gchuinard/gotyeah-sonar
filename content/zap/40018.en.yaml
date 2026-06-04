@@ -1,0 +1,23 @@
+# Generated (transform, not translation) from tools/zap_sources/zap_alerts.json — ZAP pluginId 40018, CWE-89.
+alert:
+  title: "SQL Injection"
+  detail: "A user input can manipulate the SQL query sent to the database."
+  explanation: "SQL injection occurs when an untrusted input is concatenated into a SQL query: the attacker then slips in query fragments that hijack the intended logic. They can thus read, modify or delete data, or even run administrative operations on the database."
+  why: "An exploitable SQL injection potentially grants access to all of the database's data: accounts, personal data, secrets. Depending on privileges, it also allows altering or erasing data, or even taking over the database server."
+  steps:
+    - "Never trust client-side input, even if validation is already done in the browser; revalidate everything server-side (strict typing of all data)."
+    - "Use parameterized queries / prepared statements for ALL database access; never build SQL by concatenating strings containing user input."
+    - "In JDBC, use `PreparedStatement` or `CallableStatement` with parameters passed via \"?\"."
+    - "In ASP, use ADO Command objects with strong typing and parameterized queries."
+  stacks:
+    express: "Use parameterized queries (placeholders `$1`/`?` depending on the driver) or an ORM/query builder; never concatenate user input into the SQL string, and type/validate inputs server-side."
+    fastapi: "Go through SQLAlchemy with bound parameters (never an f-string SQL); for raw SQL, use `text()` with named parameters, and validate inputs via Pydantic."
+    php: "Use PDO or MySQLi in prepared mode with bound parameters (`?` or named parameters); never build the query by concatenating user input."
+    java: "Use `PreparedStatement` or `CallableStatement` with parameters passed via \"?\"; type-check all data server-side."
+    nextjs: "Server-side (route handlers / Server Actions), use the driver's parameterized queries or an ORM (Prisma/Drizzle); never concatenate user input into the SQL and validate inputs."
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) is vulnerable to SQL injection: a user input is concatenated into a query. Help me replace concatenation with parameterized queries / prepared statements for all database access, strictly type and validate inputs server-side, and use no SQL built by concatenation. Show the code fixes for {stack}."
+  refs:
+    - "https://owasp.org/www-community/attacks/SQL_Injection"
+    - "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+    - "https://cwe.mitre.org/data/definitions/89.html"
+  a_verifier: false

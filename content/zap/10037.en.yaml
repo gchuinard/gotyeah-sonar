@@ -1,0 +1,21 @@
+alert:
+  title: "Server leaks information via the X-Powered-By header"
+  detail: "The response contains one or more X-Powered-By headers, which reveal the frameworks or components used by the application."
+  explanation: "The X-Powered-By header announces the server's underlying technologies (framework, language, application engine…). It is reconnaissance information handed to an attacker."
+  why: "Knowing the frameworks and components the application relies on helps an attacker identify the known vulnerabilities (CVEs) of those components and directly target the corresponding public flaws, without guesswork. Hiding these headers slows down reconnaissance."
+  steps:
+    - "Configure your web server, application server or load balancer to remove the X-Powered-By headers."
+    - "On the origin server, disable their emission at the source (for example expose_php = Off for PHP)."
+    - "On the reverse proxy, hide the headers passed up from the upstream (proxy_hide_header)."
+    - "While you're at it, neutralize the related headers (X-AspNet-Version, X-AspNetMvc-Version) if present."
+  stacks:
+    nginx: "proxy_hide_header X-Powered-By; (and more_clear_headers X-Powered-By; with the headers-more module)"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration: proxy_hide_header X-Powered-By;"
+    cloudflare: "Rules → Transform Rules → Modify Response Header → Remove: X-Powered-By"
+    apache: "Header always unset X-Powered-By"
+    nextjs: "next.config.js → poweredByHeader: false (disables the X-Powered-By: Next.js header)"
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) leaks its technologies via one or more X-Powered-By headers. Explain the reconnaissance risk and give the exact configuration for {stack} to remove X-Powered-By (and the related version headers)."
+  refs:
+    - "https://owasp.org/www-project-web-security-testing-guide/"
+    - "https://cwe.mitre.org/data/definitions/200.html"
+  a_verifier: false

@@ -1,0 +1,20 @@
+alert:
+  title: "Server leaks its version via the Server header"
+  detail: "The response contains a Server header that reveals the version number of the web or application server."
+  explanation: "The Server header announces the software AND often its exact version. It is reconnaissance information handed to an attacker, who then only has to look up the known vulnerabilities of that version."
+  why: "Knowing the server's precise version lets an attacker directly target the corresponding public flaws (CVEs), without guesswork. Hiding this information, or returning only a generic header, slows down reconnaissance."
+  steps:
+    - "Configure your web server, application server or load balancer to remove the Server header or leave only a generic label in it."
+    - "On the origin server, disable the version display (for example server_tokens off for Nginx, ServerTokens Prod for Apache)."
+    - "On the reverse proxy, hide the Server header passed up from the upstream (proxy_hide_header / more_clear_headers)."
+  stacks:
+    nginx: "server_tokens off; (and more_clear_headers Server; with the headers-more module to fully erase the header)"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration: proxy_hide_header Server;"
+    cloudflare: "Rules → Transform Rules → Modify Response Header → Remove: Server"
+    apache: "ServerTokens Prod ; ServerSignature Off ; Header always unset Server"
+    nextjs: "Hide the Server header at the upstream reverse proxy level (Next.js does not control the origin server's Server header)."
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) leaks its software version via the Server header. Explain the reconnaissance risk and give the exact configuration for {stack} to hide the Server header or return only a generic value without a version."
+  refs:
+    - "https://owasp.org/www-project-web-security-testing-guide/"
+    - "https://cwe.mitre.org/data/definitions/200.html"
+  a_verifier: false

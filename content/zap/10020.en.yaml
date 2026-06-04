@@ -1,0 +1,22 @@
+alert:
+  title: "Anti-clickjacking header missing"
+  detail: "The response does not protect against clickjacking: no X-Frame-Options header, and no frame-ancestors directive in a Content-Security-Policy."
+  explanation: "Clickjacking consists of loading your site inside an invisible iframe placed on top of a decoy page: the victim thinks they are clicking the decoy page but is actually acting on yours. Modern browsers can prevent this through the X-Frame-Options header or the frame-ancestors directive of a CSP."
+  why: "Without anti-framing protection, an attacker can hijack an authenticated user's clicks to make them perform actions on your site without their knowledge (confirmation, transfer, settings change…)."
+  steps:
+    - "Decide who is allowed to embed your pages: usually no one."
+    - "If you NEVER want the page to be embedded, use X-Frame-Options: DENY; if it should only be embedded by your own site, use SAMEORIGIN."
+    - "As an alternative or complement (recommended, more granular), add the Content-Security-Policy: frame-ancestors 'none' directive."
+    - "If some pages must remain embeddable, replace 'none' / DENY with the explicit list of allowed origins."
+    - "Apply the protection to ALL pages returned by the site."
+  stacks:
+    nginx: "add_header Content-Security-Policy \"frame-ancestors 'none'\" always; add_header X-Frame-Options \"DENY\" always;"
+    npm: "Proxy Host → Advanced → Custom Nginx Configuration: add_header X-Frame-Options \"DENY\" always;"
+    cloudflare: "Rules → Transform Rules → Set static: X-Frame-Options = DENY (and frame-ancestors via the CSP)."
+    apache: "Header always set X-Frame-Options \"DENY\""
+    nextjs: "next.config.js → headers(): { key: 'X-Frame-Options', value: 'DENY' }"
+  ai_prompt: "You are a web security expert. {host} (served by {stack}) does not protect against clickjacking. Explain the risk, then give the exact configuration for {stack} adding the frame-ancestors 'none' directive (CSP) and the X-Frame-Options: DENY header, covering all pages."
+  refs:
+    - "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options"
+    - "https://cwe.mitre.org/data/definitions/1021.html"
+  a_verifier: false
