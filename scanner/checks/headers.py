@@ -87,3 +87,38 @@ async def disclosure(ctx):
         return [Finding("hdr-disclosure", C, Severity.LOW, code="leak",
                         evidence="; ".join(leaks))]
     return [Finding("hdr-disclosure", C, Severity.PASS, code="ok")]
+
+
+@check("hdr-coop", "Cross-Origin-Opener-Policy", C)
+async def coop(ctx):
+    if ctx.response.headers.get("cross-origin-opener-policy"):
+        return [Finding("hdr-coop", C, Severity.PASS, code="ok")]
+    return [Finding("hdr-coop", C, Severity.LOW, code="absent")]
+
+
+@check("hdr-coep", "Cross-Origin-Embedder-Policy", C)
+async def coep(ctx):
+    if ctx.response.headers.get("cross-origin-embedder-policy"):
+        return [Finding("hdr-coep", C, Severity.PASS, code="ok")]
+    return [Finding("hdr-coep", C, Severity.INFO, code="absent")]
+
+
+@check("hdr-corp", "Cross-Origin-Resource-Policy", C)
+async def corp(ctx):
+    if ctx.response.headers.get("cross-origin-resource-policy"):
+        return [Finding("hdr-corp", C, Severity.PASS, code="ok")]
+    return [Finding("hdr-corp", C, Severity.INFO, code="absent")]
+
+
+@check("hdr-cache", "Cache-Control des réponses sensibles", C)
+async def cache(ctx):
+    """Une réponse qui pose un cookie (souvent authentifiée) ne devrait pas être
+    mise en cache. On n'évalue que ce cas ; une page publique cacheable est normale."""
+    h = ctx.response.headers
+    if not h.get("set-cookie"):
+        return [Finding("hdr-cache", C, Severity.PASS, code="not-applicable")]
+    cc = (h.get("cache-control") or "").lower()
+    if any(d in cc for d in ("no-store", "private", "no-cache")):
+        return [Finding("hdr-cache", C, Severity.PASS, code="ok")]
+    return [Finding("hdr-cache", C, Severity.LOW, code="sensitive-cacheable",
+                    evidence=cc or "(aucun Cache-Control)")]

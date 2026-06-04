@@ -102,6 +102,15 @@ async def _collect():
     await run("hdr_disclosure_leak", H.disclosure(mkctx(response=mkresp(
         headers={"server": "nginx/1.2.3", "x-powered-by": "PHP/8.1"}))))
     await run("hdr_disclosure_ok", H.disclosure(mkctx(response=mkresp(headers={"server": "nginx"}))))
+    await run("hdr_coop_present", H.coop(mkctx(response=mkresp(headers={"cross-origin-opener-policy": "same-origin"}))))
+    await run("hdr_coop_absent", H.coop(mkctx(response=mkresp(headers={}))))
+    await run("hdr_coep_present", H.coep(mkctx(response=mkresp(headers={"cross-origin-embedder-policy": "require-corp"}))))
+    await run("hdr_coep_absent", H.coep(mkctx(response=mkresp(headers={}))))
+    await run("hdr_corp_present", H.corp(mkctx(response=mkresp(headers={"cross-origin-resource-policy": "same-origin"}))))
+    await run("hdr_corp_absent", H.corp(mkctx(response=mkresp(headers={}))))
+    await run("hdr_cache_na", H.cache(mkctx(response=mkresp(headers={}))))
+    await run("hdr_cache_ok", H.cache(mkctx(response=mkresp(headers=[("set-cookie", "s=1"), ("cache-control", "no-store")]))))
+    await run("hdr_cache_bad", H.cache(mkctx(response=mkresp(headers=[("set-cookie", "s=1")]))))
 
     # ---- COOKIES ----
     await run("ck_none", CK.cookies(mkctx(response=mkresp(headers={}))))

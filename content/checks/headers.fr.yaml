@@ -225,3 +225,103 @@ hdr-disclosure:
     title: "Pas de version logicielle évidente"
     detail: "Aucun en-tête ne divulgue de numéro de version exploitable."
     why: "Aucune version logicielle exploitable n'est annoncée : la reconnaissance par en-têtes est limitée."
+
+hdr-coop:
+  absent:
+    title: "Cross-Origin-Opener-Policy absent"
+    detail: "L'en-tête `Cross-Origin-Opener-Policy` n'est pas défini : la page peut partager son contexte de navigation avec des fenêtres tierces."
+    explanation: "COOP isole le groupe de contexte de navigation de ta page. Avec `same-origin`, une fenêtre que tu ouvres (ou qui t'ouvre) ne conserve plus de référence directe vers la tienne (`window.opener` devient null cross-origin)."
+    why: "Sans COOP, des attaques inter-fenêtres deviennent possibles : fuites de données cross-origin (XS-Leaks), abus de `window.opener`, tabnabbing. COOP est aussi un prérequis à l'isolation cross-origin (SharedArrayBuffer, timers haute résolution)."
+    steps:
+      - "Ajoute `Cross-Origin-Opener-Policy: same-origin` sur tes pages."
+      - "Si tu dois interagir avec des popups cross-origin (paiement, OAuth en popup), utilise `same-origin-allow-popups`."
+      - "Vérifie qu'aucune intégration légitime (fenêtres ouvertes via window.open) ne casse après activation."
+    stacks:
+      nginx: "add_header Cross-Origin-Opener-Policy \"same-origin\" always;"
+      apache: "Header always set Cross-Origin-Opener-Policy \"same-origin\""
+      npm: "Proxy Host → Advanced → Custom Nginx : add_header Cross-Origin-Opener-Policy \"same-origin\" always;"
+      cloudflare: "Transform Rules → Set static : Cross-Origin-Opener-Policy = same-origin"
+      nextjs: "next.config.js → headers(): { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne définit pas Cross-Origin-Opener-Policy. Explique le risque (XS-Leaks, window.opener, tabnabbing) et donne la configuration exacte pour {stack} avec `same-origin` (ou `same-origin-allow-popups` si des popups cross-origin sont nécessaires)."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy"
+    a_verifier: false
+  ok:
+    title: "Cross-Origin-Opener-Policy présent"
+    detail: "L'en-tête Cross-Origin-Opener-Policy est défini."
+    why: "Le contexte de navigation est isolé des fenêtres tierces : pas d'abus de window.opener ni de fuite inter-fenêtres."
+
+hdr-coep:
+  absent:
+    title: "Cross-Origin-Embedder-Policy absent"
+    detail: "L'en-tête `Cross-Origin-Embedder-Policy` n'est pas défini. Optionnel, mais requis pour l'isolation cross-origin (SharedArrayBuffer, mesures haute résolution)."
+    explanation: "COEP exige que toutes les ressources cross-origin chargées par la page déclarent explicitement leur consentement (via CORP ou CORS). Couplé à COOP, il active l'« isolation cross-origin » qui débloque certaines API puissantes."
+    why: "L'absence de COEP n'est pas une faille en soi : c'est surtout un prérequis manquant si tu as besoin de l'isolation cross-origin. À n'activer que si nécessaire, car `require-corp` peut casser des ressources tierces non préparées."
+    steps:
+      - "N'active COEP que si tu as besoin de l'isolation cross-origin (sinon laisse tel quel)."
+      - "Ajoute `Cross-Origin-Embedder-Policy: require-corp` et vérifie que chaque ressource cross-origin renvoie `Cross-Origin-Resource-Policy` ou des en-têtes CORS adéquats."
+      - "Teste soigneusement : une ressource tierce non conforme sera bloquée."
+    stacks:
+      nginx: "add_header Cross-Origin-Embedder-Policy \"require-corp\" always;"
+      apache: "Header always set Cross-Origin-Embedder-Policy \"require-corp\""
+      cloudflare: "Transform Rules → Set static : Cross-Origin-Embedder-Policy = require-corp"
+      nextjs: "next.config.js → headers(): { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) n'envoie pas Cross-Origin-Embedder-Policy. Explique à quoi sert l'isolation cross-origin et ses prérequis, et donne la configuration exacte pour {stack} si elle est nécessaire — en avertissant des ressources tierces qui pourraient casser."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Cross-Origin-Embedder-Policy"
+    a_verifier: false
+  ok:
+    title: "Cross-Origin-Embedder-Policy présent"
+    detail: "L'en-tête Cross-Origin-Embedder-Policy est défini."
+    why: "Les ressources cross-origin doivent consentir explicitement à être chargées : l'isolation cross-origin est en place."
+
+hdr-corp:
+  absent:
+    title: "Cross-Origin-Resource-Policy absent"
+    detail: "L'en-tête `Cross-Origin-Resource-Policy` n'est pas défini : tes ressources peuvent être chargées par n'importe quel site cross-origin."
+    explanation: "CORP indique qui a le droit d'embarquer une ressource (image, script, etc.). Avec `same-origin`, seule ton origine peut la charger ; avec `same-site`, ton site uniquement. C'est une défense contre les attaques par canal auxiliaire (Spectre) et le vol de ressources."
+    why: "Sans CORP, une ressource sensible (avatar privé, document) peut être chargée et exploitée par un site tiers via des fuites par canal auxiliaire. C'est une défense en profondeur, surtout pour les ressources non publiques."
+    steps:
+      - "Ajoute `Cross-Origin-Resource-Policy: same-origin` (ou `same-site`) sur les ressources que tu ne veux pas voir embarquées ailleurs."
+      - "Pour des ressources réellement publiques (CDN, polices), utilise `cross-origin` en connaissance de cause."
+    stacks:
+      nginx: "add_header Cross-Origin-Resource-Policy \"same-origin\" always;"
+      apache: "Header always set Cross-Origin-Resource-Policy \"same-origin\""
+      cloudflare: "Transform Rules → Set static : Cross-Origin-Resource-Policy = same-origin"
+      nextjs: "next.config.js → headers(): { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) n'envoie pas Cross-Origin-Resource-Policy. Explique le risque (vol de ressources, Spectre) et donne la configuration exacte pour {stack} avec `same-origin`, en distinguant les ressources publiques qui doivent rester `cross-origin`."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Cross-Origin-Resource-Policy"
+    a_verifier: false
+  ok:
+    title: "Cross-Origin-Resource-Policy présent"
+    detail: "L'en-tête Cross-Origin-Resource-Policy est défini."
+    why: "L'embarquement cross-origin de tes ressources est restreint : défense en profondeur contre le vol de ressources et Spectre."
+
+hdr-cache:
+  sensitive-cacheable:
+    title: "Réponse sensible potentiellement mise en cache"
+    detail: "La réponse pose un cookie mais n'interdit pas explicitement la mise en cache ({evidence}) : un cache intermédiaire ou le navigateur pourrait stocker du contenu authentifié."
+    explanation: "Une réponse qui dépose un cookie est généralement authentifiée/personnalisée. Sans `Cache-Control: no-store` (ou `private`/`no-cache`), un cache partagé (proxy, CDN) ou le disque du navigateur peut conserver cette page sensible et la resservir à un autre utilisateur ou après déconnexion."
+    why: "Du contenu authentifié mis en cache peut fuiter vers un autre utilisateur d'un poste partagé, ou via un cache intermédiaire mal cloisonné. C'est une cause classique de fuite de données personnelles."
+    steps:
+      - "Sur les réponses authentifiées/personnalisées, envoie `Cache-Control: no-store` (le plus strict)."
+      - "À défaut, `Cache-Control: private, no-cache` empêche le cache partagé et force la revalidation."
+      - "Réserve les caches longs (`public, max-age=...`) aux ressources réellement publiques et non personnalisées."
+    stacks:
+      nginx: "Pour les routes authentifiées : add_header Cache-Control \"no-store\" always;"
+      apache: "<LocationMatch \"^/(compte|admin)\"> Header always set Cache-Control \"no-store\" </LocationMatch>"
+      nextjs: "Dans le handler/route authentifié : en-tête `Cache-Control: no-store` (ou `export const dynamic = 'force-dynamic'`)."
+      express: "res.set('Cache-Control', 'no-store') sur les routes authentifiées."
+    ai_prompt: "Tu es un expert en sécurité web. Sur {host} (servi par {stack}), une réponse qui pose un cookie n'interdit pas la mise en cache. Explique le risque de fuite de contenu authentifié, puis montre comment envoyer `Cache-Control: no-store` sur les réponses authentifiées pour {stack}, en gardant le cache long pour les ressources publiques."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Cache-Control"
+    a_verifier: false
+  ok:
+    title: "Réponses sensibles non mises en cache"
+    detail: "La réponse qui pose un cookie interdit la mise en cache (`no-store`/`private`/`no-cache`)."
+    why: "Le contenu authentifié n'est pas stockable par un cache partagé ou le navigateur : pas de fuite par le cache."
+  not-applicable:
+    title: "Pas de réponse sensible à protéger du cache"
+    detail: "La réponse ne pose pas de cookie : sa mise en cache n'est pas un risque de confidentialité ici."
+    why: "Une réponse publique non personnalisée peut être mise en cache sans risque de fuite."
