@@ -63,6 +63,7 @@ async def _collect():
     from scanner.checks import subresources as SR
     from scanner.checks import tls as TLS
     from scanner.checks import dns as DNS
+    from scanner.checks import leaks as LK
     from scanner.checks import ports as PORTS
     from scanner.checks import takeover as TK
     from scanner.checks import nuclei as NU
@@ -408,6 +409,42 @@ async def _collect():
             await run(sid, TLS.tls_protocols(mkctx(url="https://x/", host="x")))
         finally:
             TLS._handshake = _orig_hs
+
+    # ---- LEAKS (fake client get + post) ----
+    class _LeakFake:
+        def __init__(self, routes, post_routes=None):
+            self.routes = routes
+            self.post_routes = post_routes or {}
+
+        async def get(self, url, headers=None):
+            for frag, resp in self.routes.items():
+                if str(url).endswith(frag):
+                    return resp
+            return mkresp(404, text="nf", url=url)
+
+        async def post(self, url, content=None, headers=None):
+            for frag, resp in self.post_routes.items():
+                if str(url).endswith(frag):
+                    return resp
+            return mkresp(404, text="nf", url=url)
+
+    _map = '{"version":3,"sources":["a.ts"],"mappings":"AAAA"}'
+    find_routes = {
+        "/app.js.map": mkresp(200, {"content-type": "application/json"}, _map),
+        "/app.js": mkresp(200, {"content-type": "application/javascript"},
+                          "console.log(1)\n//# sourceMappingURL=app.js.map"),
+        "openapi.json": mkresp(200, {"content-type": "application/json"}, '{"openapi":"3.0.0","paths":{}}'),
+        "uploads/": mkresp(200, {"content-type": HTML}, "<title>Index of /uploads</title>"),
+        ".well-known/security.txt": mkresp(200, {"content-type": "text/plain"}, "Contact: mailto:sec@x.com"),
+    }
+    gql_resp = mkresp(200, {"content-type": "application/json"},
+                      '{"data":{"__schema":{"queryType":{"name":"Query"}}}}')
+    page_f = mkresp(200, {"content-type": HTML}, '<script src="/app.js"></script>', url="https://x/")
+    await run("leaks_findings", LK.leaks(mkctx(response=page_f, url="https://x/", host="x",
+                                               client=_LeakFake(find_routes, {"graphql": gql_resp}))))
+    page_c = mkresp(200, {"content-type": HTML}, "<html>no scripts</html>", url="https://x/")
+    await run("leaks_clean", LK.leaks(mkctx(response=page_c, url="https://x/", host="x",
+                                            client=_LeakFake({}, {}))))
 
     return out
 

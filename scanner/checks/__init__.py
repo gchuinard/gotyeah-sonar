@@ -13,6 +13,7 @@ from . import cors      # noqa: F401  Phase 2
 from . import mixed     # noqa: F401  Phase 2
 from . import subresources  # noqa: F401  Phase 2
 from . import tech      # noqa: F401  Phase 2
+from . import leaks     # noqa: F401  Phase 2 — fuites & well-known
 from . import ports     # noqa: F401  Réseau — ports/services exposés
 from . import nuclei    # noqa: F401  Phase 3
 from . import zap        # noqa: F401  Phase 3 (bonus)

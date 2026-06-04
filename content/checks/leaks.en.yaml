@@ -1,0 +1,108 @@
+# Leaks & well-known (Phase 2). Placeholders: {url}, {path}.
+
+leak-sourcemap:
+  exposed:
+    title: "Source map exposed (source-code leak)"
+    detail: "A source map is served publicly (`{url}`): it lets anyone reconstruct the original source code (before minification/transpilation)."
+    explanation: "A source map (`.js.map`) links production minified JavaScript back to the original source. Served online, it hands over your readable code: variable names, comments, structure, sometimes internal paths or secrets left in the code."
+    why: "Revealed source code makes it easier to find flaws (business logic, hidden endpoints, forgotten secrets on the client side). It is not a flaw in itself, but a valuable aid handed to an attacker."
+    steps:
+      - "Do not deploy `.js.map` files to production, or restrict access to them at the server level."
+      - "At build time, disable public source map generation (or make them private / `hidden`)."
+      - "If they are useful for error monitoring, upload them directly to the tool (Sentry…) without serving them publicly."
+    stacks:
+      webpack: "In production, set `devtool: false` (or `hidden-source-map` and do not expose the .map)."
+      vite: "build.sourcemap: false (or 'hidden') in vite.config."
+      nginx: "location ~ \\.map$ { deny all; }"
+      apache: "<FilesMatch \"\\.map$\"> Require all denied </FilesMatch>"
+    ai_prompt: "You are a web security expert. {host} exposes a source map ({url}). Explain the source-code leak risk, then show how to prevent deploying/serving `.js.map` in production for {stack} (build + server)."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Use_a_source_map"
+    a_verifier: false
+  clean:
+    title: "No source map exposed"
+    detail: "No public source map was found on the scripts checked."
+    why: "Production source code cannot be reconstructed via public source maps."
+
+leak-swagger:
+  exposed:
+    title: "API documentation exposed (Swagger/OpenAPI)"
+    detail: "An OpenAPI/Swagger specification is publicly accessible (`{path}`): it describes the entire API surface."
+    explanation: "An OpenAPI/Swagger document lists every API route, its parameters, schemas and sometimes examples. Public, it offers a complete map of the API attack surface."
+    why: "Exposing the full API docs makes it easy to enumerate endpoints (including ones not linked from the site), discover parameters and target sensitive calls. It should be reserved for internal environments."
+    steps:
+      - "Disable doc exposure (Swagger UI / `/openapi.json`) in production, or protect it with authentication."
+      - "Restrict access to an internal network / VPN if the team needs it."
+      - "Make sure the docs do not describe admin endpoints accessible without control."
+    stacks:
+      fastapi: "In prod: FastAPI(docs_url=None, redoc_url=None, openapi_url=None) — or protect those routes."
+      express: "Only mount swagger-ui-express in dev (NODE_ENV !== 'production'), or behind an auth middleware."
+      nginx: "location ~ ^/(swagger|api-docs|openapi.json) { deny all; }"
+    ai_prompt: "You are a web security expert. {host} exposes its OpenAPI/Swagger API documentation ({path}). Explain the API-surface enumeration risk, then show how to disable it in production or protect it with authentication for {stack}."
+    refs:
+      - "https://owasp.org/www-project-api-security/"
+    a_verifier: false
+  clean:
+    title: "No API documentation exposed"
+    detail: "No public OpenAPI/Swagger specification was found at the common paths."
+    why: "The API surface is not publicly mapped via OpenAPI docs."
+
+leak-graphql:
+  introspection:
+    title: "GraphQL introspection enabled"
+    detail: "The GraphQL endpoint (`{path}`) answers introspection queries: the whole schema (types, fields, queries, mutations) is publicly readable."
+    explanation: "GraphQL introspection lets a client query the full API schema. Handy in development, in production it reveals every available type, field and operation — including ones not meant to be known."
+    why: "A public GraphQL schema makes it much easier to discover sensitive operations (admin mutations, internal fields) and craft abusive queries. Introspection should be disabled in production."
+    steps:
+      - "Disable GraphQL introspection in production (keep it in development)."
+      - "Combine with query depth/complexity limiting and authentication on sensitive operations."
+    stacks:
+      apollo: "new ApolloServer({ introspection: false }) in production."
+      graphqljs: "Enable a validation rule that rejects `__schema`/`__type` queries in production."
+      hasura: "HASURA_GRAPHQL_ENABLE_CONSOLE=false and restrict admin/metadata access."
+    ai_prompt: "You are a web security expert. The GraphQL endpoint of {host} ({path}) allows introspection in production. Explain the risk, then show how to disable introspection (and limit query depth) for {stack}."
+    refs:
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+  clean:
+    title: "No GraphQL introspection exposed"
+    detail: "No GraphQL endpoint publicly answers introspection queries."
+    why: "The GraphQL schema cannot be publicly mapped via introspection."
+
+leak-autoindex:
+  listing:
+    title: "Directory listing enabled (autoindex)"
+    detail: "A directory (`{path}`) returns the list of its contents (autoindex) instead of a page: the folder's files can be enumerated."
+    explanation: "When no index file is present, some servers automatically display the directory's file list. This exposes files you may not intend to publish (backups, archives, documents)."
+    why: "A directory listing makes it easy to enumerate and download forgotten or sensitive files. It is a direct reconnaissance information leak."
+    steps:
+      - "Disable autoindex on the server for all served directories."
+      - "Place an index file (or block access) on directories that should not be listed."
+      - "Move out of the webroot any files that have no business there (backups, archives)."
+    stacks:
+      nginx: "autoindex off; (this is the default; check that no block enables it)."
+      apache: "Options -Indexes (in the directory config or .htaccess)."
+    ai_prompt: "You are a web security expert. {host} exposes a directory listing ({path}). Explain the risk, then give the exact configuration for {stack} disabling autoindex."
+    refs:
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+  clean:
+    title: "No directory listing"
+    detail: "None of the probed directories returns a file listing (autoindex)."
+    why: "Directories do not reveal the list of their files."
+
+leak-securitytxt:
+  missing:
+    title: "security.txt file missing"
+    detail: "No `/.well-known/security.txt` was found: there is no standardized contact point to report a vulnerability."
+    why: "Optional but recommended: a `security.txt` tells researchers how to report a vulnerability responsibly, rather than disclosing or exploiting it."
+    steps:
+      - "Publish a `/.well-known/security.txt` file with at least a `Contact:` field (email or URL) and an `Expires:` field."
+      - "Add `Policy:` (link to your disclosure policy) and `Preferred-Languages:` if possible."
+      - "Minimal example: `Contact: mailto:security@example.com` then `Expires: 2027-01-01T00:00:00Z`."
+    refs:
+      - "https://securitytxt.org/"
+  present:
+    title: "security.txt file present"
+    detail: "A `/.well-known/security.txt` is published with a contact point."
+    why: "A responsible vulnerability-reporting channel is in place: good practice."

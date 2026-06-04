@@ -1,0 +1,108 @@
+# Fuites & well-known (Phase 2). Placeholders : {url}, {path}.
+
+leak-sourcemap:
+  exposed:
+    title: "Source map exposée (fuite de code source)"
+    detail: "Un fichier source map est servi publiquement (`{url}`) : il permet de reconstituer le code source original (avant minification/transpilation)."
+    explanation: "Une source map (`.js.map`) relie le JavaScript minifié de production au code source d'origine. Servie en ligne, elle livre ton code lisible : noms de variables, commentaires, structure, parfois des chemins internes ou des clés laissées dans le code."
+    why: "Le code source révélé facilite la recherche de failles (logique métier, endpoints cachés, secrets oubliés côté client). Ce n'est pas une faille en soi, mais une aide précieuse offerte à un attaquant."
+    steps:
+      - "Ne déploie pas les fichiers `.js.map` en production, ou restreins-y l'accès au niveau du serveur."
+      - "Côté build, désactive la génération de source maps publiques (ou rends-les privées / `hidden`)."
+      - "Si elles sont utiles au monitoring d'erreurs, téléverse-les directement vers l'outil (Sentry…) sans les servir publiquement."
+    stacks:
+      webpack: "En production, mets `devtool: false` (ou `hidden-source-map` et n'expose pas les .map)."
+      vite: "build.sourcemap: false (ou 'hidden') dans vite.config."
+      nginx: "location ~ \\.map$ { deny all; }"
+      apache: "<FilesMatch \"\\.map$\"> Require all denied </FilesMatch>"
+    ai_prompt: "Tu es un expert en sécurité web. {host} expose une source map ({url}). Explique le risque de fuite de code source, puis montre comment empêcher le déploiement/l'accès aux `.js.map` en production pour {stack} (build + serveur)."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Tools/Debugger/How_to/Use_a_source_map"
+    a_verifier: false
+  clean:
+    title: "Pas de source map exposée"
+    detail: "Aucune source map publique n'a été trouvée sur les scripts vérifiés."
+    why: "Le code source de production n'est pas reconstituable via des source maps publiques."
+
+leak-swagger:
+  exposed:
+    title: "Documentation d'API exposée (Swagger/OpenAPI)"
+    detail: "Une spécification OpenAPI/Swagger est accessible publiquement (`{path}`) : elle décrit l'ensemble des endpoints de l'API."
+    explanation: "Un document OpenAPI/Swagger liste toutes les routes de l'API, leurs paramètres, leurs schémas et parfois des exemples. Public, il offre une carte complète de la surface d'attaque de l'API."
+    why: "Exposer la doc complète de l'API facilite l'énumération des endpoints (y compris ceux non liés depuis le site), la découverte de paramètres et le ciblage d'appels sensibles. À réserver aux environnements internes."
+    steps:
+      - "Désactive l'exposition de la doc (Swagger UI / `/openapi.json`) en production, ou protège-la par authentification."
+      - "Limite l'accès à un réseau interne / VPN si l'équipe en a besoin."
+      - "Assure-toi que la doc ne décrit pas d'endpoints d'administration accessibles sans contrôle."
+    stacks:
+      fastapi: "En prod : FastAPI(docs_url=None, redoc_url=None, openapi_url=None) — ou protège ces routes."
+      express: "Ne monte swagger-ui-express qu'en dev (NODE_ENV !== 'production'), ou derrière un middleware d'auth."
+      nginx: "location ~ ^/(swagger|api-docs|openapi.json) { deny all; }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} expose sa documentation d'API OpenAPI/Swagger ({path}). Explique le risque d'énumération de la surface d'API, puis montre comment la désactiver en production ou la protéger par authentification pour {stack}."
+    refs:
+      - "https://owasp.org/www-project-api-security/"
+    a_verifier: false
+  clean:
+    title: "Pas de documentation d'API exposée"
+    detail: "Aucune spécification OpenAPI/Swagger publique n'a été trouvée aux chemins courants."
+    why: "La surface de l'API n'est pas cartographiée publiquement via une doc OpenAPI."
+
+leak-graphql:
+  introspection:
+    title: "Introspection GraphQL activée"
+    detail: "Le endpoint GraphQL (`{path}`) répond aux requêtes d'introspection : tout le schéma (types, champs, requêtes, mutations) est lisible publiquement."
+    explanation: "L'introspection GraphQL permet à un client d'interroger le schéma complet de l'API. Pratique en développement, elle révèle en production l'intégralité des types, champs et opérations disponibles — y compris ceux qui ne sont pas censés être connus."
+    why: "Un schéma GraphQL public facilite grandement la découverte d'opérations sensibles (mutations d'admin, champs internes) et l'élaboration de requêtes abusives. L'introspection devrait être désactivée en production."
+    steps:
+      - "Désactive l'introspection GraphQL en production (garde-la en développement)."
+      - "Combine avec une limitation de profondeur/complexité des requêtes et une authentification sur les opérations sensibles."
+    stacks:
+      apollo: "new ApolloServer({ introspection: false }) en production."
+      graphqljs: "Active une règle de validation qui rejette les requêtes `__schema`/`__type` en production."
+      hasura: "HASURA_GRAPHQL_ENABLE_CONSOLE=false et restreins l'accès admin/metadata."
+    ai_prompt: "Tu es un expert en sécurité web. Le endpoint GraphQL de {host} ({path}) autorise l'introspection en production. Explique le risque, puis montre comment désactiver l'introspection (et limiter la profondeur des requêtes) pour {stack}."
+    refs:
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+  clean:
+    title: "Pas d'introspection GraphQL exposée"
+    detail: "Aucun endpoint GraphQL ne répond publiquement aux requêtes d'introspection."
+    why: "Le schéma GraphQL n'est pas cartographiable publiquement par introspection."
+
+leak-autoindex:
+  listing:
+    title: "Listing de répertoire activé (autoindex)"
+    detail: "Un répertoire (`{path}`) renvoie la liste de son contenu (autoindex) au lieu d'une page : les fichiers du dossier sont énumérables."
+    explanation: "Quand aucun fichier d'index n'est présent, certains serveurs affichent automatiquement la liste des fichiers du répertoire. Cela expose des fichiers que tu n'as peut-être pas l'intention de publier (sauvegardes, archives, documents)."
+    why: "Un listing de répertoire facilite l'énumération et le téléchargement de fichiers oubliés ou sensibles. C'est une fuite d'information de reconnaissance directe."
+    steps:
+      - "Désactive l'autoindex côté serveur pour tous les répertoires servis."
+      - "Place un fichier d'index (ou bloque l'accès) sur les répertoires qui n'ont pas vocation à être listés."
+      - "Sors du webroot les fichiers qui n'ont rien à y faire (sauvegardes, archives)."
+    stacks:
+      nginx: "autoindex off; (c'est le défaut ; vérifie qu'aucun bloc ne l'active)."
+      apache: "Options -Indexes (dans la config du répertoire ou .htaccess)."
+    ai_prompt: "Tu es un expert en sécurité web. {host} expose un listing de répertoire ({path}). Explique le risque, puis donne la configuration exacte pour {stack} désactivant l'autoindex."
+    refs:
+      - "https://owasp.org/www-project-web-security-testing-guide/"
+    a_verifier: false
+  clean:
+    title: "Pas de listing de répertoire"
+    detail: "Aucun des répertoires sondés ne renvoie de listing de fichiers (autoindex)."
+    why: "Les répertoires ne révèlent pas la liste de leurs fichiers."
+
+leak-securitytxt:
+  missing:
+    title: "Fichier security.txt absent"
+    detail: "Aucun `/.well-known/security.txt` n'a été trouvé : il n'y a pas de point de contact standardisé pour signaler une faille."
+    why: "Optionnel mais recommandé : un `security.txt` indique aux chercheurs comment te signaler une vulnérabilité de façon responsable, plutôt que de la divulguer ou l'exploiter."
+    steps:
+      - "Publie un fichier `/.well-known/security.txt` avec au minimum un champ `Contact:` (email ou URL) et un champ `Expires:`."
+      - "Ajoute si possible `Policy:` (lien vers ta politique de divulgation) et `Preferred-Languages:`."
+      - "Exemple minimal : `Contact: mailto:security@exemple.com` puis `Expires: 2027-01-01T00:00:00Z`."
+    refs:
+      - "https://securitytxt.org/"
+  present:
+    title: "Fichier security.txt présent"
+    detail: "Un `/.well-known/security.txt` est publié avec un point de contact."
+    why: "Un canal de signalement responsable des vulnérabilités est en place : bonne pratique."
