@@ -130,6 +130,15 @@ async def test_authorize_rejects_unknown_scope(oauth):
         await provider.authorize(client, _params(scopes=["scans:read", "scans:write"]))
 
 
+async def test_authorize_accepts_offline_access(oauth):
+    """claude.ai demande `offline_access` (refresh token) : doit être toléré, pas rejeté."""
+    provider, _ = oauth
+    client = _client()
+    await provider.register_client(client)
+    consent = await provider.authorize(client, _params(scopes=["scans:read", "offline_access"]))
+    assert consent.startswith(f"{BASE}/mcp/consent?rid=")
+
+
 # --------------------------------------------------------------------------- #
 # code → jetons (single-use)
 # --------------------------------------------------------------------------- #
@@ -254,32 +263,17 @@ async def test_subject_isolation_between_owners(oauth):
 # annonce PKCE S256 (exigence dure) + tous les endpoints attendus.
 # --------------------------------------------------------------------------- #
 def test_as_metadata_is_claude_compatible():
-    from mcp.server.auth.settings import (
-        AuthSettings,
-        ClientRegistrationOptions,
-        RevocationOptions,
-    )
-    from mcp.server.fastmcp import FastMCP
-    from pydantic import AnyHttpUrl
+    # On teste la VRAIE config de prod (build_remote), pas une reconstruction inline.
     from starlette.testclient import TestClient
 
-    mcp = FastMCP(
-        "sonar",
-        auth_server_provider=SonarOAuthProvider(BASE),
-        auth=AuthSettings(
-            issuer_url=AnyHttpUrl(BASE),
-            resource_server_url=AnyHttpUrl(f"{BASE}/mcp"),
-            required_scopes=["scans:read"],
-            client_registration_options=ClientRegistrationOptions(
-                enabled=True, valid_scopes=["scans:read"], default_scopes=["scans:read"]
-            ),
-            revocation_options=RevocationOptions(enabled=True),
-        ),
-    )
-    with TestClient(mcp.streamable_http_app()) as c:
+    from mcp_remote.remote import build_remote
+
+    mcp, app, _provider = build_remote(BASE)
+    with TestClient(app) as c:
         md = c.get("/.well-known/oauth-authorization-server").json()
     assert md["code_challenge_methods_supported"] == ["S256"]   # PKCE S256 obligatoire
-    assert md["scopes_supported"] == ["scans:read"]
+    assert "scans:read" in md["scopes_supported"]
+    assert "offline_access" in md["scopes_supported"]           # toléré pour le refresh
     for key in ("authorization_endpoint", "token_endpoint", "registration_endpoint", "revocation_endpoint"):
         assert md.get(key), f"endpoint manquant : {key}"
     assert set(md["grant_types_supported"]) == {"authorization_code", "refresh_token"}

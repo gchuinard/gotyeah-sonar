@@ -39,14 +39,19 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from mcp_remote import store
 
 DEFAULT_SCOPE = "scans:read"
+# Scope OIDC standard demandé par claude.ai au DCR/authorize pour obtenir un refresh
+# token. On le tolère (on émet un refresh de toute façon) ; il n'ouvre AUCUN accès.
+OFFLINE_SCOPE = "offline_access"
 
 
 class SonarOAuthProvider(OAuthAuthorizationServerProvider):
-    """Serveur d'autorisation self-contained, scope unique `scans:read` (lecture seule)."""
+    """Serveur d'autorisation self-contained, scope d'accès unique `scans:read`
+    (lecture seule) ; `offline_access` toléré pour le refresh token."""
 
     def __init__(self, base_url: str, *, scope: str = DEFAULT_SCOPE) -> None:
         self.base_url = base_url.rstrip("/")
         self.scope = scope
+        self.allowed_scopes = {scope, OFFLINE_SCOPE}
 
     # --- URL de la page de consentement (route servie par l'app, Ph.2) ---------
     def consent_url(self, rid: str) -> str:
@@ -64,8 +69,11 @@ class SonarOAuthProvider(OAuthAuthorizationServerProvider):
     # --- /authorize : stocke la requête et redirige vers le consentement -------
     async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
         requested = params.scopes or [self.scope]
-        if any(s != self.scope for s in requested):
-            raise AuthorizeError(error="invalid_scope", error_description=f"seul {self.scope} est autorisé")
+        if any(s not in self.allowed_scopes for s in requested):
+            raise AuthorizeError(
+                error="invalid_scope",
+                error_description=f"scopes autorisés : {' '.join(sorted(self.allowed_scopes))}",
+            )
         rid = store.create_pending(
             client_id=client.client_id,
             redirect_uri=str(params.redirect_uri),

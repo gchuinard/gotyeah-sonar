@@ -166,13 +166,14 @@ def test_full_oauth_flow_end_to_end(remote):
     c, appmod = remote
     user = _login(c, "e2e@example.com")
 
-    # 1) DCR : claude.ai s'enregistre (client public + PKCE)
+    # 1) DCR : claude.ai s'enregistre — il demande offline_access (refresh token) ;
+    #    notre AS doit l'accepter (ce qui avait initialement cassé la connexion réelle).
     reg = c.post("/register", json={
         "redirect_uris": [CALLBACK],
         "token_endpoint_auth_method": "none",
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
-        "scope": "scans:read",
+        "scope": "scans:read offline_access",
     })
     assert reg.status_code in (200, 201), reg.text
     client_id = reg.json()["client_id"]
@@ -185,7 +186,7 @@ def test_full_oauth_flow_end_to_end(remote):
     authz = c.get("/authorize", params={
         "response_type": "code", "client_id": client_id, "redirect_uri": CALLBACK,
         "code_challenge": challenge, "code_challenge_method": "S256",
-        "scope": "scans:read", "state": "s-e2e", "resource": f"{BASE}/mcp",
+        "scope": "scans:read offline_access", "state": "s-e2e", "resource": f"{BASE}/mcp",
     }, follow_redirects=False)
     assert authz.status_code in (302, 307), authz.text
     rid = parse_qs(urlparse(authz.headers["location"]).query)["rid"][0]

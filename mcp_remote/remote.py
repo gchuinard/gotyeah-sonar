@@ -75,9 +75,14 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         auth=AuthSettings(
             issuer_url=AnyHttpUrl(base),
             resource_server_url=AnyHttpUrl(f"{base}/mcp"),
+            # La RESSOURCE /mcp exige scans:read. On tolère en plus `offline_access`
+            # (scope OIDC standard que claude.ai demande au DCR pour obtenir un refresh
+            # token — ce qu'on émet de toute façon). Il n'ouvre aucun accès en lecture.
             required_scopes=[scope],
             client_registration_options=ClientRegistrationOptions(
-                enabled=True, valid_scopes=[scope], default_scopes=[scope]
+                enabled=True,
+                valid_scopes=[scope, "offline_access"],
+                default_scopes=[scope],
             ),
             revocation_options=RevocationOptions(enabled=True),
         ),
