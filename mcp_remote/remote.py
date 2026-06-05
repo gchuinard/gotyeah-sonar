@@ -87,5 +87,29 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             revocation_options=RevocationOptions(enabled=True),
         ),
     )
+    # --- Interop claude.ai : annoncer le mode client PUBLIC `none` ---------- #
+    # Le SDK `mcp` code en dur token_endpoint_auth_methods_supported =
+    # ["client_secret_post", "client_secret_basic"] (routes.build_metadata) et
+    # n'annonce JAMAIS "none". Or claude.ai s'enregistre en client PUBLIC
+    # (token_endpoint_auth_method="none", PKCE sans secret) : en lisant la
+    # métadonnée du serveur d'autorisation, il voit que "none" n'est pas supporté
+    # et abandonne AVANT /authorize → « Couldn't register ». Le /register accepte
+    # pourtant ces clients (incohérence du SDK). On ajoute "none" à la métadonnée
+    # AVANT streamable_http_app() (qui construit puis met en cache la métadonnée).
+    from mcp.server.auth import routes as _auth_routes
+
+    if not getattr(_auth_routes.build_metadata, "_sonar_public_client_patch", False):
+        _orig_build_metadata = _auth_routes.build_metadata
+
+        def _build_metadata_with_public_client(*args, **kwargs):
+            md = _orig_build_metadata(*args, **kwargs)
+            methods = list(md.token_endpoint_auth_methods_supported or [])
+            if "none" not in methods:
+                md.token_endpoint_auth_methods_supported = ["none", *methods]
+            return md
+
+        _build_metadata_with_public_client._sonar_public_client_patch = True
+        _auth_routes.build_metadata = _build_metadata_with_public_client
+
     asgi_app = mcp.streamable_http_app()  # crée le session_manager (paresseux)
     return mcp, asgi_app, provider
