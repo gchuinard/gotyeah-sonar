@@ -47,6 +47,20 @@
     "footer": "Sonar · scanner de sécurité web auto-hébergé"
   },
 
+  "consent": {
+    "title": "Autoriser l'accès",
+    "subtitle": "une application se connecte",
+    "intro": "{client} demande l'accès à tes rapports de sécurité Sonar.",
+    "scope_label": "Accès demandé",
+    "scope_read": "Lecture seule de tes rapports et domaines (scope scans:read). Aucune modification, aucun scan déclenché.",
+    "logged_as": "Connecté en tant que",
+    "approve": "Autoriser",
+    "deny": "Refuser",
+    "note": "Sonar ne partage que TES propres rapports. Tu peux déconnecter l'application depuis claude.ai à tout moment.",
+    "expired_title": "Demande expirée",
+    "expired_detail": "Cette demande d'autorisation a expiré ou est invalide. Relance la connexion depuis l'application."
+  },
+
   "admin": {
     "scan_any": "Scan libre admin (sans vérif DNS)"
   },

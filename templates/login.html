@@ -93,6 +93,9 @@
     show("Ce lien est invalide ou expiré. Redemande-en un.", 'err');
   }
 
+  // Retour post-login éventuel (ex. consentement MCP) : on le relaie au lien magique.
+  const nextParam = new URLSearchParams(location.search).get('next') || '';
+
   form.addEventListener('submit', async () => {
     const email = input.value.trim();
     if (!email) return;
@@ -101,7 +104,7 @@
       const r = await fetch('/api/auth/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(nextParam ? { email, next: nextParam } : { email }),
       });
       const d = await r.json().catch(() => ({}));
       show(d.message || "Si un compte existe, un lien a été envoyé.", 'ok');

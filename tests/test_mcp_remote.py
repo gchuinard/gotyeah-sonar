@@ -33,7 +33,7 @@ _PING = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
 def _combined_app(base: str = "https://sonar.test"):
     """Reproduit le câblage de app.py : routes hôtes + mount MCP en dernier +
     lifespan qui fait tourner le session manager du transport."""
-    mcp, sub = build_remote(base)
+    mcp, sub, _provider = build_remote(base)
 
     @asynccontextmanager
     async def lifespan(app):

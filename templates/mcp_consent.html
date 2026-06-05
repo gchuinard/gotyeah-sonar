@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="__LANG__" dir="__DIR__">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SONAR — __TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#070b10; --bg-2:#0b121a; --bg-3:#101a25;
+    --line:rgba(122,160,180,.12); --line-2:rgba(122,160,180,.22);
+    --text:#d6e2ea; --text-dim:#7d8c98; --text-faint:#46535d; --accent:#2ee6a6;
+    --mono:'IBM Plex Mono',ui-monospace,monospace; --sans:'IBM Plex Sans',system-ui,sans-serif;
+    --display:'Chakra Petch',var(--sans);
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14px;
+    display:flex; align-items:center; justify-content:center; min-height:100vh;
+    background-image:
+      radial-gradient(900px 500px at 80% -10%, rgba(46,230,166,.07), transparent 60%),
+      radial-gradient(700px 500px at 0% 0%, rgba(91,141,239,.06), transparent 55%);
+  }
+  .card {
+    width:min(440px,92vw); background:var(--bg-2); border:1px solid var(--line-2);
+    border-radius:14px; padding:30px 26px; box-shadow:0 20px 60px rgba(0,0,0,.4);
+  }
+  .brand { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .mark { width:30px; height:30px; color:var(--accent); }
+  .mark circle { fill:none; stroke:currentColor; }
+  .brand b { font-family:var(--display); font-weight:700; font-size:18px; letter-spacing:.22em; text-transform:uppercase; }
+  .sub { font-family:var(--mono); font-size:12px; color:var(--text-dim); margin:0 0 22px; }
+  h1 { font-family:var(--display); font-weight:700; font-size:19px; margin:0 0 10px; }
+  .intro { font-size:14px; line-height:1.5; margin:0 0 18px; }
+  .scope {
+    background:var(--bg-3); border:1px solid var(--line-2); border-radius:10px;
+    padding:13px 14px; margin-bottom:16px;
+  }
+  .scope .lbl { font-family:var(--mono); font-size:11px; color:var(--text-dim);
+    text-transform:uppercase; letter-spacing:.1em; margin-bottom:6px; }
+  .scope .val { font-size:13px; line-height:1.5; color:var(--text); }
+  .scope .val::before { content:"●"; color:var(--accent); margin-right:8px; font-size:10px; }
+  .who { font-family:var(--mono); font-size:12px; color:var(--text-dim); margin:0 0 18px; }
+  .who b { color:var(--text); }
+  .btn-row { display:flex; gap:10px; }
+  button {
+    flex:1; font-family:var(--display); font-weight:600; letter-spacing:.08em;
+    text-transform:uppercase; font-size:12px; border-radius:9px; padding:13px;
+    cursor:pointer; transition:filter .15s,opacity .15s; border:1px solid var(--line-2);
+  }
+  .approve { color:var(--bg); background:var(--accent); border-color:var(--accent); }
+  .approve:hover { filter:brightness(1.08); }
+  .deny { color:var(--text-dim); background:transparent; }
+  .deny:hover { color:var(--text); border-color:var(--line-2); }
+  .note { margin-top:18px; font-size:12px; color:var(--text-faint); line-height:1.5; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="17" stroke-width="1.5"/>
+        <circle cx="20" cy="20" r="11" stroke-width="1.5"/>
+        <circle cx="20" cy="20" r="5" stroke-width="1.5"/>
+        <line x1="20" y1="20" x2="35" y2="9" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <b>Sonar</b>
+    </div>
+    <p class="sub">__SUBTITLE__</p>
+
+    <h1>__TITLE__</h1>
+    <p class="intro">__INTRO__</p>
+
+    <div class="scope">
+      <div class="lbl">__SCOPE_LABEL__</div>
+      <div class="val">__SCOPE_READ__</div>
+    </div>
+
+    <p class="who">__LOGGED_AS__ <b>__EMAIL__</b></p>
+
+    <form method="post" action="/mcp/consent">
+      <input type="hidden" name="rid" value="__RID__" />
+      <div class="btn-row">
+        <button class="deny" type="submit" name="action" value="deny">__DENY__</button>
+        <button class="approve" type="submit" name="action" value="approve">__APPROVE__</button>
+      </div>
+    </form>
+
+    <p class="note">__NOTE__</p>
+  </div>
+</body>
+</html>

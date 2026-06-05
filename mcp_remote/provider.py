@@ -77,7 +77,16 @@ class SonarOAuthProvider(OAuthAuthorizationServerProvider):
         )
         return self.consent_url(rid)
 
-    # --- Consentement (appelé par la route Ph.2 une fois l'utilisateur identifié) ---
+    # --- Consentement (appelé par la route /mcp/consent une fois l'utilisateur identifié) ---
+    def pending_info(self, rid: str) -> dict | None:
+        """Infos d'affichage de la demande en attente (NON consommant). None si expirée."""
+        p = store.peek_pending(rid)
+        if not p:
+            return None
+        client = store.load_client(p["client_id"])
+        name = client.client_name if client and client.client_name else p["client_id"]
+        return {"client_id": p["client_id"], "client_name": name, "scopes": p["scopes"]}
+
     def complete_consent(self, rid: str, user_id: str) -> str | None:
         """Émet le code lié au propriétaire et retourne l'URL de retour vers le client.
         None si la demande en attente est absente/expirée. Synchrone (DB only)."""
@@ -94,6 +103,16 @@ class SonarOAuthProvider(OAuthAuthorizationServerProvider):
             resource=pending["resource"],
         )
         return construct_redirect_uri(pending["redirect_uri"], code=code, state=pending["state"])
+
+    def deny_consent(self, rid: str) -> str | None:
+        """Refus : consomme la demande et renvoie l'URL de retour client avec
+        error=access_denied (RFC 6749 §4.1.2.1). None si la demande n'existe plus."""
+        pending = store.take_pending(rid)
+        if not pending:
+            return None
+        return construct_redirect_uri(
+            pending["redirect_uri"], error="access_denied", state=pending["state"]
+        )
 
     # --- /token (authorization_code) -------------------------------------------
     async def load_authorization_code(

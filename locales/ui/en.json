@@ -47,6 +47,20 @@
     "footer": "Sonar · self-hosted web security scanner"
   },
 
+  "consent": {
+    "title": "Authorize access",
+    "subtitle": "an app is connecting",
+    "intro": "{client} is requesting access to your Sonar security reports.",
+    "scope_label": "Requested access",
+    "scope_read": "Read-only access to your reports and domains (scope scans:read). No changes, no scans triggered.",
+    "logged_as": "Signed in as",
+    "approve": "Authorize",
+    "deny": "Deny",
+    "note": "Sonar only shares YOUR own reports. You can disconnect the app from claude.ai at any time.",
+    "expired_title": "Request expired",
+    "expired_detail": "This authorization request has expired or is invalid. Start again from the app."
+  },
+
   "admin": {
     "scan_any": "Admin free scan (no DNS check)"
   },
