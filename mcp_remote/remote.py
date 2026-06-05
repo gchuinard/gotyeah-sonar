@@ -39,6 +39,53 @@ def remote_enabled() -> bool:
     return v in ("1", "true", "yes", "on")
 
 
+def metadata_documents(base_url: str, *, scope: str = DEFAULT_SCOPE):
+    """Métadonnées OAuth CORRIGÉES pour l'interop claude.ai (RFC 8414 / RFC 9728).
+
+    Le SDK `mcp` sérialise deux défauts qui font échouer claude.ai :
+
+      1. `issuer` (et `authorization_servers`) AVEC un slash final — pydantic
+         `AnyHttpUrl` en ajoute un. claude.ai fait une validation RFC 8414 stricte
+         (« l'issuer DOIT être identique à l'identifiant sans slash dans lequel le
+         well-known a été inséré ») → mismatch → métadonnée rejetée, aucun
+         `/register`. Les serveurs MCP qui marchent (ex. Sentry) n'ont pas le slash.
+      2. `Cache-Control: public, max-age=3600` → claude.ai met la métadonnée en
+         cache 1 h ; une correction côté serveur ne se propage pas avant expiration.
+
+    On reconstruit donc les deux documents proprement (slash retiré) ; l'appelant
+    les sert sur les routes `.well-known` AVANT le mount du SDK (priorité Starlette),
+    avec un `Cache-Control: no-store`. Renvoie (as_metadata, protected_resource).
+    """
+    from mcp.server.auth.routes import build_metadata
+    from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
+    from pydantic import AnyHttpUrl
+
+    base = base_url.rstrip("/")
+    md = build_metadata(
+        issuer_url=AnyHttpUrl(base),
+        service_documentation_url=None,
+        client_registration_options=ClientRegistrationOptions(
+            enabled=True, valid_scopes=[scope, "offline_access"], default_scopes=[scope]
+        ),
+        revocation_options=RevocationOptions(enabled=True),
+    )
+    as_meta = md.model_dump(mode="json", exclude_none=True)
+    as_meta["issuer"] = base  # sans slash final (cf. défaut #1)
+    # `build_metadata` est patché par build_remote pour inclure "none" ; garde-fou
+    # au cas où metadata_documents serait appelé avant build_remote.
+    methods = as_meta.get("token_endpoint_auth_methods_supported") or []
+    if "none" not in methods:
+        as_meta["token_endpoint_auth_methods_supported"] = ["none", *methods]
+
+    pr_meta = {
+        "resource": f"{base}/mcp",
+        "authorization_servers": [base],  # sans slash final
+        "scopes_supported": [scope],
+        "bearer_methods_supported": ["header"],
+    }
+    return as_meta, pr_meta
+
+
 def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     """Construit le FastMCP distant (serveur d'autorisation maison) et son app ASGI.
 

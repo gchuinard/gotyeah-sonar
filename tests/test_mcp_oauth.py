@@ -277,3 +277,26 @@ def test_as_metadata_is_claude_compatible():
     for key in ("authorization_endpoint", "token_endpoint", "registration_endpoint", "revocation_endpoint"):
         assert md.get(key), f"endpoint manquant : {key}"
     assert set(md["grant_types_supported"]) == {"authorization_code", "refresh_token"}
+
+
+# --------------------------------------------------------------------------- #
+# metadata_documents : les métadonnées CORRIGÉES servies en prod (issuer sans
+# slash final + mode client public "none"). Sans ça, claude.ai rejette la
+# métadonnée (validation RFC 8414 stricte) et n'enregistre jamais de client.
+# --------------------------------------------------------------------------- #
+def test_metadata_documents_claude_interop():
+    from mcp_remote.remote import metadata_documents
+
+    as_meta, pr_meta = metadata_documents(BASE)
+
+    # Défaut #1 : issuer / authorization_servers SANS slash final (pydantic en ajoute).
+    assert as_meta["issuer"] == BASE
+    assert not as_meta["issuer"].endswith("/")
+    assert pr_meta["authorization_servers"] == [BASE]
+
+    # Client PUBLIC (PKCE sans secret) : "none" doit être annoncé.
+    assert "none" in as_meta["token_endpoint_auth_methods_supported"]
+
+    # Cohérence ressource / scope (anti-régression).
+    assert pr_meta["resource"] == f"{BASE}/mcp"
+    assert as_meta["code_challenge_methods_supported"] == ["S256"]

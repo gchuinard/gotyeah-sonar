@@ -606,4 +606,22 @@ async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
 # (Aucun effet si SONAR_MCP_REMOTE est éteint : _REMOTE_APP reste None.)
 # --------------------------------------------------------------------------- #
 if _REMOTE_APP is not None:
+    # Interop claude.ai : on sert NOS métadonnées OAuth corrigées (issuer sans slash
+    # final, Cache-Control no-store) AVANT le mount du SDK. Starlette évalue les
+    # routes dans l'ordre → ces deux-ci priment sur les routes `.well-known` du SDK
+    # (qui restent en repli). Sans ça, claude.ai rejette la métadonnée (slash final)
+    # et n'enregistre jamais de client. Voir mcp_remote.remote.metadata_documents.
+    from mcp_remote.remote import metadata_documents
+
+    _AS_META, _PR_META = metadata_documents(_remote_base)
+    _NO_STORE = {"Cache-Control": "no-store"}
+
+    @app.get("/.well-known/oauth-authorization-server")
+    async def _oauth_authorization_server_metadata():
+        return JSONResponse(_AS_META, headers=_NO_STORE)
+
+    @app.get("/.well-known/oauth-protected-resource/mcp")
+    async def _oauth_protected_resource_metadata():
+        return JSONResponse(_PR_META, headers=_NO_STORE)
+
     app.mount("/", _REMOTE_APP)
