@@ -133,12 +133,44 @@ def _render_index(request: Request, user) -> str:
     return PAGE.replace("__SONAR_BOOTSTRAP__", boot)
 
 
+# --------------------------------------------------------------------------- #
+# MCP distant (claude.ai web) — surface OAuth PUBLIQUE, DÉSACTIVÉE par défaut.
+# On ne construit (et n'importe le SDK `mcp`) que si SONAR_MCP_REMOTE=on ET qu'une
+# SONAR_BASE_URL HTTPS absolue est fournie (OAuth l'exige). Fail-soft : toute erreur
+# d'init désactive le MCP distant sans empêcher le reste du site de démarrer.
+# Le transport est monté en DERNIER (voir bas de fichier) et son session manager
+# tourne dans le lifespan ci-dessous.
+# --------------------------------------------------------------------------- #
+_REMOTE_MCP = None
+_REMOTE_APP = None
+if _env_bool("SONAR_MCP_REMOTE"):
+    _remote_base = (os.environ.get("SONAR_BASE_URL") or "").strip().rstrip("/")
+    if not _remote_base.startswith("https://"):
+        print("[mcp-remote] SONAR_MCP_REMOTE=on mais SONAR_BASE_URL HTTPS absente "
+              "→ MCP distant désactivé (OAuth exige une URL HTTPS publique).")
+    else:
+        try:
+            from mcp_remote.remote import build_remote
+
+            _REMOTE_MCP, _REMOTE_APP = build_remote(_remote_base)
+            print(f"[mcp-remote] activé sur {_remote_base}/mcp")
+        except Exception as exc:  # SDK absent, conflit de version, etc.
+            _REMOTE_MCP = _REMOTE_APP = None
+            print(f"[mcp-remote] échec d'init ({exc!r}) → MCP distant désactivé.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
     auth.init_auth()
     auth.bootstrap_admin()  # imprime un lien admin one-time dans les logs si configuré
-    yield
+    if _REMOTE_MCP is not None:
+        # Le transport Streamable HTTP a son propre gestionnaire de sessions à
+        # démarrer (sinon /mcp plante). On le compose avec notre lifespan.
+        async with _REMOTE_MCP.session_manager.run():
+            yield
+    else:
+        yield
 
 
 app = FastAPI(title="Sonar", lifespan=lifespan)
@@ -464,3 +496,13 @@ async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
     data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
     data["lang"] = chosen
     return JSONResponse(data)
+
+
+# --------------------------------------------------------------------------- #
+# MCP distant : monté EN DERNIER pour servir de fallback. Starlette évalue les
+# routes dans l'ordre → les routes Sonar ci-dessus matchent d'abord, et ce mount
+# « / » ne récupère que ce qu'elles laissent passer : /mcp et /.well-known/oauth-*.
+# (Aucun effet si SONAR_MCP_REMOTE est éteint : _REMOTE_APP reste None.)
+# --------------------------------------------------------------------------- #
+if _REMOTE_APP is not None:
+    app.mount("/", _REMOTE_APP)
