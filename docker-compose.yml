@@ -13,6 +13,7 @@ services:
       # chaque variable optionnelle : l'app démarre même sans .env (valeurs par défaut).
       # --- Auth & emails (P0) ---
       - SONAR_BASE_URL=${SONAR_BASE_URL:-}                       # ex. https://sonar.gautierchuinard.com (liens magiques)
+      - SONAR_MCP_REMOTE=${SONAR_MCP_REMOTE:-}                   # opt-in MCP distant (claude.ai web) — vide/off = désactivé
       - SONAR_OPEN_REGISTRATION=${SONAR_OPEN_REGISTRATION:-false}
       - SONAR_ADMIN_EMAIL=${SONAR_ADMIN_EMAIL:-}
       - BREVO_API_KEY=${BREVO_API_KEY:-}
