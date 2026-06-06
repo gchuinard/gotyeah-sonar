@@ -300,3 +300,74 @@ def test_metadata_documents_claude_interop():
     # Cohérence ressource / scope (anti-régression).
     assert pr_meta["resource"] == f"{BASE}/mcp"
     assert as_meta["code_challenge_methods_supported"] == ["S256"]
+
+
+# --------------------------------------------------------------------------- #
+# Transport /mcp : protection anti-DNS-rebinding scopée à l'hôte de SONAR_BASE_URL.
+# FastMCP (host="127.0.0.1" par défaut) auto-active une liste blanche localhost
+# SEULEMENT → en prod, /mcp renvoyait 421 « Invalid Host header » pour TOUT appel
+# (après l'OAuth) → le connecteur claude.ai obtient un token mais n'ouvre jamais la
+# session. build_remote doit dériver la liste blanche de l'hôte public servi.
+# --------------------------------------------------------------------------- #
+def _mint_access_token(user_id: str) -> str:
+    """Crée un access token valide directement en base (bypass du flux HTTP/async),
+    pour exercer le transport /mcp de façon synchrone avec TestClient."""
+    access, _refresh = store.issue_token_pair(
+        client_id="c-mcp", user_id=user_id, scopes=["scans:read"], resource=f"{BASE}/mcp"
+    )
+    return access
+
+
+def _mcp_initialize(client, access: str, host: str):
+    return client.post(
+        "/mcp",
+        headers={
+            "Authorization": f"Bearer {access}",
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+            "Host": host,
+        },
+        json={
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "regression-test", "version": "1"},
+            },
+        },
+    )
+
+
+def test_mcp_transport_accepts_configured_public_host(authdb):
+    """L'hôte de SONAR_BASE_URL (non-localhost) doit être accepté → session ouverte.
+    AVANT le correctif, ce POST renvoyait 421 « Invalid Host header »."""
+    from starlette.testclient import TestClient
+
+    from mcp_remote.remote import build_remote
+
+    store.init_store()
+    user = auth.get_or_create_user("owner@example.com")
+    access = _mint_access_token(user["id"])
+
+    _mcp, app, _provider = build_remote(BASE)
+    host = urlparse(BASE).netloc  # sonar.test (non-localhost)
+    with TestClient(app) as c:
+        r = _mcp_initialize(c, access, host)
+    assert r.status_code == 200, f"transport rejeté pour l'hôte public : {r.status_code} {r.text!r}"
+    assert "result" in r.text  # réponse JSON-RPC initialize, pas un 421
+
+
+def test_mcp_transport_still_rejects_unknown_host(authdb):
+    """La protection anti-DNS-rebinding reste ACTIVE (Option A) : un Host étranger
+    est refusé en 421 — on n'a pas désactivé la protection, juste élargi à notre hôte."""
+    from starlette.testclient import TestClient
+
+    from mcp_remote.remote import build_remote
+
+    store.init_store()
+    user = auth.get_or_create_user("owner@example.com")
+    access = _mint_access_token(user["id"])
+
+    _mcp, app, _provider = build_remote(BASE)
+    with TestClient(app) as c:
+        r = _mcp_initialize(c, access, "evil.example.com")
+    assert r.status_code == 421, f"hôte inconnu aurait dû être rejeté, reçu {r.status_code}"

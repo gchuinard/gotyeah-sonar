@@ -21,7 +21,13 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from starlette.testclient import TestClient
 
-from mcp_remote.remote import build_remote, remote_enabled
+from mcp_remote.remote import build_remote, metadata_routes, remote_enabled
+
+_BROWSER_ORIGIN = {"Origin": "https://claude.ai"}
+_WELL_KNOWN = (
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/oauth-protected-resource/mcp",
+)
 
 _MCP_HEADERS = {
     "Accept": "application/json, text/event-stream",
@@ -46,6 +52,9 @@ def _combined_app(base: str = "https://sonar.test"):
     async def login():
         return PlainTextResponse("login")
 
+    # Comme app.py : NOS métadonnées corrigées (CORS + no-store) AVANT le mount.
+    for route in metadata_routes(base):
+        app.router.routes.append(route)
     app.mount("/", sub)  # monté EN DERNIER → fallback pour /mcp + /.well-known
     return app
 
@@ -78,6 +87,32 @@ def test_host_routes_survive_the_mount():
     """Monter le transport en fallback ne masque pas les routes Sonar."""
     with TestClient(_combined_app()) as c:
         assert c.get("/login").status_code == 200
+
+
+def test_well_known_metadata_served_with_cors_and_no_store():
+    """claude.ai / MCP Inspector fetchent les `.well-known` en CROSS-ORIGIN : le GET
+    réel DOIT porter `Access-Control-Allow-Origin: *` (pas seulement le preflight) et
+    rester `no-store`. Régression : l'override servait le GET sans aucun en-tête CORS."""
+    with TestClient(_combined_app()) as c:
+        for path in _WELL_KNOWN:
+            g = c.get(path, headers=_BROWSER_ORIGIN)
+            assert g.status_code == 200, path
+            assert g.headers.get("access-control-allow-origin") == "*", f"GET sans CORS : {path}"
+            assert g.headers.get("cache-control") == "no-store", path
+
+            pf = c.options(path, headers={**_BROWSER_ORIGIN,
+                                          "Access-Control-Request-Method": "GET"})
+            assert pf.status_code == 200, path
+            assert pf.headers.get("access-control-allow-origin") == "*", f"preflight sans CORS : {path}"
+
+
+def test_well_known_override_wins_over_sdk_mount():
+    """Nos routes corrigées priment sur celles du SDK (issuer SANS slash final) :
+    sans ça, claude.ai rejette la métadonnée (validation RFC 8414 stricte)."""
+    with TestClient(_combined_app("https://sonar.test")) as c:
+        md = c.get("/.well-known/oauth-authorization-server").json()
+        assert md["issuer"] == "https://sonar.test"          # pas de slash (override actif)
+        assert not md["issuer"].endswith("/")
 
 
 def test_remote_disabled_by_default(monkeypatch):

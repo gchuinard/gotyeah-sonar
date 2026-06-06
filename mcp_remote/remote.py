@@ -86,6 +86,43 @@ def metadata_documents(base_url: str, *, scope: str = DEFAULT_SCOPE):
     return as_meta, pr_meta
 
 
+def metadata_routes(base_url: str, *, scope: str = DEFAULT_SCOPE):
+    """Routes Starlette servant NOS métadonnées OAuth corrigées (cf. metadata_documents :
+    issuer sans slash final, Cache-Control no-store).
+
+    Enveloppées dans le MÊME `cors_middleware` que le SDK (allow_origins="*", GET+OPTIONS) :
+    claude.ai / MCP Inspector fetchent ces documents en CROSS-ORIGIN. Sans CORS sur le GET
+    réel (le preflight OPTIONS, lui, retombait sur le SDK), un client navigateur bloquerait
+    la réponse. À enregistrer sur l'app AVANT le mount du SDK (priorité Starlette → ces
+    routes priment, celles du SDK restent en repli). Retourne une liste de `Route`.
+    """
+    from mcp.server.auth.routes import cors_middleware
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    as_meta, pr_meta = metadata_documents(base_url, scope=scope)
+    no_store = {"Cache-Control": "no-store"}
+
+    async def _authorization_server(request):
+        return JSONResponse(as_meta, headers=no_store)
+
+    async def _protected_resource(request):
+        return JSONResponse(pr_meta, headers=no_store)
+
+    return [
+        Route(
+            "/.well-known/oauth-authorization-server",
+            cors_middleware(_authorization_server, ["GET", "OPTIONS"]),
+            methods=["GET", "OPTIONS"],
+        ),
+        Route(
+            "/.well-known/oauth-protected-resource/mcp",
+            cors_middleware(_protected_resource, ["GET", "OPTIONS"]),
+            methods=["GET", "OPTIONS"],
+        ),
+    ]
+
+
 def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     """Construit le FastMCP distant (serveur d'autorisation maison) et son app ASGI.
 
@@ -99,18 +136,37 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
       • faire tourner `mcp.session_manager.run()` dans le lifespan parent ;
       • servir la route de consentement `/mcp/consent` (utilise `provider`).
     """
+    from urllib.parse import urlparse
+
     from mcp.server.auth.settings import (
         AuthSettings,
         ClientRegistrationOptions,
         RevocationOptions,
     )
     from mcp.server.fastmcp import FastMCP
+    from mcp.server.transport_security import TransportSecuritySettings
     from pydantic import AnyHttpUrl
 
     from mcp_remote.provider import SonarOAuthProvider
 
     base = base_url.rstrip("/")
     provider = SonarOAuthProvider(base, scope=scope)
+
+    # --- Interop claude.ai : protection anti-DNS-rebinding du transport ---------- #
+    # FastMCP a `host="127.0.0.1"` par défaut → le SDK AUTO-active la protection
+    # anti-DNS-rebinding avec une liste blanche limitée à localhost
+    # (`["127.0.0.1:*", "localhost:*", "[::1]:*"]`, cf. fastmcp/server.py). En prod,
+    # l'app reçoit `Host: <hôte public>` (forwardé par le proxy) → absent de la liste
+    # → CHAQUE appel /mcp est rejeté en 421 « Invalid Host header », APRÈS l'OAuth.
+    # Symptôme : le connecteur obtient bien un token puis échoue à ouvrir la session.
+    # On dérive donc la liste blanche de SONAR_BASE_URL (l'hôte qu'on sert vraiment) ;
+    # on garde la protection ACTIVE (l'endpoint reste en plus protégé par le bearer).
+    host = urlparse(base).netloc  # ex. sonar.gautierchuinard.com (sans schéma)
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[host, f"{host}:*"],
+        allowed_origins=[base, f"{base}:*"],
+    )
 
     mcp = FastMCP(
         "sonar",
@@ -119,6 +175,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             "(scope scans:read)."
         ),
         auth_server_provider=provider,
+        transport_security=transport_security,
         auth=AuthSettings(
             issuer_url=AnyHttpUrl(base),
             resource_server_url=AnyHttpUrl(f"{base}/mcp"),
