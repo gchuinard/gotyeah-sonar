@@ -41,6 +41,12 @@ CLAUDE_REDIRECT_URIS = [
     "https://claude.com/api/mcp/auth_callback",
 ]
 
+# Scopes que claude.ai peut demander à la DCR (et que la metadata OAuth annonce).
+# `offline_access` débloque le refresh token côté IdP. Ils ne sont PAS imposés au token :
+# le JWTVerifier valide signature/issuer/audience, pas les scopes — sinon `offline_access`
+# (absent du scope de l'access token Pocket ID) ferait échouer la validation.
+OIDC_SCOPES = ["openid", "profile", "email", "offline_access"]
+
 
 def remote_enabled() -> bool:
     """Vrai si le MCP distant est explicitement activé (SONAR_MCP_REMOTE=on).
@@ -85,8 +91,9 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     Retourne (mcp, http_app). PUR : aucun effet de bord (pas de réseau hors init OIDCProxy,
     pas de DB). L'appelant monte `http_app` en dernier et exécute son lifespan.
     """
+    import httpx
     from fastmcp import FastMCP
-    from fastmcp.server.auth.oidc_proxy import OIDCProxy
+    from fastmcp.server.auth import JWTVerifier, OAuthProxy
 
     base = base_url.rstrip("/")
     config_url = oidc_config_url()
@@ -98,16 +105,31 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             "SONAR_OIDC_CLIENT_ID + SONAR_OIDC_CLIENT_SECRET sont requis."
         )
 
-    auth_provider = OIDCProxy(
-        config_url=config_url,
-        client_id=client_id,
-        client_secret=client_secret,
+    # Découverte OIDC de l'IdP (endpoints + JWKS). On utilise OAuthProxy + JWTVerifier
+    # plutôt qu'OIDCProxy : OIDCProxy COUPLE les scopes valides (DCR) avec les scopes
+    # EXIGÉS sur le token, ce qui casserait la validation (offline_access n'apparaît pas
+    # dans le scope de l'access token Pocket ID). OAuthProxy permet de déclarer valid_scopes
+    # séparément, sans enforcement côté token.
+    disc = httpx.get(config_url, timeout=15).json()
+
+    # Access tokens Pocket ID = JWT RS256 signés par l'IdP (aud = client_id) → validation
+    # locale via JWKS (pas d'introspection), sans required_scopes (cf. OIDC_SCOPES).
+    verifier = JWTVerifier(
+        jwks_uri=disc["jwks_uri"],
+        issuer=disc["issuer"],
+        audience=client_id,
+    )
+    auth_provider = OAuthProxy(
+        upstream_authorization_endpoint=disc["authorization_endpoint"],
+        upstream_token_endpoint=disc["token_endpoint"],
+        upstream_revocation_endpoint=disc.get("revocation_endpoint"),
+        upstream_client_id=client_id,
+        upstream_client_secret=client_secret,
+        token_verifier=verifier,
         base_url=base,
-        # claude.ai/claude.com s'enregistrent dynamiquement (DCR) ; on n'autorise que
-        # leurs callbacks officiels (matching strict).
+        valid_scopes=OIDC_SCOPES,
+        # claude.ai/claude.com s'enregistrent dynamiquement (DCR) ; seuls leurs callbacks.
         allowed_client_redirect_uris=CLAUDE_REDIRECT_URIS,
-        # Accès = token IdP valide (mono-utilisateur). Pas de scope custom à configurer
-        # côté Pocket ID ; le scoping des données se fait par identité (email -> compte).
     )
 
     mcp = FastMCP(
