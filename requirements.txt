@@ -3,8 +3,9 @@ uvicorn[standard]>=0.29
 httpx>=0.27
 dnspython>=2.6
 PyYAML>=6.0
-# MCP DISTANT (claude.ai web) — serveur OAuth + Streamable HTTP monté dans l'app.
-# Contrairement au MCP stdio local (requirements-mcp.txt), celui-ci tourne SUR le
-# serveur Sonar (Pi/Docker) : sa dépendance va donc dans l'image. Inerte tant que
-# SONAR_MCP_REMOTE n'est pas activé (import paresseux).
-mcp>=1.27,<2
+# MCP DISTANT (claude.ai web) — OIDCProxy (auth OAuth 2.1 fédérée vers un IdP OIDC) +
+# transport Streamable HTTP, monté dans l'app. Contrairement au MCP stdio local
+# (requirements-mcp.txt), il tourne SUR le serveur Sonar (Pi/Docker) : sa dépendance va
+# dans l'image. Inerte tant que SONAR_MCP_REMOTE n'est pas activé (import paresseux).
+# `fastmcp` est le paquet AUTONOME (≠ mcp.server.fastmcp du SDK) ; il tire mcp 1.27.x.
+fastmcp==3.4.2

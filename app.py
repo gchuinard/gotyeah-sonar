@@ -7,7 +7,6 @@ protège le scan + l'historique derrière la session.
 from __future__ import annotations
 
 import asyncio
-import html as _html
 import json
 import os
 from contextlib import asynccontextmanager
@@ -31,7 +30,6 @@ from scanner.runner import normalize_target, run_scan
 BASE = Path(__file__).parent
 PAGE = (BASE / "templates" / "index.html").read_text(encoding="utf-8")
 LOGIN_PAGE = (BASE / "templates" / "login.html").read_text(encoding="utf-8")
-CONSENT_PAGE = (BASE / "templates" / "mcp_consent.html").read_text(encoding="utf-8")
 
 SESSION_COOKIE = "sonar_session"
 LANG_COOKIE = "sonar_lang"
@@ -156,7 +154,6 @@ def _render_index(request: Request, user) -> str:
 # --------------------------------------------------------------------------- #
 _REMOTE_MCP = None
 _REMOTE_APP = None
-_REMOTE_PROVIDER = None
 if _env_bool("SONAR_MCP_REMOTE"):
     _remote_base = (os.environ.get("SONAR_BASE_URL") or "").strip().rstrip("/")
     if not _remote_base.startswith("https://"):
@@ -166,10 +163,10 @@ if _env_bool("SONAR_MCP_REMOTE"):
         try:
             from mcp_remote.remote import build_remote
 
-            _REMOTE_MCP, _REMOTE_APP, _REMOTE_PROVIDER = build_remote(_remote_base)
-            print(f"[mcp-remote] activé sur {_remote_base}/mcp")
-        except Exception as exc:  # SDK absent, conflit de version, etc.
-            _REMOTE_MCP = _REMOTE_APP = _REMOTE_PROVIDER = None
+            _REMOTE_MCP, _REMOTE_APP = build_remote(_remote_base)
+            print(f"[mcp-remote] activé sur {_remote_base}/mcp (auth fédérée OIDC)")
+        except Exception as exc:  # dépendance absente, IdP injoignable, conflit de version…
+            _REMOTE_MCP = _REMOTE_APP = None
             print(f"[mcp-remote] échec d'init ({exc!r}) → MCP distant désactivé.")
 
 
@@ -178,13 +175,11 @@ async def lifespan(app: FastAPI):
     db.init_db()
     auth.init_auth()
     auth.bootstrap_admin()  # imprime un lien admin one-time dans les logs si configuré
-    if _REMOTE_MCP is not None:
-        # Tables OAuth créées ici (et pas à la construction → build_remote reste pur).
-        from mcp_remote import store
-        store.init_store()
-        # Le transport Streamable HTTP a son propre gestionnaire de sessions à
-        # démarrer (sinon /mcp plante). On le compose avec notre lifespan.
-        async with _REMOTE_MCP.session_manager.run():
+    if _REMOTE_APP is not None:
+        # Le transport Streamable HTTP a son propre lifespan (gestionnaire de sessions) ;
+        # sans lui, /mcp plante. On le compose avec le nôtre. Plus de tables OAuth maison :
+        # l'auth est déléguée à l'IdP (tokens JWT validés via la discovery OIDC).
+        async with _REMOTE_APP.lifespan(app):
             yield
     else:
         yield
@@ -326,84 +321,6 @@ async def set_lang(request: Request):
     resp.set_cookie(LANG_COOKIE, lang, max_age=365 * 86400,
                     secure=_env_bool("SONAR_COOKIE_SECURE", True), samesite="lax", path="/")
     return resp
-
-
-# --------------------------------------------------------------------------- #
-# MCP distant — consentement OAuth (relie /authorize à la session magic-link)
-# --------------------------------------------------------------------------- #
-def _render_consent(user, rid: str, info: dict, lang: str) -> str:
-    """Page de consentement brandée, bilingue. Le nom du client (DCR, non fiable)
-    et l'email sont HTML-échappés ; les libellés viennent des locales (fiables)."""
-    full = i18n.render_ui(lang)
-    ui = full.get("consent", {})
-    client = _html.escape(info.get("client_name") or info.get("client_id") or "?")
-    intro = ui.get("intro", "{client}").replace("{client}", f"<b>{client}</b>")
-    return (
-        CONSENT_PAGE
-        .replace("__LANG__", _html.escape(lang))
-        .replace("__DIR__", _html.escape(full.get("dir", "ltr")))
-        .replace("__SUBTITLE__", _html.escape(ui.get("subtitle", "")))
-        .replace("__TITLE__", _html.escape(ui.get("title", "")))
-        .replace("__INTRO__", intro)  # déjà sûr : libellé fiable + <b>client échappé</b>
-        .replace("__SCOPE_LABEL__", _html.escape(ui.get("scope_label", "")))
-        .replace("__SCOPE_READ__", _html.escape(ui.get("scope_read", "")))
-        .replace("__LOGGED_AS__", _html.escape(ui.get("logged_as", "")))
-        .replace("__EMAIL__", _html.escape(user["email"]))
-        .replace("__APPROVE__", _html.escape(ui.get("approve", "")))
-        .replace("__DENY__", _html.escape(ui.get("deny", "")))
-        .replace("__NOTE__", _html.escape(ui.get("note", "")))
-        .replace("__RID__", _html.escape(rid))
-    )
-
-
-def _consent_expired(lang: str) -> HTMLResponse:
-    ui = i18n.render_ui(lang).get("consent", {})
-    title = _html.escape(ui.get("expired_title", "Demande expirée"))
-    detail = _html.escape(ui.get("expired_detail", ""))
-    page = (
-        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        f"<title>SONAR — {title}</title>"
-        "<style>body{background:#070b10;color:#d6e2ea;font-family:system-ui,sans-serif;"
-        "display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}"
-        ".c{max-width:420px;padding:30px;text-align:center}"
-        "h1{color:#2ee6a6;font-size:18px}p{color:#7d8c98;line-height:1.5}</style></head>"
-        f"<body><div class='c'><h1>{title}</h1><p>{detail}</p></div></body></html>"
-    )
-    return HTMLResponse(page, status_code=400)
-
-
-@app.get("/mcp/consent")
-async def mcp_consent_page(request: Request, rid: str = Query(...)):
-    if _REMOTE_PROVIDER is None:
-        return JSONResponse({"error": "not found"}, status_code=404)
-    user = _current_user(request)
-    if not user:
-        # Pas de session : on passe par le lien magique puis on revient ici.
-        nxt = quote(f"/mcp/consent?rid={rid}", safe="")
-        return RedirectResponse(f"/login?next={nxt}", status_code=302)
-    info = _REMOTE_PROVIDER.pending_info(rid)
-    if not info:
-        return _consent_expired(_lang(request, user))
-    return HTMLResponse(_render_consent(user, rid, info, _lang(request, user)))
-
-
-@app.post("/mcp/consent")
-async def mcp_consent_submit(request: Request):
-    if _REMOTE_PROVIDER is None:
-        return JSONResponse({"error": "not found"}, status_code=404)
-    user = _current_user(request)
-    if not user:
-        return RedirectResponse("/login", status_code=302)
-    form = await request.form()
-    rid = (form.get("rid") or "").strip()
-    if (form.get("action") or "").strip() == "approve":
-        dest = _REMOTE_PROVIDER.complete_consent(rid, user["id"])   # émet le code, lie au propriétaire
-    else:
-        dest = _REMOTE_PROVIDER.deny_consent(rid)                   # error=access_denied
-    if not dest:
-        return _consent_expired(_lang(request, user))
-    return RedirectResponse(dest, status_code=302)
 
 
 # --------------------------------------------------------------------------- #
@@ -606,15 +523,9 @@ async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
 # (Aucun effet si SONAR_MCP_REMOTE est éteint : _REMOTE_APP reste None.)
 # --------------------------------------------------------------------------- #
 if _REMOTE_APP is not None:
-    # Interop claude.ai : on sert NOS métadonnées OAuth corrigées (issuer sans slash
-    # final, Cache-Control no-store, CORS allow_origins="*") AVANT le mount du SDK.
-    # Starlette évalue les routes dans l'ordre → ces deux-ci priment sur les routes
-    # `.well-known` du SDK (qui restent en repli). Sans ça, claude.ai rejette la
-    # métadonnée (slash final) ou un client navigateur bloque le GET sans CORS.
-    # Tout le détail (et les tests) vit dans mcp_remote.remote.metadata_routes.
-    from mcp_remote.remote import metadata_routes
-
-    for _route in metadata_routes(_remote_base):
-        app.router.routes.append(_route)
-
+    # L'app FastMCP (OIDCProxy) sert elle-même /mcp, la metadata OAuth (Protected Resource
+    # Metadata RFC 9728 + serveur d'autorisation RFC 8414, issuer correct + CORS), la DCR
+    # (/register) et le callback IdP (/auth/callback). Montée en DERNIER : Starlette évalue
+    # les routes dans l'ordre, donc les routes Sonar ci-dessus priment et ce mount ne
+    # récupère que /mcp + /.well-known/oauth-* + /authorize|/token|/register|/auth/callback.
     app.mount("/", _REMOTE_APP)
