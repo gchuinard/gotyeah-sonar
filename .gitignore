@@ -8,3 +8,6 @@ data/
 .env
 .DS_Store
 .claude/settings.local.json
+
+# venv local du MCP stdio (hors image Docker)
+.mcpvenv/

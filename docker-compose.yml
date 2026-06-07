@@ -14,6 +14,10 @@ services:
       # --- Auth & emails (P0) ---
       - SONAR_BASE_URL=${SONAR_BASE_URL:-}                       # ex. https://sonar.gautierchuinard.com (liens magiques)
       - SONAR_MCP_REMOTE=${SONAR_MCP_REMOTE:-}                   # opt-in MCP distant (claude.ai web) — vide/off = désactivé
+      # OIDC : auth du MCP distant déléguée à l'IdP (Pocket ID) via l'OIDCProxy FastMCP.
+      - SONAR_OIDC_CONFIG_URL=${SONAR_OIDC_CONFIG_URL:-}        # ex. https://idp.gautierchuinard.com/.well-known/openid-configuration
+      - SONAR_OIDC_CLIENT_ID=${SONAR_OIDC_CLIENT_ID:-}          # client confidentiel pré-enregistré côté IdP
+      - SONAR_OIDC_CLIENT_SECRET=${SONAR_OIDC_CLIENT_SECRET:-}  # son secret (jamais committé)
       - SONAR_OPEN_REGISTRATION=${SONAR_OPEN_REGISTRATION:-false}
       - SONAR_ADMIN_EMAIL=${SONAR_ADMIN_EMAIL:-}
       - BREVO_API_KEY=${BREVO_API_KEY:-}
