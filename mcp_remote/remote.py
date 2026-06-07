@@ -66,20 +66,41 @@ def oidc_config_url() -> str:
     return f"{issuer}/.well-known/openid-configuration" if issuer else ""
 
 
-def _resolve_user():
-    """Mappe l'identité de l'IdP (claim `email` du token) vers un compte Sonar.
+def _resolve_user(userinfo_endpoint: str | None = None):
+    """Mappe l'identité de l'IdP (email) vers un compte Sonar.
 
-    Retourne le dict utilisateur Sonar, ou None si le token n'a pas d'email exploitable
-    ou si aucun compte ne correspond. Les imports sont locaux : `build_remote` reste
-    importable hors de l'app (et le module ne dépend pas d'`auth`/`db` au chargement).
+    L'email est lu dans les claims de l'access token ; si absent (Pocket ID ne le met PAS
+    dans l'access token, seulement dans le userinfo), on interroge le userinfo avec le
+    token porteur. Retourne le dict utilisateur Sonar, ou None. Imports locaux : le module
+    ne dépend pas d'`auth`/`httpx` au chargement.
     """
     import auth as sonar_auth
     from fastmcp.server.dependencies import get_access_token
 
     tok = get_access_token()
-    claims = (getattr(tok, "claims", None) or {}) if tok else {}
+    if not tok:
+        return None
+    claims = getattr(tok, "claims", None) or {}
     email = (claims.get("email") or "").strip()
+    if not email and userinfo_endpoint and getattr(tok, "token", None):
+        try:
+            import httpx
+            r = httpx.get(
+                userinfo_endpoint,
+                headers={"Authorization": f"Bearer {tok.token}"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                email = (r.json().get("email") or "").strip()
+        except Exception:
+            pass
     if not email:
+        # Diagnostic (clés seulement, pas de valeurs) si l'identité reste introuvable.
+        try:
+            print(f"[mcp-remote] _resolve_user: email introuvable "
+                  f"(claims={sorted(claims)}, userinfo={'oui' if userinfo_endpoint else 'non'})")
+        except Exception:
+            pass
         return None
     return sonar_auth.get_user_by_email(sonar_auth.normalize_email(email))
 
@@ -111,6 +132,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     # dans le scope de l'access token Pocket ID). OAuthProxy permet de déclarer valid_scopes
     # séparément, sans enforcement côté token.
     disc = httpx.get(config_url, timeout=15).json()
+    userinfo_endpoint = disc.get("userinfo_endpoint")
 
     # Access tokens Pocket ID = JWT RS256 signés par l'IdP (aud = client_id) → validation
     # locale via JWKS (pas d'introspection), sans required_scopes (cf. OIDC_SCOPES).
@@ -147,7 +169,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         """Liste les domaines vérifiés du compte (ceux que l'utilisateur peut scanner)."""
         import auth as sonar_auth
 
-        user = _resolve_user()
+        user = _resolve_user(userinfo_endpoint)
         if not user:
             raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
         return sonar_auth.list_domains(user["id"])
@@ -160,7 +182,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         """
         import db
 
-        user = _resolve_user()
+        user = _resolve_user(userinfo_endpoint)
         if not user:
             raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
         owner = None if user.get("is_admin") else user["id"]
@@ -180,7 +202,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         import db
         from scanner import i18n
 
-        user = _resolve_user()
+        user = _resolve_user(userinfo_endpoint)
         if not user:
             raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
         owner = None if user.get("is_admin") else user["id"]
