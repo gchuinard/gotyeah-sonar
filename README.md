@@ -247,7 +247,7 @@ le jeton dans le panneau (le serveur reçoit alors un `401` au prochain appel).
 
 | Catégorie | Checks |
 |-----------|--------|
-| Pentest (nuclei) | exécution de **nuclei** sur la cible ; chaque résultat (CVE, mauvaise config, panel exposé…) devient un `Finding`. Réglable par variables d'environnement : `NUCLEI_SEVERITY` (défaut `medium,high,critical`), `NUCLEI_TIMEOUT` (défaut 240 s), `NUCLEI_ARGS` (args bruts en plus), `SONAR_NUCLEI=off` pour le couper. nuclei est installé dans l'image Docker ; sans le binaire (dev local), le check se désactive proprement. |
+| Pentest (nuclei) | exécution de **nuclei** sur la cible ; chaque résultat (CVE, mauvaise config, panel exposé…) devient un `Finding`. Par défaut **cantonné aux familles pertinentes** pour limiter le volume de requêtes : `NUCLEI_TAGS` (défaut `misconfig,exposure,config` ; `NUCLEI_TAGS=all` lève le filtre). Autres réglages : `NUCLEI_SEVERITY` (défaut `medium,high,critical`), `NUCLEI_RATE_LIMIT` (req/s, défaut 50), `NUCLEI_TIMEOUT` (défaut 240 s), `NUCLEI_ARGS` (args bruts en plus), `SONAR_NUCLEI=off` pour le couper. nuclei est installé dans l'image Docker ; sans le binaire (dev local), le check se désactive proprement. |
 | Pentest (ZAP) | dialogue avec un démon **OWASP ZAP** via son API REST (baseline passif par défaut : accès URL + spider borné + scan passif → alertes). Chaque alerte ZAP devient un `Finding`. Sans démon configuré, le check se désactive proprement. Voir [OWASP ZAP](#owasp-zap-optionnel). |
 
 Chaque finding a une sévérité (critique → conforme). Le score sur 100 et la note (A+ → F)

@@ -36,10 +36,33 @@ def test_to_finding_maps_all_fields():
     assert "v1" in f.evidence
 
 
-def test_build_args():
+def test_build_args(monkeypatch):
+    for v in ("NUCLEI_TAGS", "NUCLEI_SEVERITY", "NUCLEI_RATE_LIMIT", "NUCLEI_ARGS"):
+        monkeypatch.delenv(v, raising=False)
     args = _build_args("nuclei", "https://x/")
     assert "-jsonl" in args
     assert args[args.index("-target") + 1] == "https://x/"
+    # Défauts : tags pertinents (limite les requêtes) + sévérité + rate-limit.
+    assert args[args.index("-tags") + 1] == "misconfig,exposure,config"
+    assert args[args.index("-severity") + 1] == "medium,high,critical"
+    assert args[args.index("-rate-limit") + 1] == "50"
+
+
+def test_build_args_tags_override_and_disable(monkeypatch):
+    monkeypatch.setenv("NUCLEI_TAGS", "cve,takeover")
+    args = _build_args("nuclei", "https://x/")
+    assert args[args.index("-tags") + 1] == "cve,takeover"
+    # Sentinel "all" => filtre levé (tous les templates). Vide retomberait sur le défaut.
+    monkeypatch.setenv("NUCLEI_TAGS", "all")
+    assert "-tags" not in _build_args("nuclei", "https://x/")
+    monkeypatch.setenv("NUCLEI_TAGS", "")          # vide => défaut, donc filtre toujours là
+    assert _build_args("nuclei", "https://x/").count("-tags") == 1
+
+
+def test_build_args_rate_limit_override(monkeypatch):
+    monkeypatch.setenv("NUCLEI_RATE_LIMIT", "10")
+    args = _build_args("nuclei", "https://x/")
+    assert args[args.index("-rate-limit") + 1] == "10"
 
 
 async def test_disabled_via_env(monkeypatch):

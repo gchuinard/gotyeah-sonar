@@ -29,8 +29,13 @@ services:
       # --- ZAP (Phase 3, optionnel) ---
       - ZAP_API_URL=${ZAP_API_URL:-}
       - ZAP_API_KEY=${ZAP_API_KEY:-}
+      # --- nuclei (Phase 3) : par défaut cantonné aux tags pertinents (cf. code) ---
+      - NUCLEI_TAGS=${NUCLEI_TAGS:-}                 # défaut code: misconfig,exposure,config ; NUCLEI_TAGS=all lève le filtre
+      - NUCLEI_SEVERITY=${NUCLEI_SEVERITY:-}
+      - NUCLEI_RATE_LIMIT=${NUCLEI_RATE_LIMIT:-}     # req/s max
+      - NUCLEI_TIMEOUT=${NUCLEI_TIMEOUT:-}
       # Autres réglages possibles (mêmes que le code) : SONAR_MAGIC_TTL_MIN,
-      # SONAR_SESSION_DAYS, SONAR_RATE_EMAIL/IP, ZAP_ACTIVE, NUCLEI_*…
+      # SONAR_SESSION_DAYS, SONAR_RATE_EMAIL/IP, ZAP_ACTIVE, NUCLEI_ARGS…
     networks:
       - default   # réseau du projet (inchangé)
       - npm       # réseau partagé avec Nginx Proxy Manager

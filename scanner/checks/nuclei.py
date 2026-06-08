@@ -10,11 +10,15 @@ l'outil), le check renvoie un simple Finding INFO au lieu d'échouer. Dans l'ima
 Docker, nuclei et ses templates sont présents (voir le Dockerfile).
 
 Réglable par variables d'environnement :
-  NUCLEI_BIN       chemin/nom du binaire        (défaut : "nuclei")
-  NUCLEI_SEVERITY  filtre de sévérité           (défaut : "medium,high,critical")
-  NUCLEI_TIMEOUT   délai global en secondes     (défaut : "240")
-  NUCLEI_ARGS      arguments supplémentaires bruts (défaut : "")
-  SONAR_NUCLEI     "off" pour désactiver même si le binaire est présent
+  NUCLEI_BIN        chemin/nom du binaire       (défaut : "nuclei")
+  NUCLEI_SEVERITY   filtre de sévérité          (défaut : "medium,high,critical")
+  NUCLEI_TAGS       familles de templates       (défaut : "misconfig,exposure,config")
+                    -> cible les plus pertinents et limite le volume de requêtes.
+                       Mets NUCLEI_TAGS=all pour lever le filtre (tous les templates).
+  NUCLEI_RATE_LIMIT requêtes/seconde max        (défaut : "50")
+  NUCLEI_TIMEOUT    délai global en secondes    (défaut : "240")
+  NUCLEI_ARGS       arguments supplémentaires bruts (défaut : "")
+  SONAR_NUCLEI      "off" pour désactiver même si le binaire est présent
 """
 from __future__ import annotations
 
@@ -52,11 +56,18 @@ def _build_args(exe: str, url: str) -> list[str]:
         "-no-color",
         "-disable-update-check",
         "-timeout", "10",         # par requête
-        "-rate-limit", "50",
+        "-rate-limit", _env("NUCLEI_RATE_LIMIT", "50"),
     ]
     severity = _env("NUCLEI_SEVERITY", "medium,high,critical")
     if severity:
         args += ["-severity", severity]
+    # Cantonne nuclei aux familles de templates les plus pertinentes : ça réduit fortement
+    # le nombre de requêtes (sinon TOUS les templates de la sévérité tournent). Échappatoire :
+    # NUCLEI_TAGS=all (ou *) lève le filtre et lance tout. (Sentinel plutôt que vide : une
+    # valeur vide retombe sur le défaut — et Docker Compose passe « vide » quand non défini.)
+    tags = _env("NUCLEI_TAGS", "misconfig,exposure,config")
+    if tags and tags.lower() not in ("all", "*", "off", "none"):
+        args += ["-tags", tags]
     extra = _env("NUCLEI_ARGS", "")
     if extra:
         args += extra.split()
