@@ -70,19 +70,32 @@ scannables. (La propagation DNS peut prendre quelques minutes.)
 
 ---
 
-## MCP — lire tes rapports depuis Claude
+## MCP — piloter Sonar depuis Claude
 
-Un **serveur MCP en lecture seule** permet d'interroger tes rapports Sonar directement
-depuis Claude (« liste mes domaines », « montre le dernier scan de X », « priorise les
-findings critiques du scan `<id>` »). Mêmes **trois outils** dans les deux cas :
-`list_domains`, `list_scans(domain?)`, `get_report(scan_id, lang?)`.
+Un **serveur MCP** permet d'interroger tes rapports Sonar directement depuis Claude
+(« liste mes domaines », « montre le dernier scan de X », « priorise les findings
+critiques du scan `<id>` ») — et, en mode distant, de **lancer un scan**. Outils :
+
+| Outil | Rôle | Mode |
+|-------|------|------|
+| `list_domains` | tes domaines vérifiés | local + distant |
+| `list_scans(domain?)` | historique (id, score, note, date, sévérités) | local + distant |
+| `get_report(scan_id, lang?)` | rapport complet rendu (findings + remédiation) | local + distant |
+| `run_scan(domain)` | **lance un scan** sur un domaine vérifié (action active) | **distant uniquement** |
+
+`run_scan` est borné aux **domaines vérifiés** du compte (ou leurs sous-domaines), exactement
+comme le dashboard. Le scan étant potentiellement long (nuclei/ZAP), il est **asynchrone** :
+l'outil attend un court délai (`SONAR_MCP_SCAN_WAIT`, défaut 25 s) puis renvoie soit le rapport
+complet, soit `{scan_id, status:"running"}` — dans ce cas le scan continue en arrière-plan
+(résultat persisté quoi qu'il arrive) et tu le récupères ensuite avec `get_report(scan_id)`.
+Le scan apparaît dans l'historique du dashboard (« en cours… » puis sa note).
 
 Deux façons de s'y brancher :
 
 | Mode | Pour qui | Auth | Surface |
 |------|----------|------|---------|
 | **Distant** (`/mcp`) | **claude.ai (web)** & Claude Desktop (connecteur) | OAuth 2.1 fédéré vers ton IdP OIDC | endpoint public sur ton instance |
-| **Local** (stdio) | **Claude Code** / Claude Desktop (process local) | jeton perso (PAT) | rien de public, tourne sur ta machine |
+| **Local** (stdio) | **Claude Code** / Claude Desktop (process local) | jeton perso (PAT), **lecture seule** | rien de public, tourne sur ta machine |
 
 ---
 
@@ -94,8 +107,8 @@ Ton instance Sonar expose elle-même un endpoint MCP **Streamable HTTP** sur
 serveur d'autorisation côté claude.ai (enregistrement dynamique du client / DCR, PKCE,
 metadata OAuth RFC 9728 + 8414) et **fédère le login vers l'IdP** ; il valide ensuite les
 access tokens (JWT signés par l'IdP). L'identité (`email` du token, ou du *userinfo* en
-repli) est mappée sur ton compte Sonar — donc accès strictement **lecture seule** et
-**scopé à l'utilisateur** (l'admin voit tout l'historique).
+repli) est mappée sur ton compte Sonar — donc accès **scopé à l'utilisateur** (l'admin voit
+tout l'historique). Trois outils en lecture + `run_scan` (action), borné aux domaines vérifiés.
 
 > ⚠️ C'est une **surface publique authentifiée** : elle est **désactivée par défaut**
 > (`SONAR_MCP_REMOTE` non défini). Active-la seulement si tu veux brancher claude.ai web.
@@ -378,11 +391,11 @@ Procédure complète (réutilisable pour `en`, `de`…) dans `tools/PROMPTS.md`.
   l'instant), cartes de remédiation dépliables + prompt IA, historique re-rendable dans
   n'importe quelle langue. Ajouter une langue ne demande que des fichiers de locale. Le
   catalogue ZAP est transformé en FR (fallback propre sur l'anglais d'origine pour le reste).
-- **MCP (lecture seule)** : ✅ — deux transports, mêmes 3 outils, toujours lecture seule.
-  **Local** : serveur stdio `sonar_mcp/` via un jeton perso (PAT). **Distant (v1.2)** :
-  endpoint `/mcp` (`mcp_remote/`) exposé par le serveur, auth **OAuth 2.1 déléguée à un IdP
-  OIDC** (Pocket ID via l'`OAuthProxy` de FastMCP) — branché directement dans claude.ai web.
-  Le MCP n'est qu'un client de l'API existante. *v1.x prévue : un outil `run_scan` (action
-  active, bornée aux domaines vérifiés).*
+- **MCP** : ✅ — deux transports. **Local** : serveur stdio `sonar_mcp/` via un jeton perso
+  (PAT), **lecture seule** (3 outils). **Distant (v1.2)** : endpoint `/mcp` (`mcp_remote/`)
+  exposé par le serveur, auth **OAuth 2.1 déléguée à un IdP OIDC** (Pocket ID via l'`OAuthProxy`
+  de FastMCP) — branché directement dans claude.ai web. **v1.3** : l'outil `run_scan` (action
+  active, **asynchrone et persistée**, bornée aux domaines vérifiés) permet de lancer un scan
+  depuis claude.ai — le scan apparaît dans l'historique et se récupère via `get_report`.
 
 Tout ça se branche sans rien casser, parce que ça reste le même format de sortie.

@@ -31,7 +31,8 @@ def init_db() -> None:
                 total INTEGER,
                 findings TEXT,
                 created_at TEXT NOT NULL,
-                user_id TEXT
+                user_id TEXT,
+                status TEXT
             )
             """
         )
@@ -39,6 +40,10 @@ def init_db() -> None:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(scans)").fetchall()}
         if "user_id" not in cols:
             conn.execute("ALTER TABLE scans ADD COLUMN user_id TEXT")
+        # Migration douce : le scan asynchrone (MCP) introduit un statut. Les lignes
+        # d'avant sont des scans terminés -> NULL est traité comme 'done' à la lecture.
+        if "status" not in cols:
+            conn.execute("ALTER TABLE scans ADD COLUMN status TEXT")
         # Réglages applicatifs modifiables à chaud (clé/valeur), ex. toggle admin.
         conn.execute(
             "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
@@ -66,15 +71,15 @@ def set_setting(key: str, value: str) -> None:
 
 
 def save_scan(target: str, summary: dict, findings: list[dict], user_id: str | None = None) -> str:
-    """Persiste un scan (rattaché à `user_id` si fourni) et retourne son identifiant."""
+    """Persiste un scan TERMINÉ (rattaché à `user_id` si fourni) ; retourne son id."""
     scan_id = uuid.uuid4().hex
     created_at = datetime.datetime.now().isoformat(timespec="seconds")
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             """
             INSERT INTO scans
-                (id, target, score, grade, counts, total, findings, created_at, user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, target, score, grade, counts, total, findings, created_at, user_id, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'done')
             """,
             (
                 scan_id,
@@ -91,6 +96,64 @@ def save_scan(target: str, summary: dict, findings: list[dict], user_id: str | N
     return scan_id
 
 
+def create_running_scan(target: str, user_id: str | None = None) -> str:
+    """Crée une ligne de scan EN COURS (statut 'running') et retourne son id.
+
+    Sert au scan asynchrone (déclenché par le MCP) : l'id existe immédiatement pour
+    que l'appelant puisse récupérer le rapport plus tard, pendant que le scan tourne
+    en tâche de fond. `finalize_scan`/`fail_scan` viennent compléter la ligne ensuite.
+    """
+    scan_id = uuid.uuid4().hex
+    created_at = datetime.datetime.now().isoformat(timespec="seconds")
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO scans
+                (id, target, score, grade, counts, total, findings, created_at, user_id, status)
+            VALUES (?, ?, NULL, NULL, '{}', NULL, '[]', ?, ?, 'running')
+            """,
+            (scan_id, target, created_at, user_id),
+        )
+    return scan_id
+
+
+def finalize_scan(scan_id: str, summary: dict, findings: list[dict]) -> None:
+    """Complète une ligne 'running' avec le résultat du scan (statut -> 'done')."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE scans SET score=?, grade=?, counts=?, total=?, findings=?, "
+            "target=?, status='done' WHERE id=?",
+            (
+                summary.get("score"),
+                summary.get("grade"),
+                json.dumps(summary.get("counts", {})),
+                summary.get("total"),
+                json.dumps(findings),
+                summary.get("target") or "",
+                scan_id,
+            ),
+        )
+
+
+def fail_scan(scan_id: str, message: str) -> None:
+    """Marque une ligne 'running' comme en échec (statut -> 'error').
+
+    Le message est stocké comme un finding « passthrough » (titre/détail sans `code`)
+    afin que get_report le restitue tel quel, quelle que soit la langue."""
+    note = [{
+        "check_id": "scan-error",
+        "category": "info",
+        "severity": "info",
+        "title": "Scan en échec",
+        "detail": message or "Scan en échec.",
+    }]
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE scans SET status='error', findings=? WHERE id=?",
+            (json.dumps(note), scan_id),
+        )
+
+
 def list_scans(user_id: str | None = None) -> list[dict]:
     """Les 50 scans les plus récents (sans les findings).
 
@@ -101,12 +164,12 @@ def list_scans(user_id: str | None = None) -> list[dict]:
         conn.row_factory = sqlite3.Row
         if user_id is None:
             rows = conn.execute(
-                "SELECT id, target, score, grade, counts, created_at "
+                "SELECT id, target, score, grade, counts, created_at, status "
                 "FROM scans ORDER BY created_at DESC LIMIT 50"
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT id, target, score, grade, counts, created_at "
+                "SELECT id, target, score, grade, counts, created_at, status "
                 "FROM scans WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
                 (user_id,),
             ).fetchall()
@@ -114,6 +177,7 @@ def list_scans(user_id: str | None = None) -> list[dict]:
     for row in rows:
         d = dict(row)
         d["counts"] = json.loads(d["counts"]) if d["counts"] else {}
+        d["status"] = d["status"] or "done"     # legacy (NULL) = scan terminé
         out.append(d)
     return out
 
@@ -128,7 +192,7 @@ def get_scan(scan_id: str, user_id: str | None = None) -> dict | None:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             """
-            SELECT id, target, score, grade, counts, total, findings, created_at, user_id
+            SELECT id, target, score, grade, counts, total, findings, created_at, user_id, status
             FROM scans
             WHERE id = ?
             """,
@@ -147,6 +211,7 @@ def get_scan(scan_id: str, user_id: str | None = None) -> dict | None:
         "total": row["total"],
         "findings": json.loads(row["findings"]) if row["findings"] else [],
         "created_at": row["created_at"],
+        "status": row["status"] or "done",       # legacy (NULL) = scan terminé
     }
 
 

@@ -630,7 +630,11 @@
     </div>
     <div v-else class="hist-grid">
       <div class="hist-card" v-for="h in filteredHistory" :key="h.id" @click="openScan(h.id)">
-        <span class="hc-grade" :style="{ color: colorOf(h.score) }">{{ h.grade }}</span>
+        <span class="hc-grade" :style="{ color: colorOf(h.score) }">
+          <template v-if="h.status === 'running'">⏳</template>
+          <template v-else-if="h.status === 'error'">⚠</template>
+          <template v-else>{{ h.grade }}</template>
+        </span>
         <div class="hc-meta">
           <div class="hc-target">{{ h.target.replace(/^https?:\/\//,'') }}</div>
           <div class="hc-date">{{ fmtDate(h.created_at) }}</div>
@@ -640,7 +644,9 @@
                   :title="sevLabel(b.s)">{{ b.n }}</span>
           </div>
         </div>
-        <div class="hc-score">{{ h.score }}<small>/100</small></div>
+        <div class="hc-score" v-if="h.status === 'running'">{{ T('history.running', 'en cours…') }}</div>
+        <div class="hc-score" v-else-if="h.status === 'error'">{{ T('history.failed', 'échec') }}</div>
+        <div class="hc-score" v-else>{{ h.score }}<small>/100</small></div>
         <button class="hc-del" @click.stop="deleteScan(h)"
                 :title="T('history.delete', 'Supprimer ce rapport')">🗑</button>
       </div>

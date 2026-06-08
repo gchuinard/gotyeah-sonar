@@ -160,3 +160,47 @@ def test_db_delete_scan(tmp_path, monkeypatch):
     # Sans user_id (admin) : supprime quel que soit le propriétaire.
     assert dbmod.delete_scan(sid_b) is True
     assert dbmod.get_scan(sid_b) is None
+
+
+def test_db_status_legacy_and_save(tmp_path, monkeypatch):
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", tmp_path / "scans.db")
+    dbmod.init_db()
+    summary = {"score": 88, "grade": "A", "counts": {}, "total": 0, "target": "https://x"}
+    sid = dbmod.save_scan("https://x", summary, [])
+    # Un scan enregistré via save_scan est 'done'.
+    assert dbmod.get_scan(sid)["status"] == "done"
+    assert dbmod.list_scans()[0]["status"] == "done"
+    # Une ligne sans statut (base d'avant la feature) est lue comme 'done'.
+    import sqlite3
+    with sqlite3.connect(dbmod.DB_PATH) as conn:
+        conn.execute("UPDATE scans SET status=NULL WHERE id=?", (sid,))
+    assert dbmod.get_scan(sid)["status"] == "done"
+
+
+def test_db_running_finalize_fail(tmp_path, monkeypatch):
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", tmp_path / "scans.db")
+    dbmod.init_db()
+
+    # create_running_scan : ligne 'running', sans score ni findings.
+    sid = dbmod.create_running_scan("https://x", user_id="u1")
+    running = dbmod.get_scan(sid)
+    assert running["status"] == "running" and running["score"] is None
+    assert running["findings"] == [] and running["target"] == "https://x"
+    assert dbmod.list_scans(user_id="u1")[0]["status"] == "running"
+
+    # finalize_scan : complète la ligne (statut 'done').
+    summary = {"score": 73, "grade": "C", "counts": {"low": 1}, "total": 1, "target": "https://x/final"}
+    findings = [{"check_id": "hdr-csp", "category": "headers", "severity": "low", "code": "absent"}]
+    dbmod.finalize_scan(sid, summary, findings)
+    done = dbmod.get_scan(sid)
+    assert done["status"] == "done" and done["score"] == 73 and done["grade"] == "C"
+    assert done["target"] == "https://x/final" and done["findings"][0]["check_id"] == "hdr-csp"
+
+    # fail_scan : statut 'error' + message restitué en finding passthrough.
+    sid2 = dbmod.create_running_scan("https://y", user_id="u1")
+    dbmod.fail_scan(sid2, "Cible injoignable : timeout")
+    failed = dbmod.get_scan(sid2)
+    assert failed["status"] == "error"
+    assert "injoignable" in failed["findings"][0]["detail"]

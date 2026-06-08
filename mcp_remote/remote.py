@@ -10,9 +10,11 @@ l'**OIDCProxy** du paquet autonome `fastmcp` (≥ 3.4). Répartition :
     (SONAR_OIDC_CLIENT_ID / _SECRET, callback = {base}/auth/callback) ;
   • il valide les access tokens (JWT signés par l'IdP, JWKS récupéré via la discovery).
 
-Les 3 outils (list_domains / list_scans / get_report) sont en LECTURE SEULE et scopés
-à l'utilisateur identifié par l'IdP : on mappe `claims["email"]` du token vers un compte
-Sonar (`auth.get_user_by_email`). En mono-utilisateur, c'est le compte admin.
+Les outils sont scopés à l'utilisateur identifié par l'IdP : on mappe `claims["email"]`
+du token vers un compte Sonar (`auth.get_user_by_email`). En mono-utilisateur, c'est le
+compte admin. Trois lectures (list_domains / list_scans / get_report) + une ACTION :
+run_scan, qui lance un scan borné aux domaines VÉRIFIÉS du compte (même garde-fou que
+le dashboard) et le persiste de façon asynchrone (cf. `scan_jobs`).
 
 `build_remote` reste PUR (aucun effet de bord). Il retourne `(mcp, http_app)` ; l'appelant
 doit monter `http_app` en DERNIER et faire tourner SON lifespan (gestionnaire de sessions
@@ -157,9 +159,12 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     mcp = FastMCP(
         "sonar",
         instructions=(
-            "Accès LECTURE SEULE aux rapports de sécurité Sonar de l'utilisateur. "
-            "Utilise list_domains pour voir les domaines, list_scans pour l'historique, "
-            "et get_report(scan_id) pour le détail rendu d'un scan (findings + remédiation)."
+            "Accès aux scans de sécurité Sonar de l'utilisateur. Lecture : list_domains "
+            "(domaines), list_scans (historique), get_report(scan_id) (détail d'un scan, "
+            "findings + remédiation). Action : run_scan(domain) lance un scan sur un domaine "
+            "VÉRIFIÉ du compte (ou un de ses sous-domaines) ; le scan est asynchrone, donc "
+            "si run_scan renvoie status='running', récupère le rapport avec get_report(scan_id) "
+            "un peu plus tard."
         ),
         auth=auth_provider,
     )
@@ -211,6 +216,49 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
         available = set(i18n.available_langs())
         chosen = lang if (lang and lang in available) else (user.get("lang") or "fr")
+        data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
+        data["lang"] = chosen
+        return data
+
+    @mcp.tool
+    async def run_scan(domain: str) -> dict:
+        """Lance un scan de sécurité sur un domaine VÉRIFIÉ du compte (action active).
+
+        domain : domaine à scanner — doit être un domaine vérifié de l'utilisateur, ou
+                 un de ses sous-domaines (même garde-fou que le dashboard).
+
+        Le scan tourne en arrière-plan et est persisté quoi qu'il arrive. S'il se termine
+        vite, l'outil renvoie le rapport complet (mêmes champs que get_report). S'il dure
+        plus que le court délai d'attente, il renvoie {scan_id, status:'running'} : récupère
+        alors le rapport avec get_report(scan_id) une minute plus tard.
+        """
+        import auth as sonar_auth
+        import scan_jobs
+        from scanner import i18n
+        from scanner.runner import normalize_target
+        from urllib.parse import urlparse
+
+        user = _resolve_user(userinfo_endpoint)
+        if not user:
+            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
+        if not sonar_auth.user_can_scan(user):
+            raise ValueError("Scan verrouillé : vérifie d'abord un domaine dans Sonar.")
+        target = normalize_target(domain)
+        host = urlparse(target).hostname or ""
+        if not sonar_auth.user_can_scan_target(user, host):
+            raise ValueError(
+                "Tu ne peux scanner que tes domaines vérifiés (ou leurs sous-domaines).")
+
+        scan_id = scan_jobs.start_scan(target, user["id"])
+        data = await scan_jobs.wait_for_completion(scan_id)
+        if data is None:
+            return {
+                "scan_id": scan_id,
+                "status": "running",
+                "message": ("Scan lancé. Récupère le rapport avec "
+                            f"get_report('{scan_id}') dans une minute."),
+            }
+        chosen = user.get("lang") or "fr"
         data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
         data["lang"] = chosen
         return data

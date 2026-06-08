@@ -18,6 +18,7 @@ services:
       - SONAR_OIDC_CONFIG_URL=${SONAR_OIDC_CONFIG_URL:-}        # ex. https://idp.gautierchuinard.com/.well-known/openid-configuration
       - SONAR_OIDC_CLIENT_ID=${SONAR_OIDC_CLIENT_ID:-}          # client confidentiel pré-enregistré côté IdP
       - SONAR_OIDC_CLIENT_SECRET=${SONAR_OIDC_CLIENT_SECRET:-}  # son secret (jamais committé)
+      - SONAR_MCP_SCAN_WAIT=${SONAR_MCP_SCAN_WAIT:-}            # délai d'attente synchrone de run_scan (s) — défaut 25
       - SONAR_OPEN_REGISTRATION=${SONAR_OPEN_REGISTRATION:-false}
       - SONAR_ADMIN_EMAIL=${SONAR_ADMIN_EMAIL:-}
       - BREVO_API_KEY=${BREVO_API_KEY:-}

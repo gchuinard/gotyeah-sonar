@@ -76,7 +76,9 @@
     "none_for": "Aucun scan pour ce domaine.",
     "scan_now": "Lancer le scan",
     "delete": "Supprimer ce rapport",
-    "delete_confirm": "Supprimer définitivement ce rapport ?"
+    "delete_confirm": "Supprimer définitivement ce rapport ?",
+    "running": "en cours…",
+    "failed": "échec"
   },
 
   "console": {
