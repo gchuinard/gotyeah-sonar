@@ -60,6 +60,21 @@ def test_dedup_groups_and_counts():
     assert all(f.catalog == "zap" and f.code == "alert" for f in out)
 
 
+def test_drop_cdn_cgi_filters_cloudflare_false_positives():
+    alerts = [
+        # Private IP Disclosure (id 2) sur un endpoint cdn-cgi -> faux positif Cloudflare.
+        {"pluginId": "2", "alert": "Private IP Disclosure", "risk": "Low",
+         "url": "https://x/cdn-cgi/l/email-protection", "evidence": "10.0.0.1"},
+        # cdn-cgi remonté côté evidence -> écarté aussi.
+        {"pluginId": "2", "alert": "Private IP Disclosure", "risk": "Low",
+         "url": "https://x/page", "evidence": "https://x/cdn-cgi/trace"},
+        # Vraie alerte hors cdn-cgi -> conservée.
+        {"pluginId": "40012", "alert": "XSS", "risk": "High", "url": "https://x/a"},
+    ]
+    kept = zapmod._drop_cdn_cgi(alerts)
+    assert [a["alert"] for a in kept] == ["XSS"]
+
+
 # ---- flux complet (API mockée) ----
 
 async def test_zap_full_flow(monkeypatch):
@@ -78,6 +93,21 @@ async def test_zap_full_flow(monkeypatch):
     sevs = {f.severity for f in out}
     assert Severity.HIGH in sevs and Severity.MEDIUM in sevs
     assert len([f for f in out if f.entry_id == "10038"]) == 1  # dédup des 2 mediums (pluginId)
+
+
+async def test_zap_skips_cdn_cgi_alerts(monkeypatch):
+    monkeypatch.delenv("SONAR_ZAP", raising=False)
+    monkeypatch.setenv("ZAP_API_URL", "http://zap:8090")
+    alerts = [
+        {"pluginId": "2", "alert": "Private IP Disclosure", "risk": "Low",
+         "url": "https://x/cdn-cgi/l/email-protection", "evidence": "192.168.0.1"},
+        {"pluginId": "40012", "alert": "XSS", "risk": "High", "url": "https://x/a", "cweid": "79"},
+    ]
+    monkeypatch.setattr(zapmod, "_make_client", lambda base: _mock_client(alerts))
+    out = await zap(SimpleNamespace(url="https://x/"))
+    # L'alerte cdn-cgi (ZAP id 2) est écartée ; seule la vraie alerte XSS subsiste.
+    assert all(f.entry_id != "2" for f in out)
+    assert any(f.entry_id == "40012" for f in out)
 
 
 async def test_zap_no_alerts_pass(monkeypatch):
