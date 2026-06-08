@@ -81,8 +81,14 @@ critiques du scan `<id>` ») — et, en mode distant, de **lancer un scan**. Out
 | `list_domains` | tes domaines vérifiés | local + distant |
 | `list_scans(domain?)` | historique (id, score, note, date, sévérités) | local + distant |
 | `get_report(scan_id, lang?)` | rapport complet rendu (findings + remédiation) | local + distant |
+| `diff_scans(scan_a, scan_b)` | compare deux scans : corrigé / nouveau / persistant + delta de score | local + distant |
+| `get_fix(scan_id, check_id?)` | remédiation actionnable : prompt IA + snippet par stack détectée | local + distant |
 | `get_scan_status(scan_id)` | état léger d'un scan (en cours + progression, ou score) | **distant uniquement** |
 | `run_scan(domain, profile?)` | **lance un scan** sur un domaine vérifié (action active) | **distant uniquement** |
+
+**Boucle d'amélioration** : `run_scan` → `get_fix` (le prompt IA se colle dans Claude Code pour
+corriger la config) → `run_scan` → `diff_scans` (« +12 points, CSP réglée, mais une nouvelle source
+map est apparue »). `diff_scans`/`get_fix` sont du pur calcul sur les rapports (read-only).
 
 `run_scan` est borné aux **domaines vérifiés** du compte (ou leurs sous-domaines), exactement
 comme le dashboard, et **rate-limité** par compte (`SONAR_SCAN_RATE`, défaut 10 / 15 min — c'est
@@ -402,10 +408,13 @@ Procédure complète (réutilisable pour `en`, `de`…) dans `tools/PROMPTS.md`.
   n'importe quelle langue. Ajouter une langue ne demande que des fichiers de locale. Le
   catalogue ZAP est transformé en FR (fallback propre sur l'anglais d'origine pour le reste).
 - **MCP** : ✅ — deux transports. **Local** : serveur stdio `sonar_mcp/` via un jeton perso
-  (PAT), **lecture seule** (3 outils). **Distant (v1.2)** : endpoint `/mcp` (`mcp_remote/`)
-  exposé par le serveur, auth **OAuth 2.1 déléguée à un IdP OIDC** (Pocket ID via l'`OAuthProxy`
-  de FastMCP) — branché directement dans claude.ai web. **v1.3** : l'outil `run_scan` (action
-  active, **asynchrone et persistée**, bornée aux domaines vérifiés) permet de lancer un scan
-  depuis claude.ai — le scan apparaît dans l'historique et se récupère via `get_report`.
+  (PAT), **lecture seule**. **Distant (v1.2)** : endpoint `/mcp` (`mcp_remote/`) exposé par le
+  serveur, auth **OAuth 2.1 déléguée à un IdP OIDC** (Pocket ID via l'`OAuthProxy` de FastMCP) —
+  branché directement dans claude.ai web. **v1.3** : `run_scan` (action active, **asynchrone et
+  persistée**, bornée aux domaines vérifiés, rate-limitée ; profils full/fast) + `get_scan_status`
+  pour lancer/suivre un scan depuis claude.ai. **v1.4** : `diff_scans` (corrigé/nouveau/persistant
+  + delta entre deux scans) et `get_fix` (remédiation actionnable + prompt IA par stack) — pur
+  calcul partagé (`scan_compare`), dispo dans les **deux** transports. La boucle
+  scanne → corrige → vérifie est désormais entièrement pilotable depuis Claude.
 
 Tout ça se branche sans rien casser, parce que ça reste le même format de sortie.

@@ -168,12 +168,15 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         "sonar",
         instructions=(
             "Accès aux scans de sécurité Sonar de l'utilisateur. Lecture : list_domains "
-            "(domaines), list_scans (historique), get_report(scan_id) (détail d'un scan, "
-            "findings + remédiation), get_scan_status(scan_id) (état léger : en cours/progress "
-            "ou score). Action : run_scan(domain, profile) lance un scan sur un domaine VÉRIFIÉ "
-            "du compte (ou un sous-domaine). profile='full' (défaut) = scan complet asynchrone : "
-            "s'il renvoie status='running', suis-le avec get_scan_status puis get_report(scan_id). "
-            "profile='fast' = scan rapide (en-têtes/TLS/DNS, sans nuclei/ZAP/ports), résultat direct."
+            "(domaines), list_scans (historique), get_report(scan_id) (détail d'un scan), "
+            "get_scan_status(scan_id) (état léger : en cours/progress ou score), "
+            "diff_scans(scan_a, scan_b) (compare deux scans : corrigé/nouveau/persistant + delta), "
+            "get_fix(scan_id, check_id?) (remédiation actionnable : prompt IA + snippet par stack). "
+            "Action : run_scan(domain, profile) lance un scan sur un domaine VÉRIFIÉ du compte "
+            "(ou un sous-domaine). profile='full' (défaut) = scan complet asynchrone : s'il renvoie "
+            "status='running', suis-le avec get_scan_status puis get_report. profile='fast' = scan "
+            "rapide (en-têtes/TLS/DNS, sans nuclei/ZAP/ports), résultat direct. Boucle type : "
+            "run_scan → get_fix pour corriger → run_scan → diff_scans pour vérifier le gain."
         ),
         auth=auth_provider,
     )
@@ -228,6 +231,60 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
         data["lang"] = chosen
         return data
+
+    @mcp.tool(annotations=READ_ANN)
+    async def diff_scans(scan_a: str, scan_b: str, lang: str | None = None) -> dict:
+        """Compare deux scans : ce qui a été corrigé, ce qui est nouveau, ce qui persiste.
+
+        scan_a : scan de référence (AVANT) ; scan_b : scan à comparer (APRÈS).
+        Renvoie les problèmes `resolved`/`new`/`persistent` et le delta de score —
+        idéal pour vérifier qu'une correction a bien fonctionné entre deux run_scan.
+        """
+        import db
+        import scan_compare
+        from scanner import i18n
+
+        user = _resolve_user(userinfo_endpoint)
+        if not user:
+            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
+        owner = None if user.get("is_admin") else user["id"]
+        before = db.get_scan(scan_a, user_id=owner)
+        after = db.get_scan(scan_b, user_id=owner)
+        if not before or not after:
+            raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
+        available = set(i18n.available_langs())
+        chosen = lang if (lang and lang in available) else (user.get("lang") or "fr")
+        for data in (before, after):
+            data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
+        out = scan_compare.diff_reports(before, after)
+        out["lang"] = chosen
+        return out
+
+    @mcp.tool(annotations=READ_ANN)
+    async def get_fix(scan_id: str, check_id: str | None = None,
+                      code: str | None = None, lang: str | None = None) -> list[dict]:
+        """Remédiation actionnable des problèmes d'un scan (prompt IA + snippet par stack).
+
+        scan_id  : scan dont on veut les correctifs.
+        check_id : optionnel, ne garde que ce check (ex. 'hdr-csp') ; code : affine encore.
+        Pour chaque problème : explication, étapes, variantes par stack (stack détectée
+        surlignée) et un `ai_prompt` prêt à coller dans un agent de code (Claude Code).
+        """
+        import db
+        import scan_compare
+        from scanner import i18n
+
+        user = _resolve_user(userinfo_endpoint)
+        if not user:
+            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
+        owner = None if user.get("is_admin") else user["id"]
+        data = db.get_scan(scan_id, user_id=owner)
+        if not data:
+            raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
+        available = set(i18n.available_langs())
+        chosen = lang if (lang and lang in available) else (user.get("lang") or "fr")
+        data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
+        return scan_compare.extract_fixes(data, check_id, code)
 
     @mcp.tool(annotations=READ_ANN)
     async def get_scan_status(scan_id: str) -> dict:

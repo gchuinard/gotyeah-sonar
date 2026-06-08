@@ -67,15 +67,15 @@ async def test_missing_config_raises():
         await SonarClient(base_url="https://x", token="").domains()
 
 
-def test_server_registers_three_tools():
-    """Si le SDK mcp est installé : le serveur expose bien les 3 outils, en lecture seule."""
+def test_server_registers_tools_read_only():
+    """Si le SDK mcp est installé : le serveur expose ses outils, tous en lecture seule."""
     pytest.importorskip("mcp")
     import asyncio
 
     from sonar_mcp import server
     tools = asyncio.run(server.mcp.list_tools())
     names = {t.name for t in tools}
-    assert {"list_domains", "list_scans", "get_report"} <= names
-    # Annotations MCP : les 3 outils sont marqués lecture seule (UX côté client).
+    assert {"list_domains", "list_scans", "get_report", "diff_scans", "get_fix"} <= names
+    # Annotations MCP : le MCP local est strictement lecture seule (UX côté client).
     for t in tools:
         assert t.annotations is not None and t.annotations.readOnlyHint is True

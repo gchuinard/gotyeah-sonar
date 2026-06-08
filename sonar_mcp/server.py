@@ -10,9 +10,10 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+import scan_compare
 from sonar_mcp.client import SonarClient
 
-# Les 3 outils sont en lecture seule, sûrs et idempotents ; ils interrogent un service
+# Tous les outils sont en lecture seule, sûrs et idempotents ; ils interrogent un service
 # externe (l'API Sonar) → openWorldHint. Les annotations renseignent l'UX du client MCP.
 _READ_ANN = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)
 
@@ -49,6 +50,32 @@ async def get_report(scan_id: str, lang: str | None = None) -> dict:
     lang    : langue du rendu ('fr', 'en', …) ; défaut = langue du compte.
     """
     return await SonarClient().report(scan_id, lang)
+
+
+@mcp.tool(annotations=_READ_ANN)
+async def diff_scans(scan_a: str, scan_b: str, lang: str | None = None) -> dict:
+    """Compare deux scans : ce qui a été corrigé, ce qui est nouveau, ce qui persiste.
+
+    scan_a : scan de référence (AVANT) ; scan_b : scan à comparer (APRÈS).
+    Renvoie les problèmes `resolved`/`new`/`persistent` et le delta de score — idéal
+    pour vérifier qu'une correction a fonctionné.
+    """
+    c = SonarClient()
+    before = await c.report(scan_a, lang)
+    after = await c.report(scan_b, lang)
+    return scan_compare.diff_reports(before, after)
+
+
+@mcp.tool(annotations=_READ_ANN)
+async def get_fix(scan_id: str, check_id: str | None = None,
+                  code: str | None = None, lang: str | None = None) -> list[dict]:
+    """Remédiation actionnable des problèmes d'un scan (prompt IA + snippet par stack).
+
+    check_id : optionnel, ne garde que ce check (ex. 'hdr-csp') ; code : affine encore.
+    Chaque correctif inclut un `ai_prompt` prêt à coller dans un agent de code.
+    """
+    report = await SonarClient().report(scan_id, lang)
+    return scan_compare.extract_fixes(report, check_id, code)
 
 
 def main() -> None:
