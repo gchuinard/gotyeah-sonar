@@ -69,42 +69,27 @@ def oidc_config_url() -> str:
 
 
 def _resolve_user(userinfo_endpoint: str | None = None):
-    """Mappe l'identité de l'IdP (email) vers un compte Sonar.
+    """Mappe l'identité de l'IdP (email du token, ou userinfo en repli) vers un compte Sonar.
 
-    L'email est lu dans les claims de l'access token ; si absent (Pocket ID ne le met PAS
-    dans l'access token, seulement dans le userinfo), on interroge le userinfo avec le
-    token porteur. Retourne le dict utilisateur Sonar, ou None. Imports locaux : le module
-    ne dépend pas d'`auth`/`httpx` au chargement.
+    Câblage seulement : on récupère l'access token via fastmcp, la logique de mapping (pure
+    et testable) vit dans `mcp_remote.tools.resolve_user_from_token`. Imports locaux : le
+    module ne dépend pas de fastmcp au chargement.
     """
-    import auth as sonar_auth
     from fastmcp.server.dependencies import get_access_token
 
+    from mcp_remote import tools
+
     tok = get_access_token()
-    if not tok:
-        return None
-    claims = getattr(tok, "claims", None) or {}
-    email = (claims.get("email") or "").strip()
-    if not email and userinfo_endpoint and getattr(tok, "token", None):
-        try:
-            import httpx
-            r = httpx.get(
-                userinfo_endpoint,
-                headers={"Authorization": f"Bearer {tok.token}"},
-                timeout=10,
-            )
-            if r.status_code == 200:
-                email = (r.json().get("email") or "").strip()
-        except Exception:
-            pass
-    if not email:
+    user = tools.resolve_user_from_token(tok, userinfo_endpoint)
+    if user is None and tok is not None:
         # Diagnostic (clés seulement, pas de valeurs) si l'identité reste introuvable.
         try:
-            print(f"[mcp-remote] _resolve_user: email introuvable "
+            claims = getattr(tok, "claims", None) or {}
+            print(f"[mcp-remote] _resolve_user: identité introuvable "
                   f"(claims={sorted(claims)}, userinfo={'oui' if userinfo_endpoint else 'non'})")
         except Exception:
             pass
-        return None
-    return sonar_auth.get_user_by_email(sonar_auth.normalize_email(email))
+    return user
 
 
 def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
@@ -181,15 +166,15 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         auth=auth_provider,
     )
 
+    # Les corps des outils vivent dans `mcp_remote.tools` (PURS, testables sans le SDK) ;
+    # ici on ne fait que résoudre l'utilisateur (token OAuth) puis déléguer. Les docstrings
+    # restent ici car FastMCP en fait la description exposée au client.
+    from mcp_remote import tools
+
     @mcp.tool(annotations=READ_ANN)
     async def list_domains() -> list[dict]:
         """Liste les domaines vérifiés du compte (ceux que l'utilisateur peut scanner)."""
-        import auth as sonar_auth
-
-        user = _resolve_user(userinfo_endpoint)
-        if not user:
-            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
-        return sonar_auth.list_domains(user["id"])
+        return await tools.list_domains_logic(_resolve_user(userinfo_endpoint))
 
     @mcp.tool(annotations=READ_ANN)
     async def list_scans(domain: str | None = None) -> list[dict]:
@@ -197,17 +182,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
 
         domain : si fourni, ne garde que les scans dont la cible contient ce domaine.
         """
-        import db
-
-        user = _resolve_user(userinfo_endpoint)
-        if not user:
-            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
-        owner = None if user.get("is_admin") else user["id"]
-        scans = db.list_scans(user_id=owner)
-        if domain:
-            needle = domain.strip().lower()
-            scans = [s for s in scans if needle in ((s.get("target") or "").lower())]
-        return scans
+        return await tools.list_scans_logic(_resolve_user(userinfo_endpoint), domain)
 
     @mcp.tool(annotations=READ_ANN)
     async def get_report(scan_id: str, lang: str | None = None) -> dict:
@@ -216,21 +191,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         scan_id : identifiant renvoyé par list_scans.
         lang    : langue du rendu ('fr', 'en', …) ; défaut = langue du compte.
         """
-        import db
-        from scanner import i18n
-
-        user = _resolve_user(userinfo_endpoint)
-        if not user:
-            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
-        owner = None if user.get("is_admin") else user["id"]
-        data = db.get_scan(scan_id, user_id=owner)
-        if not data:
-            raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
-        available = set(i18n.available_langs())
-        chosen = lang if (lang and lang in available) else (user.get("lang") or "fr")
-        data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
-        data["lang"] = chosen
-        return data
+        return await tools.get_report_logic(_resolve_user(userinfo_endpoint), scan_id, lang)
 
     @mcp.tool(annotations=READ_ANN)
     async def diff_scans(scan_a: str, scan_b: str, lang: str | None = None) -> dict:
@@ -240,25 +201,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         Renvoie les problèmes `resolved`/`new`/`persistent` et le delta de score —
         idéal pour vérifier qu'une correction a bien fonctionné entre deux run_scan.
         """
-        import db
-        import scan_compare
-        from scanner import i18n
-
-        user = _resolve_user(userinfo_endpoint)
-        if not user:
-            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
-        owner = None if user.get("is_admin") else user["id"]
-        before = db.get_scan(scan_a, user_id=owner)
-        after = db.get_scan(scan_b, user_id=owner)
-        if not before or not after:
-            raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
-        available = set(i18n.available_langs())
-        chosen = lang if (lang and lang in available) else (user.get("lang") or "fr")
-        for data in (before, after):
-            data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
-        out = scan_compare.diff_reports(before, after)
-        out["lang"] = chosen
-        return out
+        return await tools.diff_scans_logic(_resolve_user(userinfo_endpoint), scan_a, scan_b, lang)
 
     @mcp.tool(annotations=READ_ANN)
     async def get_fix(scan_id: str, check_id: str | None = None,
@@ -270,21 +213,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         Pour chaque problème : explication, étapes, variantes par stack (stack détectée
         surlignée) et un `ai_prompt` prêt à coller dans un agent de code (Claude Code).
         """
-        import db
-        import scan_compare
-        from scanner import i18n
-
-        user = _resolve_user(userinfo_endpoint)
-        if not user:
-            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
-        owner = None if user.get("is_admin") else user["id"]
-        data = db.get_scan(scan_id, user_id=owner)
-        if not data:
-            raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
-        available = set(i18n.available_langs())
-        chosen = lang if (lang and lang in available) else (user.get("lang") or "fr")
-        data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
-        return scan_compare.extract_fixes(data, check_id, code)
+        return await tools.get_fix_logic(_resolve_user(userinfo_endpoint), scan_id, check_id, code, lang)
 
     @mcp.tool(annotations=READ_ANN)
     async def get_scan_status(scan_id: str) -> dict:
@@ -294,25 +223,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         Renvoie {status:'running', done, total} tant que le scan tourne (idéal pour suivre
         un run_scan sans retélécharger le rapport), sinon {status, score, grade, counts}.
         """
-        import db
-        import scan_jobs
-
-        user = _resolve_user(userinfo_endpoint)
-        if not user:
-            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
-        owner = None if user.get("is_admin") else user["id"]
-        data = db.get_scan(scan_id, user_id=owner)
-        if not data:
-            raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
-        status = data.get("status") or "done"
-        out = {"scan_id": scan_id, "status": status}
-        if status == "running":
-            prog = scan_jobs.progress_of(scan_id)
-            if prog:
-                out.update(prog)
-        else:
-            out.update(score=data.get("score"), grade=data.get("grade"), counts=data.get("counts"))
-        return out
+        return await tools.get_scan_status_logic(_resolve_user(userinfo_endpoint), scan_id)
 
     @mcp.tool(annotations=ACTION_ANN)
     async def run_scan(domain: str, profile: str = "full") -> dict:
@@ -329,40 +240,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         que get_report). Sinon il renvoie {scan_id, status:'running'} : suis-le avec
         get_scan_status(scan_id), puis récupère le rapport via get_report(scan_id).
         """
-        import auth as sonar_auth
-        import scan_jobs
-        from scanner import i18n
-        from scanner.runner import normalize_target
-        from urllib.parse import urlparse
-
-        user = _resolve_user(userinfo_endpoint)
-        if not user:
-            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
-        if not sonar_auth.user_can_scan(user):
-            raise ValueError("Scan verrouillé : vérifie d'abord un domaine dans Sonar.")
-        target = normalize_target(domain)
-        host = urlparse(target).hostname or ""
-        if not sonar_auth.user_can_scan_target(user, host):
-            raise ValueError(
-                "Tu ne peux scanner que tes domaines vérifiés (ou leurs sous-domaines).")
-        # Anti-abus : run_scan est une action publique (OAuth) → quota par compte.
-        if not sonar_auth.scan_rate_ok(user["id"]):
-            raise ValueError("Trop de scans lancés récemment. Réessaie dans quelques minutes.")
-
-        fast = (profile or "full").strip().lower() in ("fast", "rapide", "quick")
-        scan_id = scan_jobs.start_scan(target, user["id"], fast=fast)
-        data = await scan_jobs.wait_for_completion(scan_id)
-        if data is None:
-            return {
-                "scan_id": scan_id,
-                "status": "running",
-                "message": ("Scan lancé. Suis-le avec get_scan_status('"
-                            f"{scan_id}'), puis get_report('{scan_id}') une fois terminé."),
-            }
-        chosen = user.get("lang") or "fr"
-        data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
-        data["lang"] = chosen
-        return data
+        return await tools.run_scan_logic(_resolve_user(userinfo_endpoint), domain, profile)
 
     http_app = mcp.http_app()  # Streamable HTTP ; expose aussi son lifespan (sessions)
     return mcp, http_app

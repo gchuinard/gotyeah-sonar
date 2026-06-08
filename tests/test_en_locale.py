@@ -7,15 +7,40 @@ et les endpoints acceptent `en`.
 """
 from __future__ import annotations
 
+import json
+import pathlib
+
 import scenarios
 
 import auth
 from scanner.finding import Category, Finding, Severity
 from scanner.i18n import loader, render
 
+_UI_DIR = pathlib.Path(__file__).resolve().parent.parent / "locales" / "ui"
+
+
+def _leaf_keys(d, prefix=""):
+    """Toutes les clés feuilles d'un dict imbriqué, en notation pointée."""
+    out = set()
+    for k, v in d.items():
+        p = f"{prefix}.{k}" if prefix else k
+        out |= _leaf_keys(v, p) if isinstance(v, dict) else {p}
+    return out
+
 
 def test_en_is_discovered():
     assert "en" in loader.available_langs()
+
+
+def test_ui_locales_key_parity():
+    """fr.json et en.json doivent avoir EXACTEMENT le même jeu de clés.
+
+    Sans ça, une clé ajoutée d'un seul côté retombe silencieusement sur le fallback —
+    ce test attrape l'oubli (ex. ajouter `history.delete` en FR mais pas en EN)."""
+    fr = _leaf_keys(json.loads((_UI_DIR / "fr.json").read_text(encoding="utf-8")))
+    en = _leaf_keys(json.loads((_UI_DIR / "en.json").read_text(encoding="utf-8")))
+    assert fr == en, (f"clés UI désynchronisées — FR seulement : {sorted(fr - en)} ; "
+                      f"EN seulement : {sorted(en - fr)}")
 
 
 def test_ui_chrome_in_english():
