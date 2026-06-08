@@ -117,6 +117,14 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     import httpx
     from fastmcp import FastMCP
     from fastmcp.server.auth import JWTVerifier, OAuthProxy
+    from mcp.types import ToolAnnotations
+
+    # Annotations MCP : indiquent au client (claude.ai) la nature de chaque outil pour
+    # qu'il affiche la bonne UX (et une confirmation avant une action). Les 3 lectures
+    # sont sûres/idempotentes ; run_scan est une ACTION (non lecture seule, non idempotente).
+    READ_ANN = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)
+    ACTION_ANN = ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
 
     base = base_url.rstrip("/")
     config_url = oidc_config_url()
@@ -161,15 +169,16 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         instructions=(
             "Accès aux scans de sécurité Sonar de l'utilisateur. Lecture : list_domains "
             "(domaines), list_scans (historique), get_report(scan_id) (détail d'un scan, "
-            "findings + remédiation). Action : run_scan(domain) lance un scan sur un domaine "
-            "VÉRIFIÉ du compte (ou un de ses sous-domaines) ; le scan est asynchrone, donc "
-            "si run_scan renvoie status='running', récupère le rapport avec get_report(scan_id) "
-            "un peu plus tard."
+            "findings + remédiation), get_scan_status(scan_id) (état léger : en cours/progress "
+            "ou score). Action : run_scan(domain, profile) lance un scan sur un domaine VÉRIFIÉ "
+            "du compte (ou un sous-domaine). profile='full' (défaut) = scan complet asynchrone : "
+            "s'il renvoie status='running', suis-le avec get_scan_status puis get_report(scan_id). "
+            "profile='fast' = scan rapide (en-têtes/TLS/DNS, sans nuclei/ZAP/ports), résultat direct."
         ),
         auth=auth_provider,
     )
 
-    @mcp.tool
+    @mcp.tool(annotations=READ_ANN)
     async def list_domains() -> list[dict]:
         """Liste les domaines vérifiés du compte (ceux que l'utilisateur peut scanner)."""
         import auth as sonar_auth
@@ -179,7 +188,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
         return sonar_auth.list_domains(user["id"])
 
-    @mcp.tool
+    @mcp.tool(annotations=READ_ANN)
     async def list_scans(domain: str | None = None) -> list[dict]:
         """Scans récents : id, score, note (grade), date, compteurs de sévérité.
 
@@ -197,7 +206,7 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             scans = [s for s in scans if needle in ((s.get("target") or "").lower())]
         return scans
 
-    @mcp.tool
+    @mcp.tool(annotations=READ_ANN)
     async def get_report(scan_id: str, lang: str | None = None) -> dict:
         """Rapport complet d'un scan : findings rendus/localisés en JSON.
 
@@ -220,17 +229,48 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         data["lang"] = chosen
         return data
 
-    @mcp.tool
-    async def run_scan(domain: str) -> dict:
+    @mcp.tool(annotations=READ_ANN)
+    async def get_scan_status(scan_id: str) -> dict:
+        """État LÉGER d'un scan (sans les findings) : statut + progression ou score.
+
+        scan_id : identifiant renvoyé par run_scan ou list_scans.
+        Renvoie {status:'running', done, total} tant que le scan tourne (idéal pour suivre
+        un run_scan sans retélécharger le rapport), sinon {status, score, grade, counts}.
+        """
+        import db
+        import scan_jobs
+
+        user = _resolve_user(userinfo_endpoint)
+        if not user:
+            raise ValueError("Aucun compte Sonar ne correspond à cette identité.")
+        owner = None if user.get("is_admin") else user["id"]
+        data = db.get_scan(scan_id, user_id=owner)
+        if not data:
+            raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
+        status = data.get("status") or "done"
+        out = {"scan_id": scan_id, "status": status}
+        if status == "running":
+            prog = scan_jobs.progress_of(scan_id)
+            if prog:
+                out.update(prog)
+        else:
+            out.update(score=data.get("score"), grade=data.get("grade"), counts=data.get("counts"))
+        return out
+
+    @mcp.tool(annotations=ACTION_ANN)
+    async def run_scan(domain: str, profile: str = "full") -> dict:
         """Lance un scan de sécurité sur un domaine VÉRIFIÉ du compte (action active).
 
-        domain : domaine à scanner — doit être un domaine vérifié de l'utilisateur, ou
-                 un de ses sous-domaines (même garde-fou que le dashboard).
+        domain  : domaine à scanner — doit être un domaine vérifié de l'utilisateur, ou
+                  un de ses sous-domaines (même garde-fou que le dashboard).
+        profile : 'full' (défaut) = scan complet (en-têtes, TLS, DNS, exposition, ports,
+                  nuclei, ZAP) ; 'fast' = scan rapide (passif/actif léger seulement, sans
+                  nuclei/ZAP/ports) — quelques secondes, résultat direct.
 
         Le scan tourne en arrière-plan et est persisté quoi qu'il arrive. S'il se termine
-        vite, l'outil renvoie le rapport complet (mêmes champs que get_report). S'il dure
-        plus que le court délai d'attente, il renvoie {scan_id, status:'running'} : récupère
-        alors le rapport avec get_report(scan_id) une minute plus tard.
+        vite (toujours le cas en 'fast'), l'outil renvoie le rapport complet (mêmes champs
+        que get_report). Sinon il renvoie {scan_id, status:'running'} : suis-le avec
+        get_scan_status(scan_id), puis récupère le rapport via get_report(scan_id).
         """
         import auth as sonar_auth
         import scan_jobs
@@ -248,15 +288,19 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         if not sonar_auth.user_can_scan_target(user, host):
             raise ValueError(
                 "Tu ne peux scanner que tes domaines vérifiés (ou leurs sous-domaines).")
+        # Anti-abus : run_scan est une action publique (OAuth) → quota par compte.
+        if not sonar_auth.scan_rate_ok(user["id"]):
+            raise ValueError("Trop de scans lancés récemment. Réessaie dans quelques minutes.")
 
-        scan_id = scan_jobs.start_scan(target, user["id"])
+        fast = (profile or "full").strip().lower() in ("fast", "rapide", "quick")
+        scan_id = scan_jobs.start_scan(target, user["id"], fast=fast)
         data = await scan_jobs.wait_for_completion(scan_id)
         if data is None:
             return {
                 "scan_id": scan_id,
                 "status": "running",
-                "message": ("Scan lancé. Récupère le rapport avec "
-                            f"get_report('{scan_id}') dans une minute."),
+                "message": ("Scan lancé. Suis-le avec get_scan_status('"
+                            f"{scan_id}'), puis get_report('{scan_id}') une fois terminé."),
             }
         chosen = user.get("lang") or "fr"
         data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]

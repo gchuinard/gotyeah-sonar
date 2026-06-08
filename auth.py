@@ -245,6 +245,29 @@ def rate_limit_ok(email: str, ip: str) -> bool:
     return True
 
 
+def scan_rate_ok(user_id: str) -> bool:
+    """Garde-fou anti-abus des scans déclenchés par le MCP (run_scan = action publique).
+
+    Borne le nombre de scans par compte sur une fenêtre glissante (réutilise `auth_rate`,
+    clé `scan:<user_id>`). Défauts : `SONAR_SCAN_RATE`=10 scans / `SONAR_SCAN_RATE_WINDOW_MIN`=15 min.
+    Enregistre la tentative et renvoie False si le quota est atteint. La purge ne touche
+    QUE la clé du compte (n'interfère pas avec le rate-limit de login)."""
+    window = _env_int("SONAR_SCAN_RATE_WINDOW_MIN", 15)
+    limit = _env_int("SONAR_SCAN_RATE", 10)
+    key = f"scan:{user_id}"
+    cutoff = _iso(_now() - datetime.timedelta(minutes=window))
+    now_iso = _iso(_now())
+    with _conn() as conn:
+        conn.execute("DELETE FROM auth_rate WHERE key=? AND created_at < ?", (key, cutoff))
+        n = conn.execute(
+            "SELECT COUNT(*) FROM auth_rate WHERE key=? AND created_at >= ?",
+            (key, cutoff)).fetchone()[0]
+        if n >= limit:
+            return False
+        conn.execute("INSERT INTO auth_rate (key, created_at) VALUES (?, ?)", (key, now_iso))
+    return True
+
+
 # --------------------------------------------------------------------------- #
 # Tokens de lien magique (single-use, expirants, hashés)
 # --------------------------------------------------------------------------- #

@@ -76,6 +76,15 @@ def test_rate_limit_ip(authdb, monkeypatch):
     assert auth.rate_limit_ok("d@b.com", "9.9.9.9") is False
 
 
+def test_scan_rate_ok_per_user(authdb, monkeypatch):
+    monkeypatch.setenv("SONAR_SCAN_RATE", "2")
+    # Quota par COMPTE : 2 scans OK pour u1, le 3ᵉ est refusé.
+    assert auth.scan_rate_ok("u1") and auth.scan_rate_ok("u1")
+    assert auth.scan_rate_ok("u1") is False
+    # Un autre compte a son propre quota (clé séparée) -> pas impacté.
+    assert auth.scan_rate_ok("u2") is True
+
+
 # --------------------------------------------------------------------------- #
 # Unités : politique d'inscription + gate
 # --------------------------------------------------------------------------- #

@@ -204,3 +204,16 @@ def test_db_running_finalize_fail(tmp_path, monkeypatch):
     failed = dbmod.get_scan(sid2)
     assert failed["status"] == "error"
     assert "injoignable" in failed["findings"][0]["detail"]
+
+
+def test_checks_for_fast_excludes_slow():
+    from scanner.finding import Category
+    from scanner.runner import checks_for
+    full = {c.id for c in checks_for(fast=False)}
+    fast = {c.id for c in checks_for(fast=True)}
+    # Les checks lents (nuclei/ZAP/ports) sont dans le scan complet, jamais dans le rapide.
+    assert {"nuclei", "zap", "ports"} <= full
+    assert not ({"nuclei", "zap", "ports"} & fast)
+    assert fast < full and len(fast) == len(full) - 3      # le rapide n'enlève QUE ces 3
+    cats = {c.category for c in checks_for(fast=True)}
+    assert not ({Category.PENTEST, Category.ZAP, Category.PORTS} & cats)

@@ -27,6 +27,19 @@ from .registry import Check, all_checks
 
 USER_AGENT = "Sonar/0.1 (+homelab; authorized use only)"
 
+# Catégories des checks « lents » (Phase 3 pentest + scan réseau) : exclues du profil
+# rapide, qui ne garde que le passif/actif léger (quelques secondes, retour synchrone).
+_SLOW_CATEGORIES = {Category.PENTEST, Category.ZAP, Category.PORTS}
+
+
+def checks_for(fast: bool = False):
+    """Checks à exécuter pour ce scan. `fast=True` exclut nuclei/ZAP/ports (en-têtes,
+    TLS, DNS, cookies, exposition passive… seulement) pour un scan de quelques secondes."""
+    checks = all_checks()
+    if fast:
+        checks = [c for c in checks if c.category not in _SLOW_CATEGORIES]
+    return checks
+
 
 @dataclass
 class Context:
@@ -81,14 +94,14 @@ async def _safe_run(chk: Check, ctx: Context):
     return chk, findings
 
 
-async def run_scan(target: str):
+async def run_scan(target: str, fast: bool = False):
     try:
         ctx = await _build_context(target)
     except Exception as exc:
         yield {"event": "scan_error", "data": {"message": f"Cible injoignable : {exc}"}}
         return
 
-    checks = all_checks()
+    checks = checks_for(fast)
     total = len(checks)
     cat_counts = Counter(c.category for c in checks)
     yield {"event": "started", "data": {

@@ -24,6 +24,15 @@ from scanner.runner import run_scan as _engine_run_scan
 # Réf. fortes aux tâches de fond : sans ça, asyncio peut les garbage-collecter en plein vol.
 _BG_TASKS: set[asyncio.Task] = set()
 
+# Progression EN MÉMOIRE des scans en cours {scan_id: {"done": int, "total": int}}.
+# Volatil (perdu au redémarrage) : sert juste à `get_scan_status` pendant qu'un scan tourne.
+_PROGRESS: dict[str, dict] = {}
+
+
+def progress_of(scan_id: str) -> dict | None:
+    """Progression d'un scan en cours ({done, total}) ou None s'il n'en a pas (ou fini)."""
+    return _PROGRESS.get(scan_id)
+
 
 def scan_wait_secs() -> float:
     """Délai d'attente synchrone côté MCP avant de rendre la main (env, défaut 25 s).
@@ -38,22 +47,26 @@ def scan_wait_secs() -> float:
     return max(0.0, v)
 
 
-def start_scan(target: str, user_id: str | None) -> str:
-    """Crée la ligne 'running' et lance le scan en tâche de fond. Retourne l'`scan_id`."""
+def start_scan(target: str, user_id: str | None, fast: bool = False) -> str:
+    """Crée la ligne 'running' et lance le scan en tâche de fond. Retourne l'`scan_id`.
+
+    `fast` : profil rapide (sans nuclei/ZAP/ports) — cf. `scanner.runner.run_scan`."""
     scan_id = db.create_running_scan(target, user_id=user_id)
-    task = asyncio.create_task(_run_to_completion(scan_id, target))
+    task = asyncio.create_task(_run_to_completion(scan_id, target, fast))
     _BG_TASKS.add(task)
     task.add_done_callback(_BG_TASKS.discard)
     return scan_id
 
 
-async def _run_to_completion(scan_id: str, target: str) -> None:
+async def _run_to_completion(scan_id: str, target: str, fast: bool = False) -> None:
     """Consomme le générateur du moteur et finalise (ou marque en échec) la ligne."""
     summary = None
     findings: list = []
     try:
-        async for ev in _engine_run_scan(target):
-            if ev["event"] == "done":
+        async for ev in _engine_run_scan(target, fast=fast):
+            if ev["event"] == "progress":
+                _PROGRESS[scan_id] = {"done": ev["data"].get("done"), "total": ev["data"].get("total")}
+            elif ev["event"] == "done":
                 summary = ev["data"]
                 findings = ev.get("_findings", [])
             elif ev["event"] == "scan_error":
@@ -65,6 +78,8 @@ async def _run_to_completion(scan_id: str, target: str) -> None:
             db.fail_scan(scan_id, "Scan interrompu sans résultat.")
     except Exception as exc:  # le scan ne doit jamais laisser la ligne en 'running'
         db.fail_scan(scan_id, f"{type(exc).__name__}: {exc}")
+    finally:
+        _PROGRESS.pop(scan_id, None)   # plus en cours → on libère la progression mémoire
 
 
 async def wait_for_completion(scan_id: str, wait_secs: float | None = None,

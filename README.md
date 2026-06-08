@@ -81,14 +81,24 @@ critiques du scan `<id>` ») — et, en mode distant, de **lancer un scan**. Out
 | `list_domains` | tes domaines vérifiés | local + distant |
 | `list_scans(domain?)` | historique (id, score, note, date, sévérités) | local + distant |
 | `get_report(scan_id, lang?)` | rapport complet rendu (findings + remédiation) | local + distant |
-| `run_scan(domain)` | **lance un scan** sur un domaine vérifié (action active) | **distant uniquement** |
+| `get_scan_status(scan_id)` | état léger d'un scan (en cours + progression, ou score) | **distant uniquement** |
+| `run_scan(domain, profile?)` | **lance un scan** sur un domaine vérifié (action active) | **distant uniquement** |
 
 `run_scan` est borné aux **domaines vérifiés** du compte (ou leurs sous-domaines), exactement
-comme le dashboard. Le scan étant potentiellement long (nuclei/ZAP), il est **asynchrone** :
-l'outil attend un court délai (`SONAR_MCP_SCAN_WAIT`, défaut 25 s) puis renvoie soit le rapport
-complet, soit `{scan_id, status:"running"}` — dans ce cas le scan continue en arrière-plan
-(résultat persisté quoi qu'il arrive) et tu le récupères ensuite avec `get_report(scan_id)`.
-Le scan apparaît dans l'historique du dashboard (« en cours… » puis sa note).
+comme le dashboard, et **rate-limité** par compte (`SONAR_SCAN_RATE`, défaut 10 / 15 min — c'est
+une action publique). Deux profils :
+
+- `profile="full"` (défaut) — scan complet. Potentiellement long (nuclei/ZAP), donc **asynchrone** :
+  l'outil attend un court délai (`SONAR_MCP_SCAN_WAIT`, défaut 25 s) puis renvoie soit le rapport
+  complet, soit `{scan_id, status:"running"}`. Dans ce cas le scan continue en arrière-plan
+  (résultat **persisté quoi qu'il arrive**) ; suis-le avec `get_scan_status(scan_id)` puis
+  récupère-le via `get_report(scan_id)`.
+- `profile="fast"` — passif/actif léger seulement (en-têtes, TLS, DNS, exposition), **sans**
+  nuclei/ZAP/ports : quelques secondes, **résultat direct**. Idéal pour vérifier un fix d'en-tête.
+
+Le scan apparaît dans l'historique du dashboard (« en cours… » puis sa note). Les outils portent
+des **annotations MCP** (`readOnlyHint` sur les lectures, action signalée sur `run_scan`) pour que
+le client affiche la bonne UX.
 
 Deux façons de s'y brancher :
 

@@ -8,8 +8,13 @@ décorateur @mcp.tool(), mcp.run(transport="stdio").
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from sonar_mcp.client import SonarClient
+
+# Les 3 outils sont en lecture seule, sûrs et idempotents ; ils interrogent un service
+# externe (l'API Sonar) → openWorldHint. Les annotations renseignent l'UX du client MCP.
+_READ_ANN = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)
 
 mcp = FastMCP(
     "sonar",
@@ -21,13 +26,13 @@ mcp = FastMCP(
 )
 
 
-@mcp.tool()
+@mcp.tool(annotations=_READ_ANN)
 async def list_domains() -> list[dict]:
     """Liste les domaines vérifiés du compte (ceux que l'utilisateur peut scanner)."""
     return await SonarClient().domains()
 
 
-@mcp.tool()
+@mcp.tool(annotations=_READ_ANN)
 async def list_scans(domain: str | None = None) -> list[dict]:
     """Scans récents : id, score, note (grade), date, compteurs de sévérité.
 
@@ -36,7 +41,7 @@ async def list_scans(domain: str | None = None) -> list[dict]:
     return await SonarClient().scans(domain)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_READ_ANN)
 async def get_report(scan_id: str, lang: str | None = None) -> dict:
     """Rapport complet d'un scan : findings rendus/localisés en JSON.
 
