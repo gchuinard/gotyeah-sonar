@@ -74,7 +74,9 @@
     "for": "History of",
     "show_all": "All history",
     "none_for": "No scan for this domain yet.",
-    "scan_now": "Run the scan"
+    "scan_now": "Run the scan",
+    "delete": "Delete this report",
+    "delete_confirm": "Permanently delete this report?"
   },
 
   "console": {
@@ -116,6 +118,7 @@
     "never": "never",
     "revoked": "revoked",
     "revoke": "Revoke",
+    "delete": "Delete permanently",
     "name_placeholder": "name (optional)",
     "generate": "Generate",
     "copy_now": "Copy it now — it won't be shown again.",

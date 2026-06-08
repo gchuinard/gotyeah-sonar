@@ -419,6 +419,22 @@ async def tokens_revoke(request: Request, token_id: str):
     return JSONResponse({"ok": True})
 
 
+@app.delete("/api/tokens/{token_id}/purge")
+async def tokens_delete(request: Request, token_id: str):
+    """Supprime DÉFINITIVEMENT un jeton DÉJÀ révoqué (nettoyage de la liste).
+
+    On impose de révoquer d'abord (la révocation coupe l'accès ; cette purge ne fait
+    qu'effacer la ligne). 409 si le jeton n'existe pas ou n'est pas encore révoqué."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    if not auth.delete_pat(token_id, user["id"]):
+        return JSONResponse(
+            {"error": "Révoque le jeton avant de le supprimer.", "code": "not_revoked"},
+            status_code=409)
+    return JSONResponse({"ok": True})
+
+
 # --------------------------------------------------------------------------- #
 # Scan + historique (protégés par la session)
 # --------------------------------------------------------------------------- #
@@ -514,6 +530,20 @@ async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
     data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
     data["lang"] = chosen
     return JSONResponse(data)
+
+
+@app.delete("/api/scan/{scan_id}")
+async def scan_delete(request: Request, scan_id: str):
+    """Supprime un scan archivé. Écriture → SESSION uniquement (jamais via un PAT
+    lecture seule). L'admin peut supprimer n'importe quel scan ; sinon, propriété
+    obligatoire (404 si le scan n'existe pas ou n'appartient pas à l'utilisateur)."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    scope = None if user["is_admin"] else user["id"]
+    if not db.delete_scan(scan_id, user_id=scope):
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"ok": True})
 
 
 # --------------------------------------------------------------------------- #

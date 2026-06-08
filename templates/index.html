@@ -154,6 +154,9 @@
   .hc-score small { font-size: 11px; color: var(--text-faint); }
   .hc-sev { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
   .hc-badge { font-family: var(--mono); font-size: 10px; font-weight: 600; border: 1px solid; border-radius: 5px; padding: 1px 6px; line-height: 1.4; }
+  .hc-del { flex: none; align-self: flex-start; background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px; opacity: 0; transition: opacity .15s, color .15s; }
+  .hist-card:hover .hc-del { opacity: .7; }
+  .hc-del:hover { opacity: 1; color: var(--sev-critical); }
   .hist-filter { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 13px; color: var(--text-dim); }
   .hist-filter b { font-family: var(--mono); color: var(--text); }
   .hist-empty p { margin: 0 0 16px; }
@@ -458,6 +461,7 @@
               <span class="dom-name">{{ tk.name || T('tokens.no_name', '(sans nom)') }}</span>
               <span v-if="tk.revoked" class="dom-badge pending">{{ T('tokens.revoked', 'révoqué') }}</span>
               <button v-if="!tk.revoked" class="dom-x" @click="revokeToken(tk)" :title="T('tokens.revoke', 'Révoquer')">✕</button>
+              <button v-else class="dom-x" @click="deleteToken(tk)" :title="T('tokens.delete', 'Supprimer définitivement')">🗑</button>
             </div>
             <div class="tok-meta">
               {{ T('tokens.created', 'Créé') }} {{ fmtDate(tk.created_at) }}
@@ -637,6 +641,8 @@
           </div>
         </div>
         <div class="hc-score">{{ h.score }}<small>/100</small></div>
+        <button class="hc-del" @click.stop="deleteScan(h)"
+                :title="T('history.delete', 'Supprimer ce rapport')">🗑</button>
       </div>
     </div>
   </div>
@@ -914,6 +920,13 @@ createApp({
         await this.loadTokens();
       } catch (e) {}
     },
+    async deleteToken(tk) {
+      // Purge définitive d'un jeton DÉJÀ révoqué (nettoyage de la liste).
+      try {
+        await fetch('/api/tokens/' + tk.id + '/purge', { method: 'DELETE' });
+        await this.loadTokens();
+      } catch (e) {}
+    },
     copyToken() {
       const text = this.newToken;
       const done = () => { this.tokenCopied = true; setTimeout(() => { this.tokenCopied = false; }, 1800); };
@@ -932,6 +945,15 @@ createApp({
       } catch (e) {}
     },
     goHistory() { this.activeTab = 'history'; this.loadHistory(); },
+    async deleteScan(h) {
+      // Suppression IRRÉVERSIBLE d'un rapport archivé → on confirme d'abord.
+      if (!window.confirm(this.T('history.delete_confirm', 'Supprimer définitivement ce rapport ?'))) return;
+      try {
+        const r = await fetch('/api/scan/' + h.id, { method: 'DELETE' });
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        await this.loadHistory();
+      } catch (e) {}
+    },
     openDomain(d) {
       // Clic sur un domaine vérifié → pré-remplit l'input de scan et RESTE sur Rapport
       // (prêt à lancer). L'onglet Historique est filtré sur ce domaine si on y va ensuite.

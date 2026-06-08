@@ -74,7 +74,9 @@
     "for": "Historique de",
     "show_all": "Tout l'historique",
     "none_for": "Aucun scan pour ce domaine.",
-    "scan_now": "Lancer le scan"
+    "scan_now": "Lancer le scan",
+    "delete": "Supprimer ce rapport",
+    "delete_confirm": "Supprimer définitivement ce rapport ?"
   },
 
   "console": {
@@ -116,6 +118,7 @@
     "never": "jamais",
     "revoked": "révoqué",
     "revoke": "Révoquer",
+    "delete": "Supprimer définitivement",
     "name_placeholder": "nom (optionnel)",
     "generate": "Générer",
     "copy_now": "Copie-le maintenant, il ne sera plus affiché.",

@@ -140,3 +140,23 @@ def test_db_roundtrip(tmp_path, monkeypatch):
     assert isinstance(one["findings"], list) and one["findings"][0]["check_id"] == "hdr-csp"
 
     assert dbmod.get_scan("inexistant") is None
+
+
+def test_db_delete_scan(tmp_path, monkeypatch):
+    import db as dbmod
+    monkeypatch.setattr(dbmod, "DB_PATH", tmp_path / "scans.db")
+    dbmod.init_db()
+    summary = {"score": 70, "grade": "C", "counts": {}, "total": 0, "target": "https://x"}
+    sid_a = dbmod.save_scan("https://x", summary, [], user_id="alice")
+    sid_b = dbmod.save_scan("https://y", summary, [], user_id="bob")
+
+    # Contrôle de propriété : bob ne peut pas supprimer le scan d'alice (pas d'IDOR).
+    assert dbmod.delete_scan(sid_a, user_id="bob") is False
+    assert dbmod.get_scan(sid_a) is not None
+    # Le propriétaire supprime le sien.
+    assert dbmod.delete_scan(sid_a, user_id="alice") is True
+    assert dbmod.get_scan(sid_a) is None
+    assert dbmod.delete_scan(sid_a, user_id="alice") is False   # déjà parti
+    # Sans user_id (admin) : supprime quel que soit le propriétaire.
+    assert dbmod.delete_scan(sid_b) is True
+    assert dbmod.get_scan(sid_b) is None

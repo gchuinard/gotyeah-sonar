@@ -67,8 +67,13 @@ def test_pat_cannot_reach_write_or_admin_routes(client):
     assert c.delete("/api/domains/whatever", headers=h).status_code == 401
     assert c.post("/api/tokens", json={}, headers=h).status_code == 401        # pas de jeton via jeton
     assert c.delete("/api/tokens/" + meta["id"], headers=h).status_code == 401
+    assert c.delete("/api/tokens/" + meta["id"] + "/purge", headers=h).status_code == 401
     assert c.post("/api/admin/scan-any", json={"enabled": True},
                   headers=h).status_code in (401, 403)
+    # Suppression de scan = écriture -> jamais via un PAT (cookie obligatoire).
+    sid = _save_scan_for(u, "https://a.example")
+    assert c.delete(f"/api/scan/{sid}", headers=h).status_code == 401
+    assert db.get_scan(sid) is not None       # rien supprimé
 
 
 # --------------------------------------------------------------------------- #
@@ -116,6 +121,30 @@ def test_read_endpoints_pat_and_idor(client):
     # Sans aucune auth -> 401 (les routes restent protégées)
     assert c.get(f"/api/scan/{sid_a}").status_code == 401
     assert c.get("/api/history").status_code == 401
+
+
+def test_scan_delete_session_owner_idor_and_admin(client):
+    c, _appmod = client
+    a = auth.create_user("a@b.com")
+    b = auth.create_user("b@b.com")
+    sid_a = _save_scan_for(a, "https://a.example")
+    sid_b = _save_scan_for(b, "https://b.example")
+
+    # IDOR : connecté en B, on ne supprime pas le scan de A -> 404, scan intact.
+    c.cookies.set("sonar_session", auth.create_session(b["id"]))
+    assert c.delete(f"/api/scan/{sid_a}").status_code == 404
+    assert db.get_scan(sid_a) is not None
+    # B supprime le sien -> 200, parti.
+    assert c.delete(f"/api/scan/{sid_b}").status_code == 200
+    assert db.get_scan(sid_b) is None
+
+    # Admin : supprime n'importe quel scan (ici celui de A).
+    admin = auth.create_user("admin@b.com", is_admin=True)
+    c.cookies.set("sonar_session", auth.create_session(admin["id"]))
+    assert c.delete(f"/api/scan/{sid_a}").status_code == 200
+    assert db.get_scan(sid_a) is None
+    # Scan inexistant -> 404.
+    assert c.delete("/api/scan/inexistant").status_code == 404
 
 
 def test_read_endpoints_still_accept_session_cookie(client):

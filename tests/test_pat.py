@@ -60,6 +60,23 @@ def test_pat_revoke_owner_scoped(authdb):
     assert auth.revoke_pat(meta["id"], a["id"]) is False      # idempotent
 
 
+def test_pat_delete_requires_revoked_and_owner(authdb):
+    a = auth.create_user("a@b.com")
+    b = auth.create_user("b@b.com")
+    raw, meta = auth.create_pat(a["id"])
+    # Un jeton ACTIF ne se supprime pas : il faut le révoquer d'abord.
+    assert auth.delete_pat(meta["id"], a["id"]) is False
+    assert auth.list_pats(a["id"]) and auth.resolve_pat(raw) is not None
+    auth.revoke_pat(meta["id"], a["id"])
+    # B ne peut pas supprimer le jeton (révoqué) de A -> pas d'IDOR.
+    assert auth.delete_pat(meta["id"], b["id"]) is False
+    assert auth.list_pats(a["id"])                    # toujours là
+    # A supprime le sien -> la ligne disparaît (plus dans la liste).
+    assert auth.delete_pat(meta["id"], a["id"]) is True
+    assert auth.list_pats(a["id"]) == []
+    assert auth.delete_pat(meta["id"], a["id"]) is False   # idempotent (déjà parti)
+
+
 def test_pat_expired(authdb):
     u = auth.create_user("p@b.com")
     raw, meta = auth.create_pat(u["id"], ttl_days=7)
@@ -104,8 +121,24 @@ def test_tokens_endpoints_session(client):
     assert auth.resolve_pat(body["token"]) is None            # révoqué
 
 
+def test_tokens_purge_endpoint(client):
+    c, _appmod = client
+    u = auth.create_user("e@b.com")
+    c.cookies.set("sonar_session", auth.create_session(u["id"]))
+
+    tid = c.post("/api/tokens", json={"name": "mcp"}).json()["id"]
+    # Purge AVANT révocation -> refusée (409), le jeton reste listé.
+    assert c.delete(f"/api/tokens/{tid}/purge").status_code == 409
+    assert len(c.get("/api/tokens").json()["tokens"]) == 1
+    # On révoque, puis on purge -> la ligne disparaît de la liste.
+    assert c.delete(f"/api/tokens/{tid}").status_code == 200
+    assert c.delete(f"/api/tokens/{tid}/purge").status_code == 200
+    assert c.get("/api/tokens").json()["tokens"] == []
+
+
 def test_tokens_endpoints_require_session(client):
     c, _appmod = client
     assert c.get("/api/tokens").status_code == 401
     assert c.post("/api/tokens", json={}).status_code == 401
     assert c.delete("/api/tokens/whatever").status_code == 401
+    assert c.delete("/api/tokens/whatever/purge").status_code == 401

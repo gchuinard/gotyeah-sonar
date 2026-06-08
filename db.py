@@ -148,3 +148,20 @@ def get_scan(scan_id: str, user_id: str | None = None) -> dict | None:
         "findings": json.loads(row["findings"]) if row["findings"] else [],
         "created_at": row["created_at"],
     }
+
+
+def delete_scan(scan_id: str, user_id: str | None = None) -> bool:
+    """Supprime un scan de l'historique. Retourne True si une ligne a été supprimée.
+
+    Si `user_id` est fourni, on applique le contrôle de propriété : un scan d'un autre
+    propriétaire n'est PAS supprimé (pas d'IDOR). Si None (ex. admin), supprime quel que
+    soit le propriétaire.
+    """
+    with sqlite3.connect(DB_PATH) as conn:
+        if user_id is None:
+            cur = conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
+        else:
+            cur = conn.execute(
+                "DELETE FROM scans WHERE id = ? AND user_id = ?", (scan_id, user_id)
+            )
+    return cur.rowcount > 0

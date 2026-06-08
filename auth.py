@@ -378,6 +378,21 @@ def revoke_pat(token_id: str, user_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def delete_pat(token_id: str, user_id: str) -> bool:
+    """Supprime DÉFINITIVEMENT un jeton DÉJÀ révoqué de cet utilisateur.
+
+    Owner-scopé (pas d'IDOR) et restreint aux jetons révoqués : tant qu'un jeton est
+    actif, on garde sa ligne (il faut le révoquer d'abord, ce qui coupe l'accès). C'est
+    du simple nettoyage de la liste. Retourne True si une ligne a été supprimée."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM personal_tokens "
+            "WHERE id=? AND user_id=? AND revoked_at IS NOT NULL",
+            (token_id, user_id),
+        )
+        return cur.rowcount > 0
+
+
 def resolve_pat(raw: str, required_scope: str | None = None):
     """Valide un jeton brut et renvoie l'utilisateur propriétaire, sinon None.
     Refuse : mauvais préfixe, inconnu, révoqué, expiré, scope insuffisant.
