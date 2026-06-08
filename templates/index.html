@@ -311,25 +311,9 @@
   .feed-empty .mark { width: 56px; height: 56px; opacity: .5; }
   .feed-empty p { margin: 0; max-width: 360px; }
 
-  /* ---- défilement indépendant des panneaux (desktop uniquement) ----
-     En-tête + console + onglets restent fixes ; la colonne de gauche (aside) et le feed
-     défilent chacun dans leur propre zone. Sur mobile (≤880px) on garde le scroll de page. */
-  @media (min-width: 881px) {
-    html, body { height: 100%; }
-    body { overflow: hidden; }
-    .app { height: 100vh; display: flex; flex-direction: column; padding-bottom: 12px; }
-    .app > .topbar, .app > .console, .app > .tabs-bar { flex: none; }
-    .report-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-    .report-pane > .banner { flex: none; }
-    .report-pane > .grid { flex: 1; min-height: 0; align-items: stretch; }
-    .grid > .aside { position: static; max-height: 100%; overflow-y: auto; padding-right: 8px; }
-    .grid > section { max-height: 100%; overflow-y: auto; padding-right: 6px; }
-    .history-pane { flex: 1; min-height: 0; overflow-y: auto; padding-right: 6px; }
-    /* barre de scroll discrète, cohérente avec le thème */
-    .aside::-webkit-scrollbar, section::-webkit-scrollbar, .history-pane::-webkit-scrollbar { width: 8px; }
-    .aside::-webkit-scrollbar-thumb, section::-webkit-scrollbar-thumb,
-    .history-pane::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
-  }
+  /* Défilement : la PAGE défile comme un seul document (on scrolle de n'importe où).
+     La colonne de gauche (aside) reste visible via `position: sticky` (cf. .aside) sans
+     enfermer le rapport dans une zone scrollable à part. */
 </style>
 </head>
 <body>
