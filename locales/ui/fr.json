@@ -207,6 +207,10 @@
     "scan_error": "Erreur pendant le scan."
   },
 
+  "scrolltop": {
+    "title": "Remonter en haut"
+  },
+
   "fallback": {
     "title": "Résultat sans description disponible",
     "detail": "Le détail localisé de ce résultat n'est pas encore disponible dans cette langue."

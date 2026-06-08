@@ -98,8 +98,15 @@
   /* ---- layout ---- */
   .grid { display: grid; grid-template-columns: 312px 1fr; gap: 20px; align-items: start; }
   @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
-  .aside { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 18px; }
-  @media (max-width: 880px) { .aside { position: static; } }
+  /* Barre latérale collante : reste visible pendant le scroll de page, et défile DANS
+     sa propre zone si son contenu dépasse la hauteur de l'écran (le rapport, lui, suit
+     le scroll de page). */
+  .aside { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 18px;
+           max-height: calc(100vh - 36px); overflow-y: auto; padding-right: 4px; }
+  .aside::-webkit-scrollbar { width: 8px; }
+  .aside::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+  /* Mobile : la colonne repasse dans le flux normal, sans zone de scroll dédiée. */
+  @media (max-width: 880px) { .aside { position: static; max-height: none; overflow: visible; padding-right: 0; } }
 
   .panel { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
   .panel h2 {
@@ -314,6 +321,20 @@
   /* Défilement : la PAGE défile comme un seul document (on scrolle de n'importe où).
      La colonne de gauche (aside) reste visible via `position: sticky` (cf. .aside) sans
      enfermer le rapport dans une zone scrollable à part. */
+
+  /* Bouton flottant « remonter en haut » : apparaît dès qu'on a défilé vers le bas. */
+  .scrolltop {
+    position: fixed; right: 22px; bottom: 22px; z-index: 50;
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent); color: var(--bg);
+    border: none; cursor: pointer; font-size: 21px; font-weight: 700; line-height: 1;
+    box-shadow: 0 6px 18px rgba(0,0,0,.38);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .scrolltop:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.45); }
+  .fade-enter-active, .fade-leave-active { transition: opacity .2s ease; }
+  .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
 </head>
 <body>
@@ -637,6 +658,13 @@
     </div>
   </div>
 
+  <!-- Bouton « remonter en haut » : visible une fois qu'on a défilé vers le bas. -->
+  <transition name="fade">
+    <button v-show="showScrollTop" class="scrolltop" @click="scrollToTop"
+            :title="T('scrolltop.title', 'Remonter en haut')"
+            :aria-label="T('scrolltop.title', 'Remonter en haut')">↑</button>
+  </transition>
+
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -657,6 +685,7 @@ createApp({
       findings: [], categories: {}, history: [],
       isHistorical: false, historical: null,
       hidePass: false, es: null, me: null,
+      showScrollTop: false,   // bouton « remonter » (visible une fois défilé vers le bas)
       // onglets : 'report' (scan courant / dernier rapport) ou 'history'
       activeTab: 'report',
       historyFilter: '',   // si défini, l'historique est filtré sur ce domaine
@@ -935,6 +964,8 @@ createApp({
       } catch (e) {}
     },
     goHistory() { this.activeTab = 'history'; this.loadHistory(); },
+    onScroll() { this.showScrollTop = (window.scrollY || window.pageYOffset || 0) > 400; },
+    scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); },
     async deleteScan(h) {
       // Suppression IRRÉVERSIBLE d'un rapport archivé → on confirme d'abord.
       if (!window.confirm(this.T('history.delete_confirm', 'Supprimer définitivement ce rapport ?'))) return;
@@ -1061,7 +1092,12 @@ createApp({
       }
     },
   },
-  mounted() { this.loadMe(); this.loadDomains(); this.loadTokens(); this.loadHistory(); },
+  mounted() {
+    this.loadMe(); this.loadDomains(); this.loadTokens(); this.loadHistory();
+    window.addEventListener('scroll', this.onScroll, { passive: true });
+    this.onScroll();   // état initial (au cas où la page est déjà défilée)
+  },
+  beforeUnmount() { window.removeEventListener('scroll', this.onScroll); },
 }).mount('#app');
 </script>
 </body>
