@@ -72,13 +72,69 @@ scannables. (La propagation DNS peut prendre quelques minutes.)
 
 ## MCP — lire tes rapports depuis Claude
 
-Un petit **serveur MCP en lecture seule** permet d'interroger tes rapports Sonar
-directement depuis **Claude Code** ou **Claude Desktop** (« liste mes domaines »,
-« montre le dernier scan de X », « priorise les findings critiques du scan `<id>` »).
-Il tourne **en local sur ta machine** et parle à l'API Sonar avec un jeton — **aucune
-nouvelle porte publique** n'est ouverte sur ton instance.
+Un **serveur MCP en lecture seule** permet d'interroger tes rapports Sonar directement
+depuis Claude (« liste mes domaines », « montre le dernier scan de X », « priorise les
+findings critiques du scan `<id>` »). Mêmes **trois outils** dans les deux cas :
+`list_domains`, `list_scans(domain?)`, `get_report(scan_id, lang?)`.
 
-Trois outils : `list_domains`, `list_scans(domain?)`, `get_report(scan_id, lang?)`.
+Deux façons de s'y brancher :
+
+| Mode | Pour qui | Auth | Surface |
+|------|----------|------|---------|
+| **Distant** (`/mcp`) | **claude.ai (web)** & Claude Desktop (connecteur) | OAuth 2.1 fédéré vers ton IdP OIDC | endpoint public sur ton instance |
+| **Local** (stdio) | **Claude Code** / Claude Desktop (process local) | jeton perso (PAT) | rien de public, tourne sur ta machine |
+
+---
+
+### Mode distant — `/mcp` (OAuth, pour claude.ai web)
+
+Ton instance Sonar expose elle-même un endpoint MCP **Streamable HTTP** sur
+`https://<ton-domaine>/mcp`, que **claude.ai** peut ajouter comme connecteur. L'auth n'est
+**pas maison** : elle est **déléguée à un IdP OIDC** (ici **Pocket ID**). FastMCP joue le
+serveur d'autorisation côté claude.ai (enregistrement dynamique du client / DCR, PKCE,
+metadata OAuth RFC 9728 + 8414) et **fédère le login vers l'IdP** ; il valide ensuite les
+access tokens (JWT signés par l'IdP). L'identité (`email` du token, ou du *userinfo* en
+repli) est mappée sur ton compte Sonar — donc accès strictement **lecture seule** et
+**scopé à l'utilisateur** (l'admin voit tout l'historique).
+
+> ⚠️ C'est une **surface publique authentifiée** : elle est **désactivée par défaut**
+> (`SONAR_MCP_REMOTE` non défini). Active-la seulement si tu veux brancher claude.ai web.
+
+**1. Côté IdP (Pocket ID).** Crée un **client confidentiel** pré-enregistré avec pour
+unique `redirect_uri` le callback de Sonar : `<SONAR_BASE_URL>/auth/callback`. Récupère
+son `client_id` / `client_secret` et l'URL de découverte OIDC
+(`…/.well-known/openid-configuration`).
+
+**2. Côté Sonar (`.env`).** `SONAR_BASE_URL` doit être en **HTTPS** (OAuth exige un issuer
+absolu ; sinon le MCP distant se désactive proprement au démarrage). Puis :
+
+```bash
+SONAR_MCP_REMOTE=on
+SONAR_OIDC_CONFIG_URL=https://idp.gautierchuinard.com/.well-known/openid-configuration
+SONAR_OIDC_CLIENT_ID=...
+SONAR_OIDC_CLIENT_SECRET=...
+```
+
+Au démarrage, les logs confirment : `[mcp-remote] activé sur https://…/mcp (auth fédérée OIDC)`.
+Le mount n'expose publiquement que `/mcp`, la metadata `/.well-known/oauth-*`, et les
+endpoints OAuth `/authorize` · `/token` · `/register` · `/auth/callback` — tout le reste du
+site garde la priorité de routage.
+
+**3. Côté claude.ai.** Ajoute un **connecteur personnalisé** pointant sur
+`https://<ton-domaine>/mcp`. Claude lance le flux OAuth : tu te connectes via ton IdP, et
+les trois outils apparaissent. Pour révoquer : retire le connecteur (et/ou la session côté
+IdP).
+
+> Derrière Nginx Proxy Manager : `/mcp` et les `/.well-known/*` doivent passer **sans
+> réécriture de Host** (le transport refuse un hôte non public — protection anti
+> DNS-rebinding) ; vérifie que NPM transmet bien l'`Host` public.
+
+---
+
+### Mode local — stdio (PAT, pour Claude Code)
+
+Variante qui tourne **en local sur ta machine** et parle à l'API Sonar avec un jeton —
+**aucune nouvelle porte publique** n'est ouverte sur ton instance. Idéale pour Claude Code.
 
 **1. Générer un jeton.** Dans le dashboard, panneau **« Jetons d'accès (MCP) »** →
 *Générer*. Le secret (`sonar_pat_…`) n'est **affiché qu'une fois** : copie-le tout de
@@ -215,6 +271,8 @@ content/               catalogue de remédiation (YAML) :
                          checks/<famille>.<lang>.yaml   (checks maison)
                          zap/<pluginId>.<lang>.yaml     (alertes ZAP transformées)
 locales/ui/<lang>.json libellés d'interface (chrome : boutons, panneaux, bannières…)
+sonar_mcp/             serveur MCP LOCAL (stdio) — client de l'API, auth par PAT
+mcp_remote/            serveur MCP DISTANT (/mcp, Streamable HTTP) — OAuth délégué OIDC
 tools/                 génération build-time du catalogue (validate / coverage / transform)
 ```
 
@@ -320,9 +378,11 @@ Procédure complète (réutilisable pour `en`, `de`…) dans `tools/PROMPTS.md`.
   l'instant), cartes de remédiation dépliables + prompt IA, historique re-rendable dans
   n'importe quelle langue. Ajouter une langue ne demande que des fichiers de locale. Le
   catalogue ZAP est transformé en FR (fallback propre sur l'anglais d'origine pour le reste).
-- **MCP (lecture seule)** : ✅ — serveur stdio `sonar_mcp/` (3 outils) pour lire domaines /
-  historique / rapports depuis Claude, via un jeton personnel (PAT) en lecture seule. Le
-  MCP n'est qu'un client de l'API existante. *v1.1 prévue : un outil `run_scan` (action
+- **MCP (lecture seule)** : ✅ — deux transports, mêmes 3 outils, toujours lecture seule.
+  **Local** : serveur stdio `sonar_mcp/` via un jeton perso (PAT). **Distant (v1.2)** :
+  endpoint `/mcp` (`mcp_remote/`) exposé par le serveur, auth **OAuth 2.1 déléguée à un IdP
+  OIDC** (Pocket ID via l'`OAuthProxy` de FastMCP) — branché directement dans claude.ai web.
+  Le MCP n'est qu'un client de l'API existante. *v1.x prévue : un outil `run_scan` (action
   active, bornée aux domaines vérifiés).*
 
 Tout ça se branche sans rien casser, parce que ça reste le même format de sortie.
