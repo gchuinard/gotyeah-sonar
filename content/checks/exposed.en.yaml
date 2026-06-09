@@ -326,6 +326,75 @@ exposed-phpinfo:
       - "https://owasp.org/www-project-web-security-testing-guide/"
     a_verifier: false
 
+exposed-wpconfig:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "The `wp-config.php` file is served in clear text: it holds the WordPress database credentials and security keys (salts)."
+    recommendation: "Block access to `wp-config.php` server-side and regenerate credentials and salts if the file could be read."
+    explanation: "Normally `wp-config.php` is interpreted by PHP and its code is never returned. When served in clear text (misconfiguration, backup, PHP disabled), its contents — `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` and the `AUTH_KEY`/salts — become readable by anyone."
+    why: "With the database credentials and salts, an attacker connects directly to the WordPress database, forges valid authentication cookies and takes over the site. It is an immediate compromise."
+    steps:
+      - "Block direct access to `wp-config.php` server-side."
+      - "Check that PHP is actually running (a `wp-config.php` returned as text signals PHP is not executing)."
+      - "Regenerate the database password and the keys/salts (`AUTH_KEY`, etc.): treat them as compromised."
+      - "Verify that `curl https://{host}/{path}` no longer returns the source code."
+    stacks:
+      nginx: "location = /wp-config.php { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location = /wp-config.php { deny all; return 404; }"
+      apache: "<FilesMatch \"^wp-config\\.php$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path eq \"/wp-config.php\")"
+    ai_prompt: "You are a web security expert. The site {host} (served by {stack}) exposes `{path}` in clear text, leaking the WordPress database credentials and salts. Explain the risk, give the exact configuration for {stack} that blocks this file, and remind to regenerate the database password and security keys."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://developer.wordpress.org/advanced-administration/wordpress/wp-config/"
+    a_verifier: false
+
+exposed-aws:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "An AWS credentials file (`.aws/credentials`) is accessible: it contains access keys (`aws_access_key_id` + `aws_secret_access_key`) to your cloud account."
+    recommendation: "Remove this file from the webroot, block `.aws/` and revoke the exposed keys immediately."
+    explanation: "The `~/.aws/credentials` file stores programmatic AWS access keys as INI profiles. Exposed over HTTP, it hands out long-lived credentials that allow acting on the cloud account through the API/CLI."
+    why: "With an AWS key pair, an attacker accesses your cloud resources (S3, EC2, IAM…), exfiltrates data, spins up servers at your expense (mining) or destroys the infrastructure. The financial and operational impact is major and immediate."
+    steps:
+      - "Revoke/delete the exposed keys in the AWS IAM console without delay."
+      - "Remove `{path}` from the webroot and block access to the `.aws/` directory."
+      - "Audit CloudTrail to spot fraudulent use of the keys."
+      - "Prefer temporary identities (IAM roles / SSO) over long-lived keys."
+    stacks:
+      nginx: "location ~ /\\.aws { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~ /\\.aws { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.aws\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \"/.aws/\")"
+    ai_prompt: "You are a cloud security expert. The site {host} (served by {stack}) exposes `{path}`, which contains AWS access keys. Explain the risk, give the exact configuration for {stack} that blocks `.aws/`, and stress that the keys must be revoked in IAM immediately and CloudTrail audited."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/522.html"
+      - "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html"
+    a_verifier: false
+
+exposed-tfstate:
+  found:
+    title: "Sensitive file exposed: `{path}`"
+    detail: "A Terraform state (`terraform.tfstate`) is downloadable: it describes the whole infrastructure and frequently contains secrets in clear text (passwords, keys, tokens)."
+    recommendation: "Remove this file from the webroot and migrate the state to an encrypted remote backend."
+    explanation: "A `tfstate` file is the full state of the infrastructure managed by Terraform: resources, identifiers, addresses, and — by design — the sensitive values (database passwords, keys, tokens) stored in CLEAR text. It is not a file to serve over HTTP."
+    why: "Reading the tfstate gives an attacker an exhaustive map of the infrastructure AND the clear-text secrets it holds: it is both high-value reconnaissance and direct access to services."
+    steps:
+      - "Remove `{path}` from the webroot immediately."
+      - "Migrate the state to an encrypted remote backend (S3+KMS, Terraform Cloud…) instead of a served local file."
+      - "Treat any secret present in the state as compromised and regenerate it."
+      - "As a precaution, block `.tfstate` files server-side."
+    stacks:
+      nginx: "location ~* \\.tfstate { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx: location ~* \\.tfstate { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.tfstate\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block: (http.request.uri.path contains \".tfstate\")"
+    ai_prompt: "You are an infrastructure security expert. The site {host} (served by {stack}) exposes `{path}`, the Terraform state that reveals the infrastructure and clear-text secrets. Explain the risk, give the exact configuration for {stack} that blocks this file, and advise migrating the state to an encrypted remote backend and regenerating the secrets."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://developer.hashicorp.com/terraform/language/state/sensitive-data"
+    a_verifier: false
+
 exposed:
   clean:
     title: "No sensitive file exposed"

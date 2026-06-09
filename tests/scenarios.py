@@ -178,6 +178,16 @@ async def _collect():
     }
     await run("exposed_all", EX.exposed(mkctx(client=FakeClient(routes=exposed_routes), url="https://x/")))
     await run("exposed_clean", EX.exposed(mkctx(client=FakeClient(), url="https://x/")))
+    # Cibles ajoutées au Batch 1 (signatures dédiées) — hors golden, mais couvre le rendu FR/EN.
+    exposed_extended_routes = {
+        "wp-config.php": mkresp(200, {"content-type": "text/plain"},
+                                "<?php\ndefine('DB_NAME', 'wp');\ndefine('DB_PASSWORD', 's3cret');"),
+        ".aws/credentials": mkresp(200, {"content-type": "text/plain"},
+                                   "[default]\naws_access_key_id = AKIAIOSFODNN7EXAMPLE\naws_secret_access_key = wJal"),
+        "terraform.tfstate": mkresp(200, {"content-type": "application/json"},
+                                    '{"version": 4, "terraform_version": "1.7.0", "resources": []}'),
+    }
+    await run("exposed_extended", EX.exposed(mkctx(client=FakeClient(routes=exposed_extended_routes), url="https://x/")))
 
     # ---- SUBRESOURCES ----
     page_js = mkresp(headers={"content-type": HTML}, text='<script src="/app.js"></script>')

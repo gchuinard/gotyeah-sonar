@@ -326,6 +326,75 @@ exposed-phpinfo:
       - "https://owasp.org/www-project-web-security-testing-guide/"
     a_verifier: false
 
+exposed-wpconfig:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Le fichier `wp-config.php` est servi en clair : il contient les identifiants de la base de données WordPress et les clés de sécurité (salts)."
+    recommendation: "Bloque l'accès à `wp-config.php` côté serveur et régénère identifiants et salts si le fichier a pu être lu."
+    explanation: "Normalement, `wp-config.php` est interprété par PHP et son code n'est jamais renvoyé. Quand il est servi en clair (mauvaise config, sauvegarde, PHP désactivé), son contenu — `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST` et les `AUTH_KEY`/salts — devient lisible par n'importe qui."
+    why: "Avec les identifiants de base et les salts, un attaquant se connecte directement à la base WordPress, forge des cookies d'authentification valides et prend le contrôle du site. C'est une compromission immédiate."
+    steps:
+      - "Bloque l'accès direct à `wp-config.php` côté serveur."
+      - "Vérifie que PHP est bien actif (un `wp-config.php` renvoyé en texte signale un PHP non exécuté)."
+      - "Régénère le mot de passe de la base et les clés/salts (`AUTH_KEY`, etc.) : considère-les comme compromis."
+      - "Vérifie que `curl https://{host}/{path}` ne renvoie plus le code source."
+    stacks:
+      nginx: "location = /wp-config.php { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location = /wp-config.php { deny all; return 404; }"
+      apache: "<FilesMatch \"^wp-config\\.php$\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path eq \"/wp-config.php\")"
+    ai_prompt: "Tu es un expert en sécurité web. Le site {host} (servi par {stack}) expose `{path}` en clair, ce qui divulgue les identifiants de base WordPress et les salts. Explique le risque, donne la configuration exacte pour {stack} qui bloque ce fichier, et rappelle de régénérer le mot de passe de base et les clés de sécurité."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://developer.wordpress.org/advanced-administration/wordpress/wp-config/"
+    a_verifier: false
+
+exposed-aws:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un fichier d'identifiants AWS (`.aws/credentials`) est accessible : il contient des clés d'accès (`aws_access_key_id` + `aws_secret_access_key`) à ton compte cloud."
+    recommendation: "Supprime ce fichier du webroot, bloque `.aws/` et révoque immédiatement les clés exposées."
+    explanation: "Le fichier `~/.aws/credentials` stocke les clés d'accès programmatiques à AWS sous forme de profils INI. Exposé en HTTP, il livre des identifiants à long terme qui permettent d'agir sur le compte cloud via l'API/CLI."
+    why: "Avec une paire de clés AWS, un attaquant accède à tes ressources cloud (S3, EC2, IAM…), exfiltre des données, fait tourner des serveurs à tes frais (minage) ou détruit l'infrastructure. L'impact financier et opérationnel est majeur et immédiat."
+    steps:
+      - "Révoque/supprime les clés exposées dans la console IAM AWS sans attendre."
+      - "Supprime `{path}` du webroot et bloque l'accès au répertoire `.aws/`."
+      - "Audite CloudTrail pour repérer un usage frauduleux des clés."
+      - "Préfère des identités temporaires (rôles IAM / SSO) aux clés à long terme."
+    stacks:
+      nginx: "location ~ /\\.aws { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~ /\\.aws { deny all; return 404; }"
+      apache: "<DirectoryMatch \"\\.aws\"> Require all denied </DirectoryMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \"/.aws/\")"
+    ai_prompt: "Tu es un expert en sécurité cloud. Le site {host} (servi par {stack}) expose `{path}`, qui contient des clés d'accès AWS. Explique le risque, donne la configuration exacte pour {stack} qui bloque `.aws/`, et insiste : il faut révoquer les clés dans IAM immédiatement et auditer CloudTrail."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/522.html"
+      - "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html"
+    a_verifier: false
+
+exposed-tfstate:
+  found:
+    title: "Fichier sensible exposé : `{path}`"
+    detail: "Un état Terraform (`terraform.tfstate`) est téléchargeable : il décrit toute l'infrastructure et contient fréquemment des secrets en clair (mots de passe, clés, tokens)."
+    recommendation: "Retire ce fichier du webroot et migre l'état vers un backend distant chiffré."
+    explanation: "Un fichier `tfstate` est l'état complet de l'infrastructure gérée par Terraform : ressources, identifiants, adresses, et — par conception — les valeurs sensibles (mots de passe de base, clés, tokens) stockées en CLAIR. Ce n'est pas un fichier à servir en HTTP."
+    why: "Lire le tfstate donne à l'attaquant une cartographie exhaustive de l'infrastructure ET les secrets en clair qui y figurent : c'est à la fois de la reconnaissance de haute valeur et un accès direct à des services."
+    steps:
+      - "Retire `{path}` du webroot immédiatement."
+      - "Migre l'état vers un backend distant chiffré (S3+KMS, Terraform Cloud…) au lieu d'un fichier local servi."
+      - "Considère tout secret présent dans l'état comme compromis et régénère-le."
+      - "Bloque par précaution les fichiers `.tfstate` côté serveur."
+    stacks:
+      nginx: "location ~* \\.tfstate { deny all; return 404; }"
+      npm: "Proxy Host → Advanced → Custom Nginx : location ~* \\.tfstate { deny all; return 404; }"
+      apache: "<FilesMatch \"\\.tfstate\"> Require all denied </FilesMatch>"
+      cloudflare: "WAF → Custom rules → Block : (http.request.uri.path contains \".tfstate\")"
+    ai_prompt: "Tu es un expert en sécurité infrastructure. Le site {host} (servi par {stack}) expose `{path}`, l'état Terraform qui révèle l'infrastructure et des secrets en clair. Explique le risque, donne la configuration exacte pour {stack} qui bloque ce fichier, et conseille de migrer l'état vers un backend distant chiffré et de régénérer les secrets."
+    refs:
+      - "https://cwe.mitre.org/data/definitions/538.html"
+      - "https://developer.hashicorp.com/terraform/language/state/sensitive-data"
+    a_verifier: false
+
 exposed:
   clean:
     title: "Aucun fichier sensible exposé"
