@@ -15,6 +15,14 @@ from urllib.parse import urlparse
 from ..finding import Category, Finding, Severity
 from ..registry import check
 
+# Import optionnel : sert UNIQUEMENT au check `tls-key` (analyse clé/signature du certificat).
+# Absent (dev sans la lib), le check se désactive proprement plutôt que de planter.
+try:
+    from cryptography import x509 as _x509
+    from cryptography.hazmat.primitives.asymmetric import dsa as _dsa, ec as _ec, rsa as _rsa
+except Exception:  # pragma: no cover
+    _x509 = _rsa = _dsa = _ec = None
+
 C = Category.TLS
 
 # Timeout court sur le socket : on ne veut pas pendre le scan sur un port filtré.
@@ -102,7 +110,7 @@ def _expiry_findings(cert: dict) -> list[Finding]:
             code="expired",
             params={"not_after": not_after, "issuer": issuer or "inconnu"},
             evidence=not_after))
-    elif days < 15:
+    elif days < 30:  # ~1 mois : fenêtre standard d'alerte de renouvellement (était 15 j, trop court)
         findings.append(Finding("tls-cert-expiry", C, Severity.MEDIUM,
             code="soon", params={"days": days, "not_after": not_after},
             evidence=not_after))
@@ -221,3 +229,80 @@ async def tls_protocols(ctx):
         return [Finding("tls-protocols", C, Severity.MEDIUM, code="obsolete-accepted",
                         params={"protocols": joined}, evidence=joined)]
     return [Finding("tls-protocols", C, Severity.PASS, code="ok")]
+
+
+def _peer_cert_der(host: str, port: int) -> bytes | None:
+    """DER du certificat présenté, LU SANS validation (CERT_NONE) : on veut l'analyser même
+    s'il est auto-signé/expiré. `getpeercert(binary_form=True)` fonctionne sous CERT_NONE
+    (contrairement à la forme dict). Code BLOQUANT → asyncio.to_thread. Seam mockable."""
+    sslctx = ssl.create_default_context()
+    sslctx.check_hostname = False
+    sslctx.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((host, port), timeout=_TIMEOUT) as raw:
+            with sslctx.wrap_socket(raw, server_hostname=host) as ssock:
+                return ssock.getpeercert(binary_form=True)
+    except Exception:
+        return None
+
+
+def _cert_strength_findings(der: bytes) -> list[Finding]:
+    """Analyse la force du certificat : taille de la clé publique et algo de SIGNATURE.
+
+    Détection pure (lib `cryptography`) : une clé RSA/DSA < 2048 bits (ou EC < 256) et une
+    signature en SHA-1/MD5 (sujettes aux collisions, bannies des navigateurs) sont signalées."""
+    if _x509 is None:
+        return [Finding("tls-key", C, Severity.INFO, code="unavailable")]
+    try:
+        cert = _x509.load_der_x509_certificate(der)
+    except Exception:
+        return [Finding("tls-key", C, Severity.INFO, code="unparseable")]
+    return _strength_from_cert(cert)
+
+
+# Hachages de signature cassés (collisions) → rejetés par les navigateurs.
+_WEAK_SIG_HASHES = {"md5", "sha1"}
+
+
+def _strength_from_cert(cert) -> list[Finding]:
+    """Analyse un objet certificat (cryptography) → findings clé/signature. Séparé de
+    `_cert_strength_findings` pour être testable sans générer un vrai cert (impossible de
+    signer en SHA-1 sous OpenSSL 3.0)."""
+    findings: list[Finding] = []
+    pub = cert.public_key()
+    if isinstance(pub, _rsa.RSAPublicKey) and pub.key_size < 2048:
+        findings.append(Finding("tls-key", C, Severity.HIGH, code="weak-key",
+            params={"type": "RSA", "bits": pub.key_size}, evidence=f"RSA-{pub.key_size}"))
+    elif isinstance(pub, _dsa.DSAPublicKey) and pub.key_size < 2048:
+        findings.append(Finding("tls-key", C, Severity.HIGH, code="weak-key",
+            params={"type": "DSA", "bits": pub.key_size}, evidence=f"DSA-{pub.key_size}"))
+    elif isinstance(pub, _ec.EllipticCurvePublicKey) and pub.curve.key_size < 256:
+        findings.append(Finding("tls-key", C, Severity.HIGH, code="weak-key",
+            params={"type": "EC", "bits": pub.curve.key_size}, evidence=f"EC-{pub.curve.key_size}"))
+
+    try:
+        algo = cert.signature_hash_algorithm
+    except Exception:
+        algo = None
+    name = (getattr(algo, "name", "") or "").lower()
+    if name in _WEAK_SIG_HASHES:
+        findings.append(Finding("tls-key", C, Severity.MEDIUM, code="weak-sig",
+            params={"algo": name}, evidence=name))
+
+    if not findings:
+        findings.append(Finding("tls-key", C, Severity.PASS, code="ok"))
+    return findings
+
+
+@check("tls-key", "Robustesse du certificat (clé / signature)", Category.TLS)
+async def tls_key(ctx):
+    """Force cryptographique du certificat : taille de clé et algo de signature."""
+    parsed = urlparse(ctx.url)
+    if parsed.scheme != "https":
+        return []
+    port = parsed.port or 443
+    der = await asyncio.to_thread(_peer_cert_der, ctx.host, port)
+    if not der:
+        return [Finding("tls-key", C, Severity.INFO, code="unreachable",
+                        params={"host": ctx.host, "port": port})]
+    return _cert_strength_findings(der)

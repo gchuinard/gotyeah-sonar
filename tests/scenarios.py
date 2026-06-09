@@ -270,6 +270,32 @@ async def _collect():
     finally:
         TLS._connect = _orig
 
+    # ---- TLS-KEY (force clé/signature ; certs auto-signés générés, hors golden) ----
+    import datetime as _dt
+    from cryptography import x509 as _x509g
+    from cryptography.hazmat.primitives import hashes as _hashes
+    from cryptography.hazmat.primitives import serialization as _ser
+    from cryptography.hazmat.primitives.asymmetric import rsa as _rsag
+    from cryptography.x509.oid import NameOID as _NameOID
+
+    def _mk_cert_der(bits, hash_algo):
+        key = _rsag.generate_private_key(public_exponent=65537, key_size=bits)
+        nm = _x509g.Name([_x509g.NameAttribute(_NameOID.COMMON_NAME, "example.com")])
+        cert = (_x509g.CertificateBuilder()
+                .subject_name(nm).issuer_name(nm).public_key(key.public_key())
+                .serial_number(1)
+                .not_valid_before(_dt.datetime(2020, 1, 1))
+                .not_valid_after(_dt.datetime(2035, 1, 1))
+                .sign(key, hash_algo))
+        return cert.public_bytes(_ser.Encoding.DER)
+
+    # NB : on signe en SHA-256 (OpenSSL 3.0 refuse de signer en SHA-1) ; le cas « weak-key »
+    # vient donc de la taille de clé (RSA-1024). Le code weak-sig est testé à part (objet mocké).
+    out["tls_key_weak"] = [f.as_dict() for f in
+                           TLS._cert_strength_findings(_mk_cert_der(1024, _hashes.SHA256()))]
+    out["tls_key_ok"] = [f.as_dict() for f in
+                         TLS._cert_strength_findings(_mk_cert_der(2048, _hashes.SHA256()))]
+
     # ---- DNS (seam interne _resolve) ----
     import dns.resolver
 

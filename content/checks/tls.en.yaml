@@ -221,3 +221,61 @@ tls-protocols:
     title: "TLS protocols not verifiable"
     detail: "Could not establish a modern handshake to `{host}:{port}`: acceptance of old protocols could not be tested."
     why: "Without a successful baseline handshake, we prefer to conclude nothing rather than wrongly claim the old protocols are refused."
+
+tls-key:
+  weak-key:
+    title: "Certificate key too weak ({type}-{bits})"
+    detail: "The certificate's public key is a {bits}-bit {type}, below the recommended minimum (RSA/DSA ≥ 2048, EC ≥ 256)."
+    recommendation: "Re-issue the certificate with an RSA ≥ 2048-bit key (or ECDSA P-256)."
+    explanation: "A certificate's strength depends on its key size. A 1024-bit RSA/DSA key (or an elliptic curve < 256 bits) is now within reach of factorisation/compute attacks: a sufficiently motivated attacker could recover the private key and impersonate the service."
+    why: "With a too-short key, session confidentiality and authenticity are no longer guaranteed: the very basis of TLS is weakened. CAs and browsers already refuse RSA keys < 2048 bits."
+    steps:
+      - "Generate a new strong key: RSA 2048/4096-bit, or ECDSA P-256 (lighter and faster)."
+      - "Re-issue the certificate from this key (new CSR) with your CA (Let's Encrypt…)."
+      - "Deploy the new certificate and reload the server/proxy."
+      - "Treat the old key as at risk: do not reuse it."
+    stacks:
+      nginx: "openssl req -newkey rsa:2048 ... ; then set ssl_certificate/ssl_certificate_key to the new pair."
+      npm: "Proxy Host → SSL → re-issue the Let's Encrypt certificate (generates a compliant key)."
+      cloudflare: "SSL/TLS → Edge Certificates / Origin Server → regenerate an origin certificate with a compliant key."
+      apache: "SSLCertificateFile/SSLCertificateKeyFile on a certificate re-issued with an RSA ≥ 2048 (or ECDSA) key."
+    refs:
+      - "https://ssl-config.mozilla.org/"
+      - "https://www.ssllabs.com/ssltest/"
+    a_verifier: false
+  weak-sig:
+    title: "Weak certificate signature ({algo})"
+    detail: "The certificate is signed with `{algo}`, a collision-prone hash algorithm (SHA-1/MD5) banned by browsers."
+    recommendation: "Re-issue the certificate with a SHA-256 signature (or better)."
+    explanation: "A certificate's signature guarantees it has not been tampered with. SHA-1 and MD5 are broken with respect to collisions: it has become possible to forge a certificate with the same signature, opening the door to impersonation."
+    why: "A certificate signed with SHA-1/MD5 is rejected by modern browsers (blocking warning) and no longer provides the expected integrity guarantee. Any serious CA has signed with SHA-256 for years."
+    steps:
+      - "Re-issue the certificate with a CA that signs in SHA-256 (the default at Let's Encrypt and reputable CAs)."
+      - "Also check that the intermediate chain does not use SHA-1."
+      - "Deploy the new certificate and reload the service."
+      - "Re-test (SSL Labs) to confirm the SHA-256 signature."
+    stacks:
+      nginx: "Renew via `certbot` (SHA-256 signature by default) then `nginx -s reload`."
+      npm: "Proxy Host → SSL → re-issue the Let's Encrypt certificate."
+      cloudflare: "SSL/TLS → regenerate the certificate (Cloudflare signs with SHA-256)."
+      apache: "Renew via `certbot` then `apachectl graceful`."
+    refs:
+      - "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
+      - "https://www.ssllabs.com/ssltest/"
+    a_verifier: false
+  ok:
+    title: "Strong certificate (key / signature)"
+    detail: "The certificate's public key and signature algorithm meet the recommended minimums."
+    why: "Sufficiently long key and a modern signature (SHA-256+): the certificate's cryptography is not the weak link."
+  unreachable:
+    title: "Certificate strength not verifiable"
+    detail: "Could not read the certificate on `{host}:{port}` to analyse its key and signature."
+    why: "Without a certificate read, the cryptographic strength analysis could not be done: purely informational (filtered port, missing service…)."
+  unavailable:
+    title: "Certificate analysis unavailable"
+    detail: "The certificate analysis library (`cryptography`) is not available on this instance."
+    why: "The key/signature strength check is disabled for lack of tooling: install `cryptography` to enable it."
+  unparseable:
+    title: "Unreadable certificate"
+    detail: "The presented certificate could not be decoded for analysis."
+    why: "Unusual format or corrupt certificate: the key and signature analysis could not be performed automatically."

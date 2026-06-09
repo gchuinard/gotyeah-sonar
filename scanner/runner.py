@@ -172,6 +172,7 @@ _UNEXECUTED_CODES = {
     ("nuclei", "timeout"), ("nuclei", "incomplete"),
     ("zap", "timeout"), ("zap", "unreachable"),
     ("tls", "unreachable"), ("tls", "error"),
+    ("tls-key", "unreachable"), ("tls-key", "unavailable"),
 }
 
 

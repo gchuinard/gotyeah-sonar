@@ -221,3 +221,61 @@ tls-protocols:
     title: "Protocoles TLS non vérifiables"
     detail: "Impossible d'établir un handshake moderne vers `{host}:{port}` : l'acceptation des anciens protocoles n'a pas pu être testée."
     why: "Sans handshake de référence réussi, on préfère ne rien conclure plutôt que d'affirmer à tort que les vieux protocoles sont refusés."
+
+tls-key:
+  weak-key:
+    title: "Clé du certificat trop faible ({type}-{bits})"
+    detail: "La clé publique du certificat est une {type} de {bits} bits, en dessous du minimum recommandé (RSA/DSA ≥ 2048, EC ≥ 256)."
+    recommendation: "Ré-émets le certificat avec une clé RSA ≥ 2048 bits (ou ECDSA P-256)."
+    explanation: "La robustesse d'un certificat dépend de la taille de sa clé. Une clé RSA/DSA de 1024 bits (ou une courbe elliptique < 256 bits) est aujourd'hui à portée d'attaques de factorisation/calcul : un attaquant suffisamment motivé pourrait retrouver la clé privée et usurper le service."
+    why: "Avec une clé trop courte, la confidentialité et l'authenticité de la session ne sont plus garanties : c'est la base même de TLS qui est fragilisée. Les autorités et navigateurs refusent d'ailleurs déjà les clés RSA < 2048 bits."
+    steps:
+      - "Génère une nouvelle clé robuste : RSA 2048/4096 bits, ou ECDSA P-256 (plus légère et rapide)."
+      - "Ré-émets le certificat à partir de cette clé (nouveau CSR) auprès de ton AC (Let's Encrypt…)."
+      - "Déploie le nouveau certificat et recharge le serveur/proxy."
+      - "Considère l'ancienne clé comme à risque : ne la réutilise pas."
+    stacks:
+      nginx: "openssl req -newkey rsa:2048 ... ; puis ssl_certificate/ssl_certificate_key sur le nouveau couple."
+      npm: "Proxy Host → SSL → ré-émets le certificat Let's Encrypt (génère une clé conforme)."
+      cloudflare: "SSL/TLS → Edge Certificates / Origin Server → régénère un certificat d'origine avec une clé conforme."
+      apache: "SSLCertificateFile/SSLCertificateKeyFile sur un certificat ré-émis avec une clé RSA ≥ 2048 (ou ECDSA)."
+    refs:
+      - "https://ssl-config.mozilla.org/"
+      - "https://www.ssllabs.com/ssltest/"
+    a_verifier: false
+  weak-sig:
+    title: "Signature du certificat faible ({algo})"
+    detail: "Le certificat est signé en `{algo}`, un algorithme de hachage sujet aux collisions (SHA-1/MD5) et banni par les navigateurs."
+    recommendation: "Ré-émets le certificat avec une signature SHA-256 (ou mieux)."
+    explanation: "La signature d'un certificat garantit qu'il n'a pas été falsifié. SHA-1 et MD5 sont cassés vis-à-vis des collisions : il est devenu possible de forger un certificat présentant la même signature, ce qui ouvre la porte à l'usurpation."
+    why: "Un certificat signé en SHA-1/MD5 est rejeté par les navigateurs modernes (avertissement bloquant) et n'offre plus la garantie d'intégrité attendue. Toute AC sérieuse signe en SHA-256 depuis des années."
+    steps:
+      - "Ré-émets le certificat auprès d'une AC qui signe en SHA-256 (c'est le défaut chez Let's Encrypt et les AC reconnues)."
+      - "Vérifie aussi que la chaîne intermédiaire n'utilise pas SHA-1."
+      - "Déploie le nouveau certificat et recharge le service."
+      - "Re-teste (SSL Labs) pour confirmer la signature SHA-256."
+    stacks:
+      nginx: "Renouvelle via `certbot` (signature SHA-256 par défaut) puis `nginx -s reload`."
+      npm: "Proxy Host → SSL → ré-émets le certificat Let's Encrypt."
+      cloudflare: "SSL/TLS → régénère le certificat (Cloudflare signe en SHA-256)."
+      apache: "Renouvelle via `certbot` puis `apachectl graceful`."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/Security/Transport_Layer_Security"
+      - "https://www.ssllabs.com/ssltest/"
+    a_verifier: false
+  ok:
+    title: "Certificat robuste (clé / signature)"
+    detail: "La clé publique et l'algorithme de signature du certificat respectent les minimums recommandés."
+    why: "Clé suffisamment longue et signature moderne (SHA-256+) : la cryptographie du certificat n'est pas le maillon faible."
+  unreachable:
+    title: "Robustesse du certificat non vérifiable"
+    detail: "Impossible de lire le certificat sur `{host}:{port}` pour analyser sa clé et sa signature."
+    why: "Sans certificat lu, l'analyse de la force cryptographique n'a pas pu se faire : résultat purement informatif (port filtré, service absent…)."
+  unavailable:
+    title: "Analyse du certificat indisponible"
+    detail: "La bibliothèque d'analyse de certificat (`cryptography`) n'est pas disponible sur cette instance."
+    why: "Le check de robustesse de clé/signature est désactivé faute d'outil : installe `cryptography` pour l'activer."
+  unparseable:
+    title: "Certificat illisible"
+    detail: "Le certificat présenté n'a pas pu être décodé pour analyse."
+    why: "Format inhabituel ou certificat corrompu : l'analyse de la clé et de la signature n'a pas pu être réalisée automatiquement."
