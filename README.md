@@ -220,7 +220,7 @@ le jeton dans le panneau (le serveur reçoit alors un `401` au prochain appel).
 
 | Catégorie | Checks |
 |-----------|--------|
-| En-têtes HTTP | CSP, HSTS (+ max-age), clickjacking (X-Frame-Options / frame-ancestors), nosniff, Referrer-Policy, Permissions-Policy, divulgation de version serveur, **COOP / COEP / CORP**, **Cache-Control des réponses sensibles** |
+| En-têtes HTTP | jugés sur leur **valeur**, pas leur seule présence (fini le faux « ok » d'un en-tête posé mais inopérant) : CSP (absente, **permissive** — `script-src`/`default-src` large `*`/`http:`/`data:` —, ou `unsafe-inline`/`unsafe-eval`), HSTS (**`max-age=0`/absent = désactivé**, + durée trop courte), clickjacking (X-Frame-Options / frame-ancestors, **valeurs no-op `ALLOWALL`/`frame-ancestors *` détectées**), nosniff, Referrer-Policy (**`unsafe-url` sans effet**), Permissions-Policy, divulgation de version serveur, **COOP (`unsafe-none` = no-op) / COEP / CORP**, **Cache-Control des réponses sensibles** |
 | Cookies | Secure / HttpOnly / SameSite sur chaque cookie posé |
 | TLS | version négociée (refus < 1.2), validité et expiration du certificat (**alerte à 30 j**), **protocoles obsolètes encore acceptés (TLS 1.0/1.1)**, **robustesse du certificat** (taille de clé RSA/DSA < 2048 ou EC < 256, **algo de signature SHA-1/MD5**) |
 | DNS | SPF (+ **qualificateur `all` permissif `+all`/`?all`** et **SPF multiples** = permerror), DMARC (`p=none`, **`pct=0`** = appliqué à 0 %, **`sp=none`** = sous-domaines exposés), CAA, **DKIM, MTA-STS, TLS-RPT, DNSSEC**, **subdomain takeover** (CNAME dangling vers GitHub Pages / S3 / Heroku…). Les enregistrements e-mail sont cherchés sur le **domaine d'organisation (eTLD+1)**, pas le sous-domaine scanné. |
@@ -229,7 +229,7 @@ le jeton dans le panneau (le serveur reçoit alors un `401` au prochain appel).
 
 | Catégorie | Checks |
 |-----------|--------|
-| Exposition | fichiers sensibles exposés (`.env`, `.git/HEAD`, `.git/config`, sauvegardes, `.DS_Store`, `phpinfo`…), avec sonde anti soft-404 et **signature de contenu obligatoire** (jamais sur le seul code 200) |
+| Exposition | fichiers sensibles exposés (`.env`, `.git/HEAD`, `.git/config`, **`wp-config.php`**, **`.aws/credentials`**, **`terraform.tfstate`**, sauvegardes, `.DS_Store`, `phpinfo`…), avec sonde anti soft-404 et **signature de contenu obligatoire** (jamais sur le seul code 200). Chaque chemin est sondé sur l'URL finale **et sur la racine du domaine** (un `.env` servi à la racine n'est plus manqué quand l'accueil redirige vers un sous-chemin, ex. `/` → `/en/`) |
 | Fuites & well-known | **source maps** (`.js.map`), **doc d'API** (Swagger/OpenAPI), **introspection GraphQL**, **listing de répertoire** (autoindex), présence de `/.well-known/security.txt` |
 | Méthodes HTTP | **TRACE** (XST) et verbes d'écriture (PUT/DELETE/PATCH) annoncés — lecture seule |
 | CORS | origine reflétée, `*`, `null`, et combinaison dangereuse avec `Access-Control-Allow-Credentials` |
@@ -255,10 +255,16 @@ le jeton dans le panneau (le serveur reçoit alors un `401` au prochain appel).
 | Catégorie | Checks |
 |-----------|--------|
 | Pentest (nuclei) | exécution de **nuclei** sur la cible ; chaque résultat (CVE, mauvaise config, panel exposé…) devient un `Finding`. Par défaut **cantonné aux familles exploitables** (bornées par la sévérité pour le volume) : `NUCLEI_TAGS` (défaut `cve,misconfig,exposure,exposed-panels,default-login,takeover` ; `NUCLEI_TAGS=all` lève le filtre). Les résultats sont **dédoublonnés par template** (un template qui matche N pages = un seul finding, avec le compte), et la sortie est lue **au fil de l'eau** : au timeout, les résultats déjà trouvés sont **conservés** (le scan est alors marqué incomplet et la note plafonnée). Autres réglages : `NUCLEI_SEVERITY` (défaut `medium,high,critical`), `NUCLEI_RATE_LIMIT` (req/s, défaut 50), `NUCLEI_TIMEOUT` (défaut 240 s), `NUCLEI_ARGS` (args bruts en plus), `SONAR_NUCLEI=off` pour le couper. nuclei est installé dans l'image Docker ; sans le binaire (dev local), le check se désactive proprement. |
-| Pentest (ZAP) | dialogue avec un démon **OWASP ZAP** via son API REST (baseline passif par défaut : accès URL + spider borné + scan passif → alertes). Chaque alerte ZAP devient un `Finding`. Sans démon configuré, le check se désactive proprement. Voir [OWASP ZAP](#owasp-zap-optionnel). |
+| Pentest (ZAP) | dialogue avec un démon **OWASP ZAP** via son API REST (baseline passif par défaut : accès URL + spider borné + scan passif → alertes). Chaque alerte ZAP devient un `Finding`. Le faux positif « Private IP Disclosure » (pluginId 2) que Cloudflare injecte sur ses endpoints `/cdn-cgi/*` est **écarté automatiquement** (filtre restreint au seul pluginId 2 **et** aux URL/preuves `/cdn-cgi/`, pour ne jamais masquer une vraie alerte). Sans démon configuré, le check se désactive proprement. Voir [OWASP ZAP](#owasp-zap-optionnel). |
 
-Chaque finding a une sévérité (critique → conforme). Le score sur 100 et la note (A+ → F)
-se calculent en pénalisant selon la gravité.
+Chaque finding a une sévérité (critique → conforme). Le **score** sur 100 se calcule en
+pénalisant selon la gravité ; la **note** (A+ → F) en découle, puis est **plafonnée** par deux
+garde-fous : la **pire sévérité** présente (≥1 finding **critique** ⇒ note max **E**, ≥1 **élevé**
+⇒ max **C**) et la **couverture** (dès qu'un check n'a pas pu s'exécuter — crash isolé, outil de
+pentest absent/en timeout, deadline globale dépassée — la note ne dépasse plus **B**). Autrement
+dit, **la note ne ment pas** : un score élevé ne masque jamais un problème grave (un seul `.env`
+exposé ne vaut pas un « B »), et un scan où des outils n'ont rien pu tester n'affiche jamais un
+« A+ » rassurant.
 
 #### OWASP ZAP (optionnel)
 
@@ -332,9 +338,13 @@ from ..registry import check
 
 @check("hdr-coop", "Cross-Origin-Opener-Policy", Category.HEADERS)
 async def coop(ctx):
-    if ctx.response.headers.get("cross-origin-opener-policy"):
-        return [Finding("hdr-coop", Category.HEADERS, Severity.PASS, code="ok")]
-    return [Finding("hdr-coop", Category.HEADERS, Severity.LOW, code="absent")]
+    # On juge la VALEUR, pas seulement la présence : `unsafe-none` est posé mais n'isole rien.
+    v = (ctx.response.headers.get("cross-origin-opener-policy") or "").strip().lower()
+    if not v:
+        return [Finding("hdr-coop", Category.HEADERS, Severity.LOW, code="absent")]
+    if v == "unsafe-none":
+        return [Finding("hdr-coop", Category.HEADERS, Severity.LOW, code="weak", evidence=v)]
+    return [Finding("hdr-coop", Category.HEADERS, Severity.PASS, code="ok")]
 ```
 
 ```yaml
@@ -351,6 +361,9 @@ hdr-coop:
     ai_prompt: "… {host} … {stack} …"   # si corrigeable par un agent de code
     refs: ["https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy"]
     a_verifier: false
+  weak:
+    title: "Cross-Origin-Opener-Policy inopérant (unsafe-none)"
+    why: "`unsafe-none` équivaut à pas de COOP : le contexte de navigation reste partagé."
   ok:
     title: "Cross-Origin-Opener-Policy présent"
     why: "Le contexte de navigation est isolé des fenêtres tierces."
@@ -423,5 +436,17 @@ Procédure complète (réutilisable pour `en`, `de`…) dans `tools/PROMPTS.md`.
   + delta entre deux scans) et `get_fix` (remédiation actionnable + prompt IA par stack) — pur
   calcul partagé (`scan_compare`), dispo dans les **deux** transports. La boucle
   scanne → corrige → vérifie est désormais entièrement pilotable depuis Claude.
+- **Durcissement sécurité** : ✅ — **la note ne ment plus**. Un certificat invalide ou un check
+  qui plante ne décroche plus un A (cert lu sans bloquer le scan ; les sévérités plafonnent le
+  grade : ≥1 CRITICAL ⇒ E, ≥1 HIGH ⇒ C, couverture incomplète ⇒ B au mieux). Les en-têtes et le
+  DNS sont jugés sur leur **valeur**, pas leur seule présence (CSP/XFO permissifs, HSTS
+  `max-age=0`, SPF `+all`, DMARC `pct=0`/`sp=none`…). Le pentest est rendu opérant (nuclei CVE
+  par défaut, dédup par template-id, streaming qui garde le partiel au timeout ; ZAP recadré sur
+  les vrais positifs). Le moteur gagne une garde **anti-SSRF** (le transport refuse loopback, IP
+  internes et `169.254.169.254` ; `SONAR_ALLOW_PRIVATE=on` pour un homelab) et une **deadline
+  globale** (`SONAR_SCAN_DEADLINE`, 300 s). Côté TLS, un check juge la **robustesse du
+  certificat** (clé trop courte, signature SHA-1/MD5) et alerte plus tôt sur l'expiration (30 j).
+  Le tout est verrouillé par un **oracle de justesse** (cible vulnérable → verdict attendu) +
+  une intégration badssl, rejoués chaque nuit (`.github/workflows/nightly.yml`).
 
 Tout ça se branche sans rien casser, parce que ça reste le même format de sortie.
