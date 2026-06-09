@@ -70,9 +70,15 @@ def test_drop_cdn_cgi_filters_cloudflare_false_positives():
          "url": "https://x/page", "evidence": "https://x/cdn-cgi/trace"},
         # Vraie alerte hors cdn-cgi -> conservée.
         {"pluginId": "40012", "alert": "XSS", "risk": "High", "url": "https://x/a"},
+        # VRAIE alerte (id != 2) dont l'URL contient /cdn-cgi/ -> NE DOIT PAS être supprimée.
+        {"pluginId": "40012", "alert": "XSS cdn-cgi", "risk": "High",
+         "url": "https://x/cdn-cgi/challenge?q=<script>"},
+        # Private IP Disclosure (id 2) mais HORS cdn-cgi -> conservée (vraie fuite d'IP interne).
+        {"pluginId": "2", "alert": "Private IP", "risk": "Low",
+         "url": "https://x/status", "evidence": "10.1.2.3"},
     ]
-    kept = zapmod._drop_cdn_cgi(alerts)
-    assert [a["alert"] for a in kept] == ["XSS"]
+    kept = [a["alert"] for a in zapmod._drop_cdn_cgi(alerts)]
+    assert kept == ["XSS", "XSS cdn-cgi", "Private IP"]
 
 
 # ---- flux complet (API mockée) ----

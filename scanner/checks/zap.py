@@ -72,33 +72,44 @@ async def _poll(client, path, params, key, *, target=100, descending=False, inte
 
     Borné par un nombre d'itérations ; le `wait_for` global borne déjà l'ensemble.
     """
+    errors = 0
     for _ in range(120):
         try:
             data = await _zap_get(client, path, **params)
             val = int(str(data.get(key, target)))
+            errors = 0
         except Exception:
-            return
+            # Un hoquet transitoire ne doit pas être pris pour « scan terminé » (sinon on lit
+            # les alertes trop tôt et on rate les plus sévères encore en file). On retente.
+            errors += 1
+            if errors >= 3:
+                return
+            await asyncio.sleep(interval)
+            continue
         if (descending and val <= target) or (not descending and val >= target):
             return
         await asyncio.sleep(interval)
 
 
 def _drop_cdn_cgi(alerts: list[dict]) -> list[dict]:
-    """Écarte les alertes ZAP visant un endpoint Cloudflare `/cdn-cgi/*`.
+    """Écarte le FAUX POSITIF « Private IP Disclosure » de Cloudflare sur `/cdn-cgi/*`.
 
     Pourquoi : Cloudflare injecte des IPs PRIVÉES internes dans les réponses de ses
     endpoints `/cdn-cgi/*` (email-protection, challenge, beacon…). ZAP les remonte alors
-    comme « Private IP Disclosure » (alert id 2) — or ce sont des FAUX POSITIFS : ces IPs
-    appartiennent à l'infra Cloudflare, pas au site audité. On filtre ces alertes AVANT la
-    création des Finding pour ne pas polluer le rapport (ni pénaliser le score à tort).
+    comme « Private IP Disclosure » (**pluginId 2**) — ces IPs appartiennent à l'infra
+    Cloudflare, pas au site audité.
+
+    On ne filtre QUE l'alerte id 2 ET sur un endpoint cdn-cgi : sinon une VRAIE alerte
+    (XSS, injection…) dont l'URL contient `/cdn-cgi/` serait silencieusement supprimée.
     """
-    def _is_cdn_cgi(a: dict) -> bool:
-        # `/cdn-cgi/` dans le chemin de l'URL, ou dans l'evidence (selon ce que ZAP remonte).
+    def _is_cf_private_ip_fp(a: dict) -> bool:
+        if str(a.get("pluginId") or "") != "2":        # 2 = Private IP Disclosure
+            return False
         if "/cdn-cgi/" in urlparse(a.get("url") or "").path:
             return True
         return "/cdn-cgi/" in str(a.get("evidence") or "")
 
-    return [a for a in alerts if not _is_cdn_cgi(a)]
+    return [a for a in alerts if not _is_cf_private_ip_fp(a)]
 
 
 def _dedup_to_findings(alerts: list[dict]) -> list[Finding]:
