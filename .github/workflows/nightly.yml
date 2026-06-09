@@ -1,0 +1,25 @@
+name: Nightly integration tests
+
+# Tests d'INTÉGRATION réseau (badssl.com) : ils touchent de vraies cibles, donc on ne les met
+# PAS dans le gate de déploiement (deploy.yml) — flakiness réseau. On les lance chaque nuit
+# pour détecter une régression réelle (cert cassé qui avorte le scan, verify-failed muet…).
+
+on:
+  schedule:
+    - cron: "0 3 * * *"     # tous les jours ~03:00 UTC
+  workflow_dispatch:         # bouton « Run workflow » pour lancer à la main
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v5
+      - name: Installer les dépendances
+        run: |
+          python3 -m pip install --break-system-packages --upgrade pip
+          python3 -m pip install --break-system-packages -r requirements-dev.txt
+      - name: Tests d'intégration réels (réseau)
+        env:
+          SONAR_INTEGRATION: "1"
+        run: python3 -m pytest -m integration -v

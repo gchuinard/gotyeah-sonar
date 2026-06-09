@@ -1303,20 +1303,6 @@
     {
       "catalog": null,
       "category": "tls",
-      "check_id": "tls-version",
-      "code": "",
-      "detail": "La connexion négocie `TLSv1.3` (>= TLS 1.2).",
-      "entry_id": null,
-      "evidence": "TLSv1.3",
-      "params": {},
-      "recommendation": "",
-      "severity": "pass",
-      "source_text": null,
-      "title": "Version TLS correcte"
-    },
-    {
-      "catalog": null,
-      "category": "tls",
       "check_id": "tls-cert-expiry",
       "code": "",
       "detail": "Le certificat est valide encore 199 jour(s) (jusqu'au `Dec 21 08:55:43 2026 GMT`).",

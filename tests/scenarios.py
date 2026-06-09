@@ -241,36 +241,7 @@ async def _collect():
     def _gmt(ts):
         return time.strftime("%b %d %H:%M:%S %Y GMT", time.gmtime(ts))
 
-    out["tls_cert_expired"] = [f.as_dict() for f in TLS._expiry_findings(_cert(not_after=_gmt(now - 86400)))]
-    out["tls_cert_soon"] = [f.as_dict() for f in TLS._expiry_findings(_cert(not_after=_gmt(now + 5 * 86400)))]
-    out["tls_cert_ok"] = [f.as_dict() for f in TLS._expiry_findings(_cert(not_after=_gmt(now + 200 * 86400)))]
-    out["tls_cert_not_yet"] = [f.as_dict() for f in TLS._expiry_findings(
-        _cert(not_after=_gmt(now + 200 * 86400), not_before=_gmt(now + 86400)))]
-
-    # verify-failed : _connect lève SSLCertVerificationError sous verify=True
-    def _connect_verifyfail(host, port, verify):
-        if verify:
-            err = ssl.SSLCertVerificationError("certificate verify failed")
-            err.reason = "CERTIFICATE_VERIFY_FAILED"
-            err.verify_message = "self signed certificate"
-            raise err
-        return "TLSv1.3", _cert(not_after=_gmt(now + 200 * 86400))
-    _orig = TLS._connect
-    TLS._connect = _connect_verifyfail
-    try:
-        await run("tls_verify_failed", TLS.tls(mkctx(url="https://x/", host="x")))
-    finally:
-        TLS._connect = _orig
-
-    def _connect_unreachable(host, port, verify):
-        raise OSError("connection refused")
-    TLS._connect = _connect_unreachable
-    try:
-        await run("tls_unreachable", TLS.tls(mkctx(url="https://x/", host="x")))
-    finally:
-        TLS._connect = _orig
-
-    # ---- TLS-KEY (force clé/signature ; certs auto-signés générés, hors golden) ----
+    # Générateur de cert auto-signé (réutilisé par verify-failed et tls-key).
     import datetime as _dt
     from cryptography import x509 as _x509g
     from cryptography.hazmat.primitives import hashes as _hashes
@@ -289,6 +260,40 @@ async def _collect():
                 .sign(key, hash_algo))
         return cert.public_bytes(_ser.Encoding.DER)
 
+    out["tls_cert_expired"] = [f.as_dict() for f in TLS._expiry_findings(_cert(not_after=_gmt(now - 86400)))]
+    out["tls_cert_soon"] = [f.as_dict() for f in TLS._expiry_findings(_cert(not_after=_gmt(now + 5 * 86400)))]
+    out["tls_cert_ok"] = [f.as_dict() for f in TLS._expiry_findings(_cert(not_after=_gmt(now + 200 * 86400)))]
+    out["tls_cert_not_yet"] = [f.as_dict() for f in TLS._expiry_findings(
+        _cert(not_after=_gmt(now + 200 * 86400), not_before=_gmt(now + 86400)))]
+
+    # verify-failed : _connect lève TOUJOURS (plus de reconnexion verify=False), et c'est
+    # _peer_cert_der (binary_form, marche sous CERT_NONE) qui fournit le cert pour confirmer
+    # l'expiration — reflète la PROD (l'ancien mock renvoyait un cert peuplé que getpeercert()
+    # dict ne donne jamais sous CERT_NONE, masquant le code mort).
+    def _connect_verifyfail(host, port, verify):
+        err = ssl.SSLCertVerificationError("certificate verify failed")
+        err.reason = "CERTIFICATE_VERIFY_FAILED"
+        err.verify_message = "self signed certificate"
+        raise err
+    _orig = TLS._connect
+    _orig_peer = TLS._peer_cert_der
+    TLS._connect = _connect_verifyfail
+    TLS._peer_cert_der = lambda host, port: _mk_cert_der(2048, _hashes.SHA256())
+    try:
+        await run("tls_verify_failed", TLS.tls(mkctx(url="https://x/", host="x")))
+    finally:
+        TLS._connect = _orig
+        TLS._peer_cert_der = _orig_peer
+
+    def _connect_unreachable(host, port, verify):
+        raise OSError("connection refused")
+    TLS._connect = _connect_unreachable
+    try:
+        await run("tls_unreachable", TLS.tls(mkctx(url="https://x/", host="x")))
+    finally:
+        TLS._connect = _orig
+
+    # ---- TLS-KEY (force clé/signature ; certs auto-signés via _mk_cert_der, hors golden) ----
     # NB : on signe en SHA-256 (OpenSSL 3.0 refuse de signer en SHA-1) ; le cas « weak-key »
     # vient donc de la taille de clé (RSA-1024). Le code weak-sig est testé à part (objet mocké).
     out["tls_key_weak"] = [f.as_dict() for f in

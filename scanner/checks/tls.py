@@ -138,20 +138,18 @@ async def tls(ctx):
         try:
             version, cert = await asyncio.to_thread(_connect, host, port, True)
         except ssl.SSLCertVerificationError as exc:
-            # 2. Échec de validation : on reconnecte SANS vérifier, uniquement
-            #    pour lire le cert et remonter le problème précis.
+            # 2. Échec de validation : on lit le cert SANS valider pour confirmer une éventuelle
+            #    expiration. `getpeercert(binary_form=True)` FONCTIONNE sous CERT_NONE (la forme
+            #    dict, elle, renvoie {} → l'ancienne confirmation par _expiry_findings(dict) était
+            #    du CODE MORT). On n'émet PAS de finding « version OK » ici : afficher un point
+            #    vert (version moderne) à côté d'un certificat refusé induit en erreur.
             findings: list[Finding] = [Finding("tls", C, Severity.HIGH,
                 code="verify-failed",
                 params={"error": str(exc.reason or exc)},
                 evidence=str(exc.verify_message or exc.reason or exc))]
-            try:
-                version, cert = await asyncio.to_thread(_connect, host, port, False)
-            except Exception:
-                version, cert = None, {}
-            # Le défaut de validation peut être une expiration : on tente de
-            # confirmer en CRITICAL via le cert lu sans vérification.
-            findings.extend(_version_findings(version))
-            findings.extend(_expiry_findings(cert))
+            der = await asyncio.to_thread(_peer_cert_der, host, port)
+            if der:
+                findings.extend(_expiry_from_der(der))
             return findings
 
         # Handshake vérifié OK : on produit les checks détaillés.
@@ -244,6 +242,31 @@ def _peer_cert_der(host: str, port: int) -> bytes | None:
                 return ssock.getpeercert(binary_form=True)
     except Exception:
         return None
+
+
+def _expiry_from_der(der: bytes) -> list[Finding]:
+    """Confirme une éventuelle expiration depuis le DER du certificat. `binary_form=True`
+    fonctionne sous CERT_NONE (lecture d'un cert non vérifié), contrairement à la forme dict de
+    `getpeercert()` qui renvoie `{}` — d'où l'ancien code mort. Réutilise `_expiry_findings` via
+    une forme dict reconstruite."""
+    if _x509 is None:
+        return []
+    try:
+        cert = _x509.load_der_x509_certificate(der)
+    except Exception:
+        return []
+    nb = getattr(cert, "not_valid_before_utc", None) or cert.not_valid_before
+    na = getattr(cert, "not_valid_after_utc", None) or cert.not_valid_after
+
+    def _fmt(dt):
+        return dt.strftime("%b %d %H:%M:%S %Y GMT")
+
+    return _expiry_findings({
+        "notBefore": _fmt(nb),
+        "notAfter": _fmt(na),
+        "issuer": ((("organizationName", cert.issuer.rfc4514_string()),),),
+        "subject": ((("commonName", cert.subject.rfc4514_string()),),),
+    })
 
 
 def _cert_strength_findings(der: bytes) -> list[Finding]:
