@@ -84,6 +84,10 @@ class Finding:
     catalog: Optional[str] = None               # "zap" | "nuclei" | None (= maison, clé = check_id)
     entry_id: Optional[str] = None              # pluginId / template-id (clé de contenu stable)
     source_text: Optional[dict] = None          # {title, detail, recommendation, refs[]} langue d'origine
+    # --- couverture : True si ce finding signale que le check N'A PAS pu s'exécuter
+    # (crash isolé par le runner, outil de pentest absent/timeout, hôte injoignable). Ce
+    # n'est PAS un PASS : ça plafonne le grade (cf. score_and_grade) au lieu de le gonfler.
+    unexecuted: bool = False
 
     def as_dict(self) -> dict:
         """Sérialise la forme structurée (c'est ce qui est streamé et persisté).
@@ -101,29 +105,57 @@ class Finding:
             "catalog": self.catalog,
             "entry_id": self.entry_id,
             "source_text": self.source_text,
+            "unexecuted": self.unexecuted,
             "title": self.title,
             "detail": self.detail,
             "recommendation": self.recommendation,
         }
 
 
+# Grades du meilleur au pire — sert au plafonnement (un plafond ne fait que descendre).
+_GRADE_ORDER = ["A+", "A", "B", "C", "D", "E", "F"]
+
+
+def _grade_from_score(score: int) -> str:
+    if score >= 95:
+        return "A+"
+    if score >= 85:
+        return "A"
+    if score >= 75:
+        return "B"
+    if score >= 65:
+        return "C"
+    if score >= 50:
+        return "D"
+    if score >= 35:
+        return "E"
+    return "F"
+
+
+def _worst_grade(*grades: str) -> str:
+    """Le pire (le plus bas) des grades fournis."""
+    return max(grades, key=_GRADE_ORDER.index)
+
+
 def score_and_grade(findings: list["Finding"]) -> tuple[int, str]:
     penalty = sum(_WEIGHTS[f.severity] for f in findings)
     score = max(0, 100 - penalty)
-    if score >= 95:
-        grade = "A+"
-    elif score >= 85:
-        grade = "A"
-    elif score >= 75:
-        grade = "B"
-    elif score >= 65:
-        grade = "C"
-    elif score >= 50:
-        grade = "D"
-    elif score >= 35:
-        grade = "E"
-    else:
-        grade = "F"
+    grade = _grade_from_score(score)
+
+    # Plafond par PIRE SÉVÉRITÉ : un problème grave doit empêcher une note rassurante même
+    # si le score brut reste haut (un seul fichier `.env` exposé ne peut pas valoir un « B »).
+    severities = {f.severity for f in findings}
+    if Severity.CRITICAL in severities:
+        grade = _worst_grade(grade, "E")
+    elif Severity.HIGH in severities:
+        grade = _worst_grade(grade, "C")
+
+    # Plafond par COUVERTURE INCOMPLÈTE : si un check a planté ou qu'un outil de pentest
+    # n'a pas tourné (absent/timeout), on ne prétend pas à l'excellence — pas d'A/A+. Sinon
+    # un scan où nuclei est absent afficherait « A+ » alors que rien n'a été testé.
+    if any(getattr(f, "unexecuted", False) for f in findings):
+        grade = _worst_grade(grade, "B")
+
     return score, grade
 
 
@@ -132,4 +164,8 @@ def summarize(findings: list["Finding"]) -> dict:
     for f in findings:
         counts[f.severity.value] += 1
     score, grade = score_and_grade(findings)
-    return {"score": score, "grade": grade, "counts": counts, "total": len(findings)}
+    # Checks qui n'ont pas pu s'exécuter (couverture partielle) — exposé au front pour une
+    # bannière « scan incomplet », et reflété par le plafond de grade ci-dessus.
+    incomplete = sorted({f.check_id for f in findings if getattr(f, "unexecuted", False)})
+    return {"score": score, "grade": grade, "counts": counts, "total": len(findings),
+            "incomplete": bool(incomplete), "unexecuted": incomplete}

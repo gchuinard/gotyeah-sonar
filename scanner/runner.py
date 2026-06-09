@@ -59,19 +59,40 @@ def normalize_target(target: str) -> str:
     return target
 
 
+async def _fetch_root(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    """GET la racine. Si l'HTTPS échoue au niveau TRANSPORT (443 fermé / pas de TLS),
+    on retombe sur http:// : un site HTTP-only doit quand même être scanné — le check
+    `tls` émettra alors le finding « http » (trafic en clair) au lieu que TOUT le scan
+    échoue en « cible injoignable »."""
+    try:
+        return await client.get(url)
+    except httpx.TransportError:
+        if url.startswith("https://"):
+            return await client.get("http://" + url[len("https://"):])
+        raise
+
+
 async def _build_context(target: str) -> Context:
-    url = normalize_target(target)
+    requested = normalize_target(target)
+    # verify=False À DESSEIN : un certificat invalide (expiré, auto-signé, mauvais hôte,
+    # chaîne cassée) ne doit PAS faire échouer la construction du contexte et perdre la
+    # cible — c'est précisément un cas qu'on veut signaler. C'est le check `tls` qui rejoue
+    # un handshake VÉRIFIANT et fait autorité sur la validité du certificat.
     client = httpx.AsyncClient(
         follow_redirects=True,
         timeout=httpx.Timeout(15.0),
         headers={"User-Agent": USER_AGENT},
-        verify=True,
+        verify=False,
     )
-    resp = await client.get(url)
+    try:
+        resp = await _fetch_root(client, requested)
+    except Exception:
+        await client.aclose()
+        raise
     parsed = urlparse(str(resp.url))
     return Context(
         url=str(resp.url),
-        requested_url=url,
+        requested_url=requested,
         host=parsed.hostname or "",
         response=resp,
         history=list(resp.history),
@@ -79,18 +100,35 @@ async def _build_context(target: str) -> Context:
     )
 
 
+# (check_id, code) qu'un check émet pour dire « je n'ai PAS pu m'exécuter » (outil absent,
+# timeout, hôte injoignable) — à distinguer d'un vrai PASS. Marqués `unexecuted` → plafond
+# de grade. NB : les codes « off »/« not-configured » (désactivation VOLONTAIRE) n'y sont
+# pas : couper nuclei/ZAP exprès n'est pas une couverture défaillante.
+_UNEXECUTED_CODES = {
+    ("nuclei", "not-installed"), ("nuclei", "unavailable"),
+    ("nuclei", "timeout"), ("nuclei", "incomplete"),
+    ("zap", "timeout"), ("zap", "unreachable"),
+    ("tls", "unreachable"), ("tls", "error"),
+}
+
+
 async def _safe_run(chk: Check, ctx: Context):
-    """Un check qui plante ne doit jamais casser le scan entier."""
+    """Un check qui plante ne doit jamais casser le scan entier — mais son échec est TRACÉ
+    (`unexecuted`) pour que le score n'en tire pas un faux bon point (couverture réduite)."""
     try:
         findings = await chk.fn(ctx) or []
     except Exception as exc:
-        findings = [Finding(
+        return chk, [Finding(
             check_id=chk.id,
-            category=Category.INFO,
+            category=chk.category,
             severity=Severity.INFO,
             title=f"Check « {chk.title} » indisponible",
             detail=f"{type(exc).__name__}: {exc}",
+            unexecuted=True,
         )]
+    for f in findings:
+        if (f.check_id, f.code) in _UNEXECUTED_CODES:
+            f.unexecuted = True
     return chk, findings
 
 

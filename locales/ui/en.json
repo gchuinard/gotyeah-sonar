@@ -93,7 +93,8 @@
     "of_100": "/ 100",
     "analyzing": "scanning · {done}/{total}",
     "summary": "{issues} issue(s) · {pass} pass",
-    "idle_caption": "exposure surface index"
+    "idle_caption": "exposure surface index",
+    "incomplete": "incomplete coverage · {n} check(s) not run — grade capped"
   },
 
   "domains": {

@@ -118,6 +118,10 @@ def render_finding(f: dict, lang: str = "fr") -> dict:
         "severity": f.get("severity"),
         "code": f.get("code") or "",
         "evidence": f.get("evidence"),
+        # Drapeau structurel (comme severity) : un check qui n'a pas pu s'exécuter. Propagé
+        # tel quel pour que le diff (scan_compare) ne classe pas « corrigé » un problème dont
+        # le check a simplement échoué au scan suivant.
+        "unexecuted": bool(f.get("unexecuted")),
     }
 
     # 1) Legacy / non structuré (ancien historique, check non migré) : passthrough.

@@ -93,7 +93,8 @@
     "of_100": "/ 100",
     "analyzing": "analyse en cours · {done}/{total}",
     "summary": "{issues} problème(s) · {pass} conforme(s)",
-    "idle_caption": "indice de surface d'exposition"
+    "idle_caption": "indice de surface d'exposition",
+    "incomplete": "couverture incomplète · {n} check(s) non exécuté(s) — note plafonnée"
   },
 
   "domains": {

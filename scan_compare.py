@@ -67,14 +67,27 @@ def diff_reports(before: dict, after: dict) -> dict:
 
     On compare les PROBLÈMES (non info/pass) par (check_id, code, params) : un finding
     qui disparaît = `resolved`, qui apparaît = `new`, présent des deux côtés = `persistent`.
-    Plus le delta de score. Lève si un des scans est encore en cours."""
+    Plus le delta de score. Lève si un des scans est encore en cours.
+
+    Garde-fou (couverture) : si un check a ÉCHOUÉ dans le scan `after` (`unexecuted`), ses
+    problèmes « disparus » ne sont PAS comptés « corrigés » — on ne sait pas, le check n'a
+    pas tourné. Ils basculent dans `uncertain` pour éviter une fausse remédiation."""
     for label, r in (("scan_a", before), ("scan_b", after)):
         if (r.get("status") or "done") == "running":
             raise ValueError(f"{label} est encore en cours — attends la fin avant de comparer.")
 
     issues_a = {_key(f): f for f in before.get("findings", []) if _is_issue(f)}
     issues_b = {_key(f): f for f in after.get("findings", []) if _is_issue(f)}
-    resolved = sorted((_brief(issues_a[k]) for k in issues_a.keys() - issues_b.keys()), key=_sev_key)
+    # Catégories dont un check n'a pas pu s'exécuter dans `after` → leurs « disparitions »
+    # sont suspectes (le problème peut toujours être là, simplement non testé).
+    degraded_cats = {f.get("category") for f in after.get("findings", []) if f.get("unexecuted")}
+
+    resolved, uncertain = [], []
+    for k in issues_a.keys() - issues_b.keys():
+        f = issues_a[k]
+        (uncertain if f.get("category") in degraded_cats else resolved).append(_brief(f))
+    resolved.sort(key=_sev_key)
+    uncertain.sort(key=_sev_key)
     new = sorted((_brief(issues_b[k]) for k in issues_b.keys() - issues_a.keys()), key=_sev_key)
     persistent = sorted((_brief(issues_b[k]) for k in issues_a.keys() & issues_b.keys()), key=_sev_key)
 
@@ -86,10 +99,12 @@ def diff_reports(before: dict, after: dict) -> dict:
         "to": {"scan_id": after.get("id"), "target": after.get("target"),
                "score": sb, "grade": after.get("grade"), "created_at": after.get("created_at")},
         "score_delta": delta,
-        "summary": {"resolved": len(resolved), "new": len(new), "persistent": len(persistent)},
+        "summary": {"resolved": len(resolved), "new": len(new),
+                    "persistent": len(persistent), "uncertain": len(uncertain)},
         "resolved": resolved,
         "new": new,
         "persistent": persistent,
+        "uncertain": uncertain,
     }
 
 

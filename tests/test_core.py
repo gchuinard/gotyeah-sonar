@@ -18,10 +18,28 @@ def _f(sev):
 def test_grade_boundaries():
     assert score_and_grade([]) == (100, "A+")
     assert score_and_grade([_f(Severity.LOW)]) == (97, "A+")
-    assert score_and_grade([_f(Severity.CRITICAL)]) == (75, "B")
-    assert score_and_grade([_f(Severity.CRITICAL), _f(Severity.HIGH)]) == (60, "D")
+    # Score brut B (75) mais un CRITICAL plafonne à E : la note ne ment plus.
+    assert score_and_grade([_f(Severity.CRITICAL)]) == (75, "E")
+    # Score brut D (60) ; CRITICAL plafonne à E (pire que D).
+    assert score_and_grade([_f(Severity.CRITICAL), _f(Severity.HIGH)]) == (60, "E")
     score, grade = score_and_grade([_f(Severity.CRITICAL)] * 3)  # 75 de pénalité
     assert score == 25 and grade == "F"
+
+
+def test_grade_capped_by_worst_severity():
+    # Un seul HIGH : score A (85) mais plafonné à C (≥1 high ⇒ max C).
+    assert score_and_grade([_f(Severity.HIGH)]) == (85, "C")
+    # Que des MEDIUM/LOW : pas de plafond de sévérité.
+    assert score_and_grade([_f(Severity.MEDIUM)]) == (92, "A")
+
+
+def test_grade_capped_when_coverage_incomplete():
+    # Un check qui n'a pas tourné (unexecuted) : score 100 mais pas d'A+/A → plafond B.
+    incomplete = Finding("nuclei", Category.PENTEST, Severity.INFO, code="not-installed",
+                         unexecuted=True)
+    assert score_and_grade([incomplete]) == (100, "B")
+    # Combiné à un CRITICAL : c'est le pire des deux plafonds (E) qui gagne.
+    assert score_and_grade([incomplete, _f(Severity.CRITICAL)]) == (75, "E")
 
 
 def test_pass_and_info_do_not_penalize():
@@ -34,7 +52,8 @@ def test_summarize():
     assert s["total"] == 3
     assert s["counts"]["critical"] == 1 and s["counts"]["low"] == 1 and s["counts"]["pass"] == 1
     assert s["score"] == 100 - 25 - 3
-    assert s["grade"] == "C"
+    assert s["grade"] == "E"                      # score C (72) mais plafonné par le CRITICAL
+    assert s["incomplete"] is False and s["unexecuted"] == []
 
 
 def test_as_dict_legacy():
@@ -43,7 +62,7 @@ def test_as_dict_legacy():
     assert d == {
         "check_id": "cid", "category": "tls", "severity": "high",
         "code": "", "params": {}, "evidence": "ev",
-        "catalog": None, "entry_id": None, "source_text": None,
+        "catalog": None, "entry_id": None, "source_text": None, "unexecuted": False,
         "title": "titre", "detail": "det", "recommendation": "reco",
     }
 
@@ -98,7 +117,10 @@ async def test_safe_run_isolates_exceptions():
     assert rchk is chk
     assert len(findings) == 1
     assert findings[0].severity == Severity.INFO
-    assert findings[0].category == Category.INFO
+    # Le finding d'échec porte la catégorie du check (pas INFO) — pour grouper le diff —
+    # et le drapeau unexecuted (couverture réduite, jamais un faux PASS).
+    assert findings[0].category == Category.HEADERS
+    assert findings[0].unexecuted is True
 
 
 async def test_safe_run_none_returns_empty():

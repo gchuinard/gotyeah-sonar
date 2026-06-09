@@ -415,6 +415,11 @@
           {{ T('panels.weakest_link', 'Maillon faible') }} :
           <b :style="{ color: weakestLink.color }">{{ weakestLink.grade }}</b> · {{ weakestLink.score }}/100
         </div>
+        <div class="weakest muted" v-if="incompleteChecks.length && !scanning"
+             :style="{ color: 'var(--sev-medium)' }"
+             :title="incompleteChecks.join(', ')">
+          ⚠ {{ T('gauge.incomplete', 'couverture incomplète · {n} check(s) non exécuté(s) — note plafonnée').replace('{n}', incompleteChecks.length) }}
+        </div>
         <div class="weakest muted" v-else-if="scanning">{{ T('gauge.analyzing', 'analyse en cours · {done}/{total}').replace('{done}', done).replace('{total}', totalChecks) }}</div>
         <div class="weakest muted" v-else>{{ T('gauge.idle_caption', "indice de surface d'exposition") }}</div>
       </div>
@@ -713,6 +718,7 @@ createApp({
       SEV_ORDER: ['critical', 'high', 'medium', 'low', 'info', 'pass'],
       CAT_ORDER: ['headers', 'cookies', 'tls', 'dns', 'exposure', 'cors', 'content', 'subresource', 'tech', 'ports', 'http', 'pentest', 'zap', 'transport', 'info'],
       WEIGHTS: { critical: 25, high: 15, medium: 8, low: 3, info: 0, pass: 0 },
+      GRADE_ORDER: ['A+', 'A', 'B', 'C', 'D', 'E', 'F'],   // meilleur -> pire (plafonnement)
       // Libellés : viennent du dict UI (localisable) avec repli FR de secours.
       SEV_LABEL: ui.sev_label || { critical: 'Critique', high: 'Élevé', medium: 'Moyen', low: 'Faible', info: 'Info', pass: 'Conforme' },
       CAT_LABEL: ui.cat_label || { headers: 'En-têtes HTTP', cookies: 'Cookies', tls: 'TLS / Cert', dns: 'DNS', exposure: 'Exposition', cors: 'CORS', content: 'Contenu mixte', subresource: 'Sous-ressources', tech: 'Technologies', pentest: 'Pentest (nuclei)', zap: 'Pentest (ZAP)', transport: 'Transport', info: 'Info' },
@@ -722,7 +728,14 @@ createApp({
     hasResult() { return this.findings.length > 0; },
     penalty() { return this.findings.reduce((s, f) => s + (this.WEIGHTS[f.severity] || 0), 0); },
     score() { return Math.max(0, 100 - this.penalty); },
-    grade() { return this.gradeOf(this.score); },
+    grade() { return this.gradeCapped(this.score, this.findings); },
+    // Checks qui n'ont pas pu s'exécuter (couverture partielle) — pour la bannière live.
+    // Miroir exact du `incomplete`/`unexecuted` calculé côté serveur (summarize).
+    incompleteChecks() {
+      const ids = new Set();
+      this.findings.forEach(f => { if (f.unexecuted) ids.add(f.check_id); });
+      return [...ids];
+    },
     ringColor() { return this.hasResult ? this.colorOf(this.score) : 'var(--line-2)'; },
     dashoffset() { return this.CIRC * (1 - (this.hasResult ? this.score / 100 : 0)); },
     counts() {
@@ -788,7 +801,7 @@ createApp({
         const penalty = fs.reduce((s, f) => s + (this.WEIGHTS[f.severity] || 0), 0);
         const score = Math.max(0, 100 - penalty);
         return { id, label: this.pillarLabel(id), short: this.pillarShort(id),
-                 na: false, score, grade: this.gradeOf(score), color: this.colorOf(score) };
+                 na: false, score, grade: this.gradeCapped(score, fs), color: this.colorOf(score) };
       });
     },
     // Maillon faible = le pilier évalué le plus bas (la sécu vaut son point le plus faible).
@@ -796,7 +809,7 @@ createApp({
       const scored = this.pillars.filter(p => !p.na);
       if (!scored.length) return null;
       const min = scored.reduce((a, b) => (b.score < a.score ? b : a));
-      return { score: min.score, grade: this.gradeOf(min.score), color: this.colorOf(min.score) };
+      return { score: min.score, grade: min.grade, color: min.color };   // grade déjà plafonné
     },
     // Historique éventuellement filtré sur un domaine (sa cible == domaine ou un sous-domaine).
     filteredHistory() {
@@ -1014,6 +1027,17 @@ createApp({
       catch (e) { return iso; }
     },
     gradeOf(s) { return s >= 95 ? 'A+' : s >= 85 ? 'A' : s >= 75 ? 'B' : s >= 65 ? 'C' : s >= 50 ? 'D' : s >= 35 ? 'E' : 'F'; },
+    worseGrade(a, b) { const o = this.GRADE_ORDER; return o.indexOf(a) >= o.indexOf(b) ? a : b; },
+    // Miroir client de finding.score_and_grade : un problème grave ou une couverture
+    // incomplète plafonnent la note, même si le score brut reste haut (la note ne ment pas).
+    gradeCapped(score, findings) {
+      let g = this.gradeOf(score);
+      const sevs = new Set((findings || []).map(f => f.severity));
+      if (sevs.has('critical')) g = this.worseGrade(g, 'E');
+      else if (sevs.has('high')) g = this.worseGrade(g, 'C');
+      if ((findings || []).some(f => f.unexecuted)) g = this.worseGrade(g, 'B');
+      return g;
+    },
     colorOf(s) { return s >= 85 ? 'var(--sev-pass)' : s >= 65 ? 'var(--sev-medium)' : s >= 50 ? 'var(--sev-high)' : 'var(--sev-critical)'; },
     // mini-rendu : transforme `code` en <code> et échappe le reste
     md(text) {
