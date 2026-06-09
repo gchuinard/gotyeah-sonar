@@ -241,7 +241,14 @@ le jeton dans le panneau (le serveur reçoit alors un `401` au prochain appel).
 
 | Catégorie | Checks |
 |-----------|--------|
-| Ports / services | **connect-scan async borné** (lecture seule) d'une liste curée de services qui ne devraient jamais être publics (Redis, MongoDB, Elasticsearch, Docker API, MySQL, Postgres, RDP…). **Garde-fou CDN** : derrière Cloudflare, on ne scanne pas l'edge du tiers (renseigne `SONAR_ORIGIN_IP` pour viser ton origine). Coupe-circuit `SONAR_PORTS=off`. |
+| Ports / services | **connect-scan async borné** (lecture seule) d'une liste curée de services qui ne devraient jamais être publics (Redis, MongoDB, Elasticsearch, Docker API, MySQL, Postgres, RDP…). Scanne **toutes les IP non-CDN** résolues (un host mixte CDN+origine voit bien son origine sondée). **Garde-fou CDN** : derrière Cloudflare, on ne scanne pas l'edge du tiers (renseigne `SONAR_ORIGIN_IP` pour viser ton origine). Coupe-circuit `SONAR_PORTS=off`. |
+
+> 🛡️ **Sûreté du moteur HTTP.** Une **garde anti-SSRF** bloque toute cible (ou redirection) qui
+> résout vers une IP interne — privée, loopback, lien-local, et l'endpoint de métadonnées cloud
+> `169.254.169.254` ; en homelab, `SONAR_ALLOW_PRIVATE=on` lève la garde pour scanner une IP
+> interne **explicitement**. Le scan a aussi un **plafond de durée** (`SONAR_SCAN_DEADLINE`, défaut
+> 300 s) : un check bloqué est interrompu et signalé (couverture incomplète → note plafonnée), le
+> scan ne reste jamais « en cours » indéfiniment.
 
 ### Phase 3 — pentest (nuclei + OWASP ZAP)
 

@@ -71,6 +71,25 @@ async def test_clean(monkeypatch):
     assert len(out) == 1 and out[0].code == "clean" and out[0].severity == Severity.PASS
 
 
+async def test_scans_all_non_cdn_ips(monkeypatch):
+    # Host multi-A mixte : 1 IP Cloudflare (ignorée) + 2 origines ; Redis ouvert sur la
+    # SECONDE origine seulement → doit être trouvé (avant, seule ips[0] était scannée).
+    monkeypatch.delenv("SONAR_PORTS", raising=False)
+    monkeypatch.delenv("SONAR_ORIGIN_IP", raising=False)
+
+    async def fake_resolve(host):
+        return ["104.16.0.1", "203.0.113.10", "203.0.113.20"]
+
+    async def fake_probe(ip, port, timeout):
+        return (ip == "203.0.113.20" and port == 6379, "")
+    monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
+    monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
+    out = await ports(_ctx())
+    exposed = [f for f in out if f.code == "service-exposed"]
+    assert len(exposed) == 1
+    assert exposed[0].params["ip"] == "203.0.113.20" and exposed[0].params["port"] == 6379
+
+
 async def test_origin_ip_bypasses_cdn(monkeypatch):
     monkeypatch.delenv("SONAR_PORTS", raising=False)
     monkeypatch.setenv("SONAR_ORIGIN_IP", "203.0.113.50")   # court-circuite résolution + CDN

@@ -147,35 +147,39 @@ async def ports(ctx):
     origin = _env("SONAR_ORIGIN_IP")
 
     if origin:
-        scan_ip = origin
+        scan_ips = [origin]
     else:
         ips = await _resolve_ips(host)
         if not ips:
             return [Finding("ports", C, Severity.INFO, code="unresolved", params={"host": host})]
         cdn = next((c for ip in ips if (c := _is_cdn_ip(ip))), None)
-        if cdn:
+        # On scanne TOUTES les IP non-CDN (et pas seulement la première) : un host multi-A
+        # ou mixte CDN+origine exposait son origine sur une 2ᵉ IP, jamais sondée.
+        scan_ips = [ip for ip in ips if not _is_cdn_ip(ip)]
+        if not scan_ips:
+            # Toutes les IP sont derrière un CDN → on ne scanne pas l'edge du tiers.
             return [Finding("ports", C, Severity.INFO, code="behind-cdn",
                             params={"cdn": cdn, "host": host})]
-        scan_ip = ips[0]
 
     sem = asyncio.Semaphore(max(1, concurrency))
 
-    async def scan(port: int, service: str, severity: Severity):
+    async def scan(ip: str, port: int, service: str, severity: Severity):
         async with sem:
-            is_open, banner = await _probe_port(scan_ip, port, timeout)
-        return (port, service, severity, banner) if is_open else None
+            is_open, banner = await _probe_port(ip, port, timeout)
+        return (ip, port, service, severity, banner) if is_open else None
 
-    results = await asyncio.gather(*[scan(p, s, sev) for p, s, sev in _port_list()])
+    results = await asyncio.gather(
+        *[scan(ip, p, s, sev) for ip in scan_ips for p, s, sev in _port_list()])
 
     findings: list[Finding] = []
     for r in results:
         if not r:
             continue
-        port, service, severity, banner = r
-        evidence = f"{scan_ip}:{port}" + (f" — {banner[:120]}" if banner else "")
+        ip, port, service, severity, banner = r
+        evidence = f"{ip}:{port}" + (f" — {banner[:120]}" if banner else "")
         findings.append(Finding("ports", C, severity, code="service-exposed",
-                                params={"service": service, "port": port, "ip": scan_ip},
+                                params={"service": service, "port": port, "ip": ip},
                                 evidence=evidence))
     if findings:
         return findings
-    return [Finding("ports", C, Severity.PASS, code="clean", params={"ip": scan_ip})]
+    return [Finding("ports", C, Severity.PASS, code="clean", params={"ip": ", ".join(scan_ips)})]

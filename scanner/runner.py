@@ -15,6 +15,10 @@ en SSE.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import os
+import socket
+import time
 from collections import Counter
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -26,6 +30,53 @@ from .finding import Category, Finding, Severity, summarize
 from .registry import Check, all_checks
 
 USER_AGENT = "Sonar/0.1 (+homelab; authorized use only)"
+
+# Plafond de durée du scan complet (s) : si un check se bloque malgré ses propres timeouts,
+# le scan ne reste pas « en cours » indéfiniment. > NUCLEI_TIMEOUT/ZAP_TIMEOUT (240) + marge.
+_SCAN_DEADLINE = float(os.environ.get("SONAR_SCAN_DEADLINE") or "300")
+
+
+def _is_blocked_ip(ip_str: str) -> bool:
+    """True si l'IP est interne/non routable : privée (RFC1918), loopback, lien-local
+    (169.254/16 → endpoint de métadonnées cloud 169.254.169.254), réservée, multicast…"""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return (ip.is_private or ip.is_loopback or ip.is_link_local
+            or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
+
+
+def _host_is_internal(host: str) -> bool:
+    """True si `host` (IP littérale ou nom DNS) résout UNIQUEMENT vers des IPs internes.
+    Bloquant (getaddrinfo) → à appeler via to_thread."""
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception:
+        return False  # irrésoluble : on laisse httpx échouer normalement, pas notre rôle
+    ips = {i[4][0] for i in infos}
+    return bool(ips) and all(_is_blocked_ip(ip) for ip in ips)
+
+
+class _SSRFGuardTransport(httpx.AsyncHTTPTransport):
+    """Transport httpx qui REFUSE toute requête (cible initiale OU saut de redirection) vers
+    un hôte résolvant en IP interne — protection anti-SSRF. Sans ça, un site externe pouvait
+    rediriger vers `http://169.254.169.254/` (métadonnées cloud) ou `127.0.0.1`, et tous les
+    checks tournaient alors contre la ressource interne (avec la cible persistée écrasée)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cache: dict[str, bool] = {}
+
+    async def handle_async_request(self, request):
+        host = request.url.host
+        if host not in self._cache:
+            self._cache[host] = await asyncio.to_thread(_host_is_internal, host)
+        if self._cache[host]:
+            raise httpx.ConnectError(f"cible interne bloquée ({host})", request=request)
+        return await super().handle_async_request(request)
 
 # Catégories des checks « lents » (Phase 3 pentest + scan réseau) : exclues du profil
 # rapide, qui ne garde que le passif/actif léger (quelques secondes, retour synchrone).
@@ -72,18 +123,30 @@ async def _fetch_root(client: httpx.AsyncClient, url: str) -> httpx.Response:
         raise
 
 
-async def _build_context(target: str) -> Context:
-    requested = normalize_target(target)
-    # verify=False À DESSEIN : un certificat invalide (expiré, auto-signé, mauvais hôte,
-    # chaîne cassée) ne doit PAS faire échouer la construction du contexte et perdre la
-    # cible — c'est précisément un cas qu'on veut signaler. C'est le check `tls` qui rejoue
-    # un handshake VÉRIFIANT et fait autorité sur la validité du certificat.
-    client = httpx.AsyncClient(
+def _make_client() -> httpx.AsyncClient:
+    """Client httpx partagé par tous les checks.
+
+    verify=False À DESSEIN : un certificat invalide (expiré, auto-signé, mauvais hôte, chaîne
+    cassée) ne doit PAS faire échouer la construction du contexte et perdre la cible — c'est le
+    check `tls` qui rejoue un handshake VÉRIFIANT et fait autorité sur la validité du cert.
+
+    Sauf `SONAR_ALLOW_PRIVATE=on` (utile en homelab pour scanner une IP interne explicitement),
+    on enrobe le transport d'une garde anti-SSRF qui bloque les cibles/redirections internes.
+    """
+    guard = (os.environ.get("SONAR_ALLOW_PRIVATE") or "").strip().lower() != "on"
+    transport = _SSRFGuardTransport(verify=False) if guard else None
+    return httpx.AsyncClient(
+        transport=transport,
         follow_redirects=True,
         timeout=httpx.Timeout(15.0),
         headers={"User-Agent": USER_AGENT},
         verify=False,
     )
+
+
+async def _build_context(target: str) -> Context:
+    requested = normalize_target(target)
+    client = _make_client()
     try:
         resp = await _fetch_root(client, requested)
     except Exception:
@@ -132,35 +195,62 @@ async def _safe_run(chk: Check, ctx: Context):
     return chk, findings
 
 
-async def run_scan(target: str, fast: bool = False):
-    try:
-        ctx = await _build_context(target)
-    except Exception as exc:
-        yield {"event": "scan_error", "data": {"message": f"Cible injoignable : {exc}"}}
-        return
+def _deadline_finding(chk: Check, deadline: float) -> Finding:
+    """Check non terminé avant la deadline globale : interrompu, marqué `unexecuted` (la note
+    est plafonnée et le scan ne reste pas « en cours » indéfiniment)."""
+    return Finding(
+        check_id=chk.id, category=chk.category, severity=Severity.INFO,
+        title=f"Check « {chk.title} » interrompu (délai global dépassé)",
+        detail=f"Le scan a dépassé {int(deadline)} s ; ce check n'a pas pu terminer.",
+        unexecuted=True,
+    )
 
-    checks = checks_for(fast)
+
+async def _stream_results(ctx: Context, checks, deadline: float):
+    """Lance les checks en // et émet les events au fil de l'eau, sous une DEADLINE globale :
+    les checks non terminés à temps sont annulés et signalés (jamais de scan figé)."""
     total = len(checks)
-    cat_counts = Counter(c.category for c in checks)
     yield {"event": "started", "data": {
         "target": ctx.url,
         "total_checks": total,
-        "categories": dict(cat_counts),
+        "categories": dict(Counter(c.category for c in checks)),
     }}
 
     collected: list[Finding] = []
     done = 0
-    tasks = [asyncio.create_task(_safe_run(c, ctx)) for c in checks]
+    task_check = {asyncio.create_task(_safe_run(c, ctx)): c for c in checks}
+    pending = set(task_check)
+    end_at = time.monotonic() + deadline
     try:
-        for future in asyncio.as_completed(tasks):
-            chk, findings = await future
+        while pending:
+            remaining = end_at - time.monotonic()
+            if remaining <= 0:
+                break
+            finished, pending = await asyncio.wait(
+                pending, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
+            if not finished:                       # deadline atteinte sans nouveau résultat
+                break
+            for fut in finished:
+                chk, findings = await fut
+                done += 1
+                for f in findings:
+                    collected.append(f)
+                    yield {"event": "finding", "data": f.as_dict()}
+                yield {"event": "progress", "data": {
+                    "done": done, "total": total, "category": chk.category}}
+
+        # Reste des checks non terminés (deadline) : on annule et on les signale dégradés.
+        for fut in pending:
+            fut.cancel()
+            chk = task_check[fut]
+            f = _deadline_finding(chk, deadline)
+            collected.append(f)
             done += 1
-            for f in findings:
-                collected.append(f)
-                yield {"event": "finding", "data": f.as_dict()}
+            yield {"event": "finding", "data": f.as_dict()}
             yield {"event": "progress", "data": {
-                "done": done, "total": total, "category": chk.category,
-            }}
+                "done": done, "total": total, "category": chk.category}}
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
     finally:
         await ctx.client.aclose()
 
@@ -168,3 +258,13 @@ async def run_scan(target: str, fast: bool = False):
     summary["target"] = ctx.url
     yield {"event": "done", "data": summary,
            "_findings": [f.as_dict() for f in collected]}
+
+
+async def run_scan(target: str, fast: bool = False):
+    try:
+        ctx = await _build_context(target)
+    except Exception as exc:
+        yield {"event": "scan_error", "data": {"message": f"Cible injoignable : {exc}"}}
+        return
+    async for ev in _stream_results(ctx, checks_for(fast), _SCAN_DEADLINE):
+        yield ev
