@@ -22,12 +22,30 @@ _NO_RECORD = (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer)
 _RESOLVE_FAILED = (dns.resolver.NoNameservers, dns.exception.Timeout)
 
 
+# Suffixes publics à deux niveaux les plus courants (eTLD multi-parties) : permet de remonter
+# au bon domaine d'organisation sans dépendance externe. Liste volontairement courte (cas
+# fréquents) ; au pire on retombe sur les 2 derniers labels.
+_MULTI_SUFFIX = {
+    "co.uk", "org.uk", "gov.uk", "ac.uk", "me.uk", "ltd.uk", "net.uk",
+    "co.jp", "or.jp", "ne.jp", "go.jp", "com.au", "net.au", "org.au", "edu.au", "gov.au",
+    "co.nz", "org.nz", "net.nz", "com.br", "com.mx", "com.ar", "co.za", "co.in", "co.kr",
+    "com.sg", "com.hk", "com.tr", "com.cn", "com.tw", "com.ua", "com.pl",
+}
+
+
 def _org_domain(host: str) -> str:
-    """Domaine d'organisation : retire un éventuel préfixe `www.`."""
+    """Domaine d'organisation (eTLD+1). SPF/DMARC/CAA/DNSSEC vivent sur l'apex, pas sur les
+    sous-domaines : scanner `blog.example.com` doit interroger `example.com`, sinon on crierait
+    « absent » à tort (~22 pts de pénalité injustifiés). Heuristique sans dépendance externe
+    (liste de suffixes 2-niveaux usuels), repli sur les 2 derniers labels."""
     host = (host or "").strip().rstrip(".").lower()
-    if host.startswith("www."):
-        host = host[4:]
-    return host
+    labels = [l for l in host.split(".") if l]
+    if len(labels) <= 2:
+        return host
+    last2 = ".".join(labels[-2:])
+    if last2 in _MULTI_SUFFIX:
+        return ".".join(labels[-3:])
+    return last2
 
 
 def _resolve(name: str, rdtype: str) -> list[str]:
@@ -68,12 +86,24 @@ async def dns_check(ctx):
     # --- SPF -----------------------------------------------------------------
     try:
         txts = [_join_txt(v) for v in await asyncio.to_thread(_resolve, domain, "TXT")]
-        spf = next((t for t in txts if t.lower().startswith("v=spf1")), None)
-        if spf:
-            findings.append(Finding(
-                "dns-spf", C, Severity.PASS, code="present", evidence=spf[:300]))
-        else:
+        spfs = [t for t in txts if t.lower().startswith("v=spf1")]
+        if not spfs:
             findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="absent"))
+        elif len(spfs) > 1:
+            # Plusieurs `v=spf1` → permerror : les destinataires IGNORENT la politique entière.
+            findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="multiple",
+                                    params={"count": len(spfs)},
+                                    evidence="; ".join(s[:120] for s in spfs)[:300]))
+        else:
+            qual = _spf_all_qualifier(spfs[0])
+            # `+all` (ou `all` nu) / `?all` : n'importe qui peut usurper le domaine — la
+            # présence d'un SPF ne protège alors RIEN. `-all`/`~all` restent acceptables.
+            if qual in ("+", "?"):
+                findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="weak",
+                                        params={"qualifier": qual + "all"}, evidence=spfs[0][:300]))
+            else:
+                findings.append(Finding("dns-spf", C, Severity.PASS, code="present",
+                                        evidence=spfs[0][:300]))
     except _NO_RECORD:
         findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="absent"))
     except _RESOLVE_FAILED as exc:
@@ -97,9 +127,22 @@ async def dns_check(ctx):
                     "dns-dmarc", C, Severity.LOW,
                     code="monitor", evidence=f"p={policy}"))
             elif policy in ("quarantine", "reject"):
-                findings.append(Finding(
-                    "dns-dmarc", C, Severity.PASS,
-                    code="enforced", params={"policy": policy}, evidence=f"p={policy}"))
+                pct = _dmarc_tag(dmarc, "pct")
+                sp = (_dmarc_tag(dmarc, "sp") or "").lower()
+                if pct is not None and pct.strip() == "0":
+                    # `pct=0` : la politique ne s'applique à AUCUN message → application fictive.
+                    findings.append(Finding(
+                        "dns-dmarc", C, Severity.MEDIUM,
+                        code="pct-zero", params={"policy": policy}, evidence=f"p={policy}; pct=0"))
+                elif sp == "none":
+                    # Politique stricte sur l'apex mais `sp=none` : les sous-domaines sont usurpables.
+                    findings.append(Finding(
+                        "dns-dmarc", C, Severity.LOW,
+                        code="subdomain", params={"policy": policy}, evidence=f"p={policy}; sp=none"))
+                else:
+                    findings.append(Finding(
+                        "dns-dmarc", C, Severity.PASS,
+                        code="enforced", params={"policy": policy}, evidence=f"p={policy}"))
             else:
                 # `v=DMARC1` présent mais `p=` manquant ou invalide : équivaut à pas d'application.
                 findings.append(Finding(
@@ -133,13 +176,31 @@ async def dns_check(ctx):
     return findings
 
 
-def _dmarc_policy(record: str) -> str | None:
-    """Extrait la valeur de la balise `p=` d'un enregistrement DMARC (en minuscules)."""
+def _spf_all_qualifier(record: str) -> str | None:
+    """Qualificateur du mécanisme `all` d'un SPF : '+' / '-' / '~' / '?' (un `all` nu vaut '+'),
+    ou None si aucun mécanisme `all`. On retient le DERNIER (c'est lui qui s'applique)."""
+    last = None
+    for tok in record.split():
+        t = tok.lower()
+        if t == "all":
+            last = "+"
+        elif t in ("+all", "-all", "~all", "?all"):
+            last = t[0]
+    return last
+
+
+def _dmarc_tag(record: str, name: str) -> str | None:
+    """Valeur d'une balise DMARC (`pct`, `sp`…), ou None si absente."""
     for tag in record.split(";"):
         tag = tag.strip()
-        if tag.lower().startswith("p="):
-            return tag[2:].strip().lower()
+        if tag.lower().startswith(name + "="):
+            return tag[len(name) + 1:].strip()
     return None
+
+
+def _dmarc_policy(record: str) -> str | None:
+    """Extrait la valeur de la balise `p=` d'un enregistrement DMARC (en minuscules)."""
+    return (_dmarc_tag(record, "p") or "").lower() or None
 
 
 def _caa_absent() -> Finding:

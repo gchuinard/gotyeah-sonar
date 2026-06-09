@@ -301,6 +301,21 @@ async def _collect():
             ("example.com", "TXT"): ['"v=spf1 -all"'],
             ("_dmarc.example.com", "TXT"): ['"v=DMARC1; rua=mailto:d@example.com"'],
         },
+        # Batch 3 — valeur SPF/DMARC (hors golden, couvre le rendu FR/EN des nouveaux codes).
+        "dns_spf_weak": {
+            ("example.com", "TXT"): ['"v=spf1 +all"'],
+        },
+        "dns_spf_multiple": {
+            ("example.com", "TXT"): ['"v=spf1 include:a -all"', '"v=spf1 include:b -all"'],
+        },
+        "dns_dmarc_pct0": {
+            ("example.com", "TXT"): ['"v=spf1 -all"'],
+            ("_dmarc.example.com", "TXT"): ['"v=DMARC1; p=reject; pct=0"'],
+        },
+        "dns_dmarc_sp_none": {
+            ("example.com", "TXT"): ['"v=spf1 -all"'],
+            ("_dmarc.example.com", "TXT"): ['"v=DMARC1; p=reject; sp=none"'],
+        },
     }
     for sid, mapping in cases.items():
         DNS._resolve = _dns_resolver(mapping)

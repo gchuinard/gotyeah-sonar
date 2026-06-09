@@ -223,7 +223,7 @@ le jeton dans le panneau (le serveur reçoit alors un `401` au prochain appel).
 | En-têtes HTTP | CSP, HSTS (+ max-age), clickjacking (X-Frame-Options / frame-ancestors), nosniff, Referrer-Policy, Permissions-Policy, divulgation de version serveur, **COOP / COEP / CORP**, **Cache-Control des réponses sensibles** |
 | Cookies | Secure / HttpOnly / SameSite sur chaque cookie posé |
 | TLS | version négociée (refus < 1.2), validité et expiration du certificat, **protocoles obsolètes encore acceptés (TLS 1.0/1.1)** |
-| DNS | SPF, DMARC (+ détection `p=none`), CAA, **DKIM, MTA-STS, TLS-RPT, DNSSEC**, **subdomain takeover** (CNAME dangling vers GitHub Pages / S3 / Heroku…) |
+| DNS | SPF (+ **qualificateur `all` permissif `+all`/`?all`** et **SPF multiples** = permerror), DMARC (`p=none`, **`pct=0`** = appliqué à 0 %, **`sp=none`** = sous-domaines exposés), CAA, **DKIM, MTA-STS, TLS-RPT, DNSSEC**, **subdomain takeover** (CNAME dangling vers GitHub Pages / S3 / Heroku…). Les enregistrements e-mail sont cherchés sur le **domaine d'organisation (eTLD+1)**, pas le sous-domaine scanné. |
 
 ### Phase 2 — actif léger (quelques requêtes ciblées)
 

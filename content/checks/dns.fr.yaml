@@ -61,6 +61,42 @@ dns-spf:
       - "https://datatracker.ietf.org/doc/html/rfc7208"
       - "https://developer.mozilla.org/fr/docs/Glossary/DNS"
     a_verifier: false
+  weak:
+    title: "SPF permissif (`{qualifier}`)"
+    detail: "L'enregistrement SPF se termine par `{qualifier}` : il n'interdit RIEN. N'importe quel serveur peut envoyer du courrier au nom du domaine sans échouer SPF."
+    recommendation: "Remplace le mécanisme final par `-all` (rejet strict) — ou `~all` (softfail) le temps de valider tes sources."
+    explanation: "Le mécanisme `all` final décide du sort des serveurs non listés : `-all` les rejette, `~all` les marque (softfail), mais `+all` (ou un `all` nu) les AUTORISE tous, et `?all` reste neutre. Avec `+all`/`?all`, publier un SPF ne protège de rien."
+    why: "Un SPF en `+all`/`?all` donne une fausse impression de protection : l'audit voit « SPF présent », mais n'importe qui peut usurper ton domaine sans échouer la vérification. C'est aussi grave qu'un SPF absent."
+    steps:
+      - "Recense toutes tes sources d'envoi légitimes (serveur mail, ESP, CRM…)."
+      - "Liste-les via `include:`/`ip4:`/`ip6:`, puis termine par `-all` (ou `~all` en transition)."
+      - "Supprime tout `+all`/`?all` final."
+      - "Vérifie qu'il n'existe qu'UN seul enregistrement `v=spf1`."
+    stacks:
+      registrar: "Édite le TXT SPF à la racine (`@`) : remplace `+all`/`?all` par `-all`."
+      "zone DNS": "@  IN  TXT  \"v=spf1 include:_spf.example.com -all\""
+      cloudflare: "DNS → Records → édite le TXT `v=spf1` → remplace le `all` final par `-all`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7208#section-5.1"
+    a_verifier: false
+  multiple:
+    title: "Plusieurs enregistrements SPF"
+    detail: "{count} enregistrements `v=spf1` coexistent : c'est une erreur permanente (permerror) — les destinataires IGNORENT alors toute la politique SPF."
+    recommendation: "Fusionne-les en UN SEUL enregistrement `v=spf1`."
+    explanation: "La RFC SPF impose un unique enregistrement `v=spf1` par domaine. Quand il y en a plusieurs, la vérification renvoie `permerror` et la plupart des destinataires traitent le SPF comme inexistant : la protection tombe entièrement."
+    why: "Deux SPF (souvent un par fournisseur ajouté séparément) annulent la protection : ton domaine redevient usurpable alors que tu crois SPF en place. C'est un piège fréquent et silencieux."
+    steps:
+      - "Récupère tous les enregistrements `v=spf1` publiés à la racine."
+      - "Fusionne leurs mécanismes (`include:`, `ip4:`…) dans un SEUL enregistrement."
+      - "Supprime les doublons et termine par un unique `-all`."
+      - "Re-teste avec un validateur SPF."
+    stacks:
+      registrar: "Supprime les TXT `v=spf1` en trop, garde-en un seul qui réunit toutes les sources."
+      "zone DNS": "@  IN  TXT  \"v=spf1 include:_spf.a.com include:_spf.b.com -all\""
+      cloudflare: "DNS → Records → supprime les TXT `v=spf1` redondants, fusionne dans un seul."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7208#section-3.2"
+    a_verifier: false
 
 dns-dmarc:
   enforced:
@@ -121,6 +157,42 @@ dns-dmarc:
       cloudflare: "DNS → Records → édite le TXT `_dmarc` → ajoute `p=quarantine` à la valeur."
     refs:
       - "https://datatracker.ietf.org/doc/html/rfc7489"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+  pct-zero:
+    title: "DMARC appliqué à 0 % (`pct=0`)"
+    detail: "La politique est en `p={policy}` mais `pct=0` : elle ne s'applique à AUCUN message. C'est une application fictive, équivalente à `p=none`."
+    recommendation: "Retire `pct=0` (ou monte-le à 100) pour que la politique s'applique réellement."
+    explanation: "La balise `pct` indique le pourcentage de messages auxquels la politique DMARC s'applique. À `pct=0`, aucun message non conforme n'est mis en quarantaine ni rejeté : la politique stricte affichée n'a strictement aucun effet."
+    why: "`p=reject; pct=0` donne l'illusion d'un DMARC strict alors qu'il laisse tout passer. L'audit (et toi) pourriez croire le domaine protégé : il ne l'est pas, l'usurpation reste possible."
+    steps:
+      - "Édite l'enregistrement TXT `_dmarc` et SUPPRIME `pct=0`."
+      - "Si tu déploies par paliers, monte progressivement `pct` (ex. 25 → 50 → 100) plutôt que de rester à 0."
+      - "Vérifie : `v=DMARC1; p=reject; rua=mailto:dmarc@example.com` (pct=100 implicite)."
+    stacks:
+      registrar: "Édite le TXT `_dmarc` : retire la balise `pct=0`."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=reject; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → édite le TXT `_dmarc` → supprime `pct=0`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+  subdomain:
+    title: "DMARC : sous-domaines non protégés (`sp=none`)"
+    detail: "La politique est appliquée sur l'apex (`p={policy}`) mais `sp=none` : les SOUS-DOMAINES ne sont pas protégés et restent usurpables."
+    recommendation: "Aligne la politique des sous-domaines : retire `sp=none` (héritage de `p`) ou mets `sp=quarantine`/`sp=reject`."
+    explanation: "La balise `sp` définit la politique pour les sous-domaines. À `sp=none`, même si l'apex est en `reject`, un attaquant peut usurper `nimporte.tondomaine.com` sans être bloqué — un vecteur de phishing classique sur des sous-domaines inexistants."
+    why: "Les attaquants ciblent volontiers des sous-domaines non utilisés (`facture.tondomaine.com`…) : `sp=none` leur laisse la porte ouverte alors que l'apex est verrouillé."
+    steps:
+      - "Édite l'enregistrement TXT `_dmarc`."
+      - "Retire `sp=none` (les sous-domaines héritent alors de `p`) ou fixe `sp=reject`/`sp=quarantine`."
+      - "Vérifie : `v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@example.com`."
+    stacks:
+      registrar: "Édite le TXT `_dmarc` : remplace `sp=none` par `sp=reject` (ou retire la balise)."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → édite le TXT `_dmarc` → remplace `sp=none` par `sp=reject`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"
       - "https://dmarc.org/overview/"
     a_verifier: false
 

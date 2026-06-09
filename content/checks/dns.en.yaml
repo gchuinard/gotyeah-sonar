@@ -61,6 +61,42 @@ dns-spf:
       - "https://datatracker.ietf.org/doc/html/rfc7208"
       - "https://developer.mozilla.org/en-US/docs/Glossary/DNS"
     a_verifier: false
+  weak:
+    title: "Permissive SPF (`{qualifier}`)"
+    detail: "The SPF record ends with `{qualifier}`: it forbids NOTHING. Any server can send mail on behalf of the domain without failing SPF."
+    recommendation: "Replace the final mechanism with `-all` (hard fail) — or `~all` (softfail) while validating your sources."
+    explanation: "The final `all` mechanism decides the fate of unlisted servers: `-all` rejects them, `~all` marks them (softfail), but `+all` (or a bare `all`) ALLOWS them all, and `?all` stays neutral. With `+all`/`?all`, publishing an SPF protects nothing."
+    why: "An SPF ending in `+all`/`?all` gives a false sense of protection: the audit sees « SPF present », but anyone can spoof your domain without failing the check. It is as bad as a missing SPF."
+    steps:
+      - "List all your legitimate sending sources (mail server, ESP, CRM…)."
+      - "Declare them via `include:`/`ip4:`/`ip6:`, then end with `-all` (or `~all` in transition)."
+      - "Remove any final `+all`/`?all`."
+      - "Make sure there is only ONE `v=spf1` record."
+    stacks:
+      registrar: "Edit the SPF TXT at the root (`@`): replace `+all`/`?all` with `-all`."
+      "zone DNS": "@  IN  TXT  \"v=spf1 include:_spf.example.com -all\""
+      cloudflare: "DNS → Records → edit the `v=spf1` TXT → replace the final `all` with `-all`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7208#section-5.1"
+    a_verifier: false
+  multiple:
+    title: "Multiple SPF records"
+    detail: "{count} `v=spf1` records coexist: this is a permanent error (permerror) — recipients then IGNORE the entire SPF policy."
+    recommendation: "Merge them into a SINGLE `v=spf1` record."
+    explanation: "The SPF RFC mandates a single `v=spf1` record per domain. When there are several, the check returns `permerror` and most recipients treat SPF as nonexistent: protection collapses entirely."
+    why: "Two SPF records (often one per provider added separately) void protection: your domain becomes spoofable again while you believe SPF is in place. It is a frequent, silent trap."
+    steps:
+      - "Collect all `v=spf1` records published at the root."
+      - "Merge their mechanisms (`include:`, `ip4:`…) into a SINGLE record."
+      - "Remove duplicates and end with a single `-all`."
+      - "Re-test with an SPF validator."
+    stacks:
+      registrar: "Delete the extra `v=spf1` TXT records, keep a single one combining all sources."
+      "zone DNS": "@  IN  TXT  \"v=spf1 include:_spf.a.com include:_spf.b.com -all\""
+      cloudflare: "DNS → Records → delete redundant `v=spf1` TXT records, merge into one."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7208#section-3.2"
+    a_verifier: false
 
 dns-dmarc:
   enforced:
@@ -121,6 +157,42 @@ dns-dmarc:
       cloudflare: "DNS → Records → edit the `_dmarc` TXT → add `p=quarantine` to the value."
     refs:
       - "https://datatracker.ietf.org/doc/html/rfc7489"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+  pct-zero:
+    title: "DMARC applied to 0% (`pct=0`)"
+    detail: "The policy is `p={policy}` but `pct=0`: it applies to NO message. This is a fictitious enforcement, equivalent to `p=none`."
+    recommendation: "Remove `pct=0` (or raise it to 100) so the policy actually applies."
+    explanation: "The `pct` tag is the percentage of messages the DMARC policy applies to. At `pct=0`, no non-compliant message is quarantined or rejected: the strict policy displayed has no effect at all."
+    why: "`p=reject; pct=0` gives the illusion of strict DMARC while letting everything through. The audit (and you) might believe the domain is protected: it is not, spoofing remains possible."
+    steps:
+      - "Edit the `_dmarc` TXT record and REMOVE `pct=0`."
+      - "If you roll out in stages, gradually raise `pct` (e.g. 25 → 50 → 100) rather than staying at 0."
+      - "Verify: `v=DMARC1; p=reject; rua=mailto:dmarc@example.com` (pct=100 implied)."
+    stacks:
+      registrar: "Edit the `_dmarc` TXT: remove the `pct=0` tag."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=reject; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → edit the `_dmarc` TXT → remove `pct=0`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"
+      - "https://dmarc.org/overview/"
+    a_verifier: false
+  subdomain:
+    title: "DMARC: subdomains unprotected (`sp=none`)"
+    detail: "The policy is enforced on the apex (`p={policy}`) but `sp=none`: SUBDOMAINS are not protected and remain spoofable."
+    recommendation: "Align the subdomain policy: remove `sp=none` (inherits `p`) or set `sp=quarantine`/`sp=reject`."
+    explanation: "The `sp` tag sets the policy for subdomains. At `sp=none`, even if the apex is `reject`, an attacker can spoof `anything.yourdomain.com` without being blocked — a classic phishing vector on nonexistent subdomains."
+    why: "Attackers readily target unused subdomains (`invoice.yourdomain.com`…): `sp=none` leaves the door open while the apex is locked down."
+    steps:
+      - "Edit the `_dmarc` TXT record."
+      - "Remove `sp=none` (subdomains then inherit `p`) or set `sp=reject`/`sp=quarantine`."
+      - "Verify: `v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@example.com`."
+    stacks:
+      registrar: "Edit the `_dmarc` TXT: replace `sp=none` with `sp=reject` (or remove the tag)."
+      "zone DNS": "_dmarc  IN  TXT  \"v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@example.com\""
+      cloudflare: "DNS → Records → edit the `_dmarc` TXT → replace `sp=none` with `sp=reject`."
+    refs:
+      - "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"
       - "https://dmarc.org/overview/"
     a_verifier: false
 
