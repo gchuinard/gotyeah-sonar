@@ -46,6 +46,28 @@ hdr-csp:
     refs:
       - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy/script-src"
     a_verifier: false
+  permissive:
+    title: "CSP grande ouverte (sources de script larges)"
+    detail: "La CSP autorise les scripts depuis n'importe quelle origine (`*`, `http:`/`https:`, `data:`) ou ne restreint pas du tout les scripts : elle n'apporte aucune protection XSS réelle."
+    recommendation: "Restreins `script-src` (ou `default-src`) à `'self'` et à tes origines précises ; retire `*` et les schémas larges."
+    explanation: "Une CSP n'est utile que si elle limite réellement d'où le code peut venir. Avec `script-src *` (ou `default-src *`, `https:`, `data:`…), ou sans aucune directive de script, le navigateur accepte d'exécuter du JavaScript de n'importe quelle origine : la CSP est présente mais grande ouverte."
+    why: "C'est le faux négatif classique d'un scan « par présence » : la CSP existe, l'audit la croit protectrice, mais une faille XSS reste pleinement exploitable car n'importe quelle source de script est autorisée. La protection ne commence qu'avec une liste blanche stricte."
+    steps:
+      - "Définis explicitement `script-src` (ou resserre `default-src`) sur `'self'` plus la liste précise de tes origines de confiance."
+      - "Supprime `*`, `http:`, `https:` et `data:` des sources de script."
+      - "Ajoute `object-src 'none'` et `base-uri 'self'` pour fermer les contournements classiques."
+      - "Re-teste en `Content-Security-Policy-Report-Only` pour vérifier qu'aucune ressource légitime n'est bloquée."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx : add_header Content-Security-Policy \"default-src 'self'; object-src 'none'\" always;"
+      cloudflare: "Transform Rules → ajuste la valeur de Content-Security-Policy pour retirer `*`/schémas larges et fixer `script-src 'self'`."
+      apache: "Header always set Content-Security-Policy \"default-src 'self'; script-src 'self'; object-src 'none'\""
+      nextjs: "next.config.js → headers(): { key: 'Content-Security-Policy', value: \"default-src 'self'; script-src 'self'; object-src 'none'\" }"
+    ai_prompt: "Tu es un expert en sécurité web. La CSP de {host} (servi par {stack}) autorise les scripts depuis des sources larges ({evidence}), ce qui annule sa protection XSS. Explique le problème, puis donne une CSP resserrée (`script-src 'self'`, `object-src 'none'`, `base-uri 'self'`) et la configuration exacte pour {stack}. N'invente pas d'origines tierces."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy/script-src"
+      - "https://content-security-policy.com/"
+    a_verifier: false
   ok:
     title: "Content-Security-Policy présente"
     detail: "Une CSP est définie, sans directive notoirement dangereuse."
@@ -69,6 +91,27 @@ hdr-hsts:
       cloudflare: "SSL/TLS → Edge Certificates → HTTP Strict Transport Security (HSTS) → Enable."
       apache: "Header always set Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\""
     ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) n'envoie pas d'en-tête HSTS. Explique le risque de SSL stripping, les prérequis (HTTPS partout, redirection), puis donne la configuration exacte pour {stack} avec un max-age de 2 ans, includeSubDomains et preload."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      - "https://hstspreload.org/"
+    a_verifier: false
+  disabled:
+    title: "HSTS présent mais désactivé (max-age=0)"
+    detail: "L'en-tête Strict-Transport-Security est envoyé sans `max-age` valide (absent ou =0) : HSTS n'est pas appliqué, et `max-age=0` efface même une politique précédente."
+    recommendation: "Donne un `max-age` réel : `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`."
+    explanation: "Le `max-age` est la durée pendant laquelle le navigateur impose l'HTTPS. À 0 (ou absent), l'en-tête est inopérant : non seulement il ne force rien, mais `max-age=0` est précisément la méthode pour DÉSACTIVER HSTS sur un client qui l'avait déjà mémorisé."
+    why: "Un en-tête HSTS présent donne une fausse impression de sécurité : ici il ne protège pas du SSL stripping, et a même pu effacer une protection antérieure. La rétrogradation en clair reste possible."
+    steps:
+      - "Assure-toi que tout le site est en HTTPS valide et que http→https redirige déjà."
+      - "Remplace `max-age=0` (ou l'absence de max-age) par `max-age=63072000`."
+      - "Ajoute `includeSubDomains` (si tous tes sous-domaines sont en HTTPS) puis `preload`."
+      - "Vérifie l'en-tête renvoyé après déploiement."
+    stacks:
+      nginx: "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      npm: "Proxy Host → SSL → coche « HSTS Enabled » (vérifie qu'aucune conf custom ne pose max-age=0)."
+      cloudflare: "SSL/TLS → Edge Certificates → HSTS → active avec un Max Age d'au moins 6 mois."
+      apache: "Header always set Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\""
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) envoie un en-tête HSTS sans max-age valide ({evidence}) : HSTS est désactivé. Explique le risque (et le fait que max-age=0 efface une politique existante), puis donne la configuration exacte pour {stack} avec max-age=63072000, includeSubDomains et preload."
     refs:
       - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Strict-Transport-Security"
       - "https://hstspreload.org/"
@@ -116,6 +159,28 @@ hdr-xfo:
       apache: "Header always set X-Frame-Options \"DENY\""
       nextjs: "next.config.js → headers(): { key: 'X-Frame-Options', value: 'DENY' }"
     ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne se protège pas contre le clickjacking. Explique le risque, puis donne la configuration exacte pour {stack} ajoutant `frame-ancestors 'none'` (CSP) et `X-Frame-Options: DENY`."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/X-Frame-Options"
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors"
+    a_verifier: false
+  permissive:
+    title: "Protection clickjacking inopérante"
+    detail: "Une valeur anti-framing est présente mais ne protège pas : `X-Frame-Options: ALLOWALL`/`ALLOW-FROM` (ignoré des navigateurs) ou `frame-ancestors` autorisant `*`/un schéma large. La page reste embarquable."
+    recommendation: "Utilise `X-Frame-Options: DENY` (ou `SAMEORIGIN`) et/ou `frame-ancestors 'none'` (ou la liste explicite des origines autorisées)."
+    explanation: "Seules certaines valeurs protègent réellement : `DENY`/`SAMEORIGIN` pour X-Frame-Options, et une `frame-ancestors` restreinte (`'none'`, `'self'`, ou une liste d'origines). `ALLOWALL`, `ALLOW-FROM` (déprécié) ou `frame-ancestors *` laissent n'importe qui embarquer la page."
+    why: "L'audit pourrait croire le clickjacking bloqué parce qu'un en-tête est présent, mais sa valeur n'a aucun effet : un attaquant intègre tes pages dans une iframe et détourne les clics d'un utilisateur authentifié."
+    steps:
+      - "Décide qui peut embarquer tes pages (en général personne)."
+      - "Remplace la valeur permissive par `frame-ancestors 'none'` (CSP) et `X-Frame-Options: DENY`."
+      - "Si certaines pages doivent être intégrables, liste explicitement les origines autorisées dans `frame-ancestors`."
+      - "Évite `X-Frame-Options: ALLOW-FROM` (déprécié) : utilise `frame-ancestors`."
+    stacks:
+      nginx: "add_header Content-Security-Policy \"frame-ancestors 'none'\" always; add_header X-Frame-Options \"DENY\" always;"
+      npm: "Proxy Host → Advanced → Custom Nginx : add_header X-Frame-Options \"DENY\" always;"
+      cloudflare: "Transform Rules → Set static : X-Frame-Options = DENY (et `frame-ancestors 'none'` via la CSP)."
+      apache: "Header always set X-Frame-Options \"DENY\""
+      nextjs: "next.config.js → headers(): { key: 'X-Frame-Options', value: 'DENY' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) a une protection anti-clickjacking inopérante ({evidence}) : valeur ignorée ou frame-ancestors trop large. Explique pourquoi elle ne protège pas, puis donne la configuration exacte pour {stack} avec `frame-ancestors 'none'` et `X-Frame-Options: DENY`."
     refs:
       - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/X-Frame-Options"
       - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors"
@@ -168,6 +233,25 @@ hdr-referrer:
       apache: "Header always set Referrer-Policy \"strict-origin-when-cross-origin\""
       nextjs: "next.config.js → headers(): { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }"
     ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne définit pas de Referrer-Policy. Explique le risque de fuite d'URL et donne la configuration exacte pour {stack} avec `strict-origin-when-cross-origin`."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Referrer-Policy"
+    a_verifier: false
+  weak:
+    title: "Referrer-Policy permissive"
+    detail: "La politique définie (`unsafe-url`/`no-referrer-when-downgrade`) transmet l'URL complète, y compris vers des tiers : elle ne protège pas contre la fuite d'URL."
+    recommendation: "Remplace-la par `strict-origin-when-cross-origin` (ou plus strict)."
+    explanation: "`unsafe-url` envoie l'URL complète (chemin + paramètres) à TOUTES les destinations, y compris cross-origin et en clair. `no-referrer-when-downgrade` la transmet dès que le niveau de chiffrement ne baisse pas. Poser l'en-tête à ces valeurs revient à ne pas se protéger."
+    why: "Des URLs internes — jetons, identifiants de session dans l'URL, chemins privés — fuient vers les tiers (analytics, CDN, liens sortants). L'en-tête est présent mais sa valeur annule la protection attendue."
+    steps:
+      - "Choisis `strict-origin-when-cross-origin` (bon défaut : origine seule vers les tiers, URL complète en interne)."
+      - "Remplace `unsafe-url`/`no-referrer-when-downgrade` par cette valeur côté serveur/proxy."
+      - "Pour les liens sortants sensibles, ajoute aussi `rel=\"noreferrer\"`."
+    stacks:
+      nginx: "add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+      cloudflare: "Transform Rules → Set static : Referrer-Policy = strict-origin-when-cross-origin"
+      apache: "Header always set Referrer-Policy \"strict-origin-when-cross-origin\""
+      nextjs: "next.config.js → headers(): { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) définit une Referrer-Policy permissive ({evidence}) qui fait fuiter l'URL complète. Explique le risque et donne la configuration exacte pour {stack} avec `strict-origin-when-cross-origin`."
     refs:
       - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Referrer-Policy"
     a_verifier: false
@@ -243,6 +327,26 @@ hdr-coop:
       cloudflare: "Transform Rules → Set static : Cross-Origin-Opener-Policy = same-origin"
       nextjs: "next.config.js → headers(): { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }"
     ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) ne définit pas Cross-Origin-Opener-Policy. Explique le risque (XS-Leaks, window.opener, tabnabbing) et donne la configuration exacte pour {stack} avec `same-origin` (ou `same-origin-allow-popups` si des popups cross-origin sont nécessaires)."
+    refs:
+      - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy"
+    a_verifier: false
+  weak:
+    title: "Cross-Origin-Opener-Policy inopérant (unsafe-none)"
+    detail: "COOP est défini à `unsafe-none`, sa valeur no-op : la page partage toujours son contexte de navigation avec les fenêtres tierces, comme si l'en-tête était absent."
+    recommendation: "Passe à `Cross-Origin-Opener-Policy: same-origin` (ou `same-origin-allow-popups` si tu ouvres des popups cross-origin)."
+    explanation: "`unsafe-none` est la valeur par défaut, qui n'isole rien : `window.opener` reste accessible cross-origin. Poser explicitement l'en-tête à `unsafe-none` ne change rien à l'absence de protection."
+    why: "Sans isolation réelle, les attaques inter-fenêtres restent possibles (XS-Leaks, abus de `window.opener`, tabnabbing), et l'isolation cross-origin (SharedArrayBuffer…) n'est pas atteignable. L'en-tête présent donne une fausse impression de protection."
+    steps:
+      - "Remplace `unsafe-none` par `Cross-Origin-Opener-Policy: same-origin`."
+      - "Si tu dois interagir avec des popups cross-origin (paiement, OAuth en popup), utilise `same-origin-allow-popups`."
+      - "Vérifie qu'aucune intégration légitime ne casse après activation."
+    stacks:
+      nginx: "add_header Cross-Origin-Opener-Policy \"same-origin\" always;"
+      apache: "Header always set Cross-Origin-Opener-Policy \"same-origin\""
+      npm: "Proxy Host → Advanced → Custom Nginx : add_header Cross-Origin-Opener-Policy \"same-origin\" always;"
+      cloudflare: "Transform Rules → Set static : Cross-Origin-Opener-Policy = same-origin"
+      nextjs: "next.config.js → headers(): { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }"
+    ai_prompt: "Tu es un expert en sécurité web. {host} (servi par {stack}) définit Cross-Origin-Opener-Policy à `unsafe-none`, ce qui n'isole rien. Explique le risque (XS-Leaks, window.opener, tabnabbing) et donne la configuration exacte pour {stack} avec `same-origin`."
     refs:
       - "https://developer.mozilla.org/fr/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy"
     a_verifier: false

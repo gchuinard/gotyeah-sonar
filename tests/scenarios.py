@@ -113,6 +113,19 @@ async def _collect():
     await run("hdr_cache_na", H.cache(mkctx(response=mkresp(headers={}))))
     await run("hdr_cache_ok", H.cache(mkctx(response=mkresp(headers=[("set-cookie", "s=1"), ("cache-control", "no-store")]))))
     await run("hdr_cache_bad", H.cache(mkctx(response=mkresp(headers=[("set-cookie", "s=1")]))))
+    # Batch 2 — présence→valeur : nouveaux codes (hors golden, couvre le rendu FR/EN).
+    await run("hdr_csp_permissive", H.csp(mkctx(response=mkresp(
+        headers={"content-security-policy": "default-src *"}))))
+    await run("hdr_xfo_allowall", H.xfo(mkctx(response=mkresp(
+        headers={"x-frame-options": "ALLOWALL"}))))
+    await run("hdr_xfo_fa_wildcard", H.xfo(mkctx(response=mkresp(
+        headers={"content-security-policy": "frame-ancestors *"}))))
+    await run("hdr_hsts_disabled", H.hsts(mkctx(response=mkresp(
+        headers={"strict-transport-security": "max-age=0"}))))
+    await run("hdr_referrer_weak", H.referrer(mkctx(response=mkresp(
+        headers={"referrer-policy": "unsafe-url"}))))
+    await run("hdr_coop_weak", H.coop(mkctx(response=mkresp(
+        headers={"cross-origin-opener-policy": "unsafe-none"}))))
 
     # ---- COOKIES ----
     await run("ck_none", CK.cookies(mkctx(response=mkresp(headers={}))))
