@@ -150,10 +150,13 @@
 
   /* ---- onglet historique ---- */
   .hist-empty { color: var(--text-faint); font-size: 14px; padding: 48px 20px; text-align: center; }
-  .hist-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  @media (max-width: 1100px) { .hist-grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 680px) { .hist-grid { grid-template-columns: 1fr; } }
-  .hist-card { display: flex; align-items: center; gap: 16px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; cursor: pointer; transition: background .15s, border-color .15s; }
+  /* minmax(0, 1fr) (et non 1fr = minmax(auto,1fr)) : sans ça une URL ininterrompable
+     — ex. un JWT Cloudflare Access dans la query — force la colonne à s'élargir et fait
+     exploser la grille. Avec minmax(0,…) + min-width:0, l'ellipsis de .hc-target opère. */
+  .hist-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 1100px) { .hist-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 680px) { .hist-grid { grid-template-columns: minmax(0, 1fr); } }
+  .hist-card { display: flex; align-items: center; gap: 16px; min-width: 0; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; cursor: pointer; transition: background .15s, border-color .15s; }
   .hist-card:hover { background: var(--bg-3); border-color: var(--line-2); }
   .hc-grade { font-family: var(--display); font-weight: 700; font-size: 30px; width: 44px; text-align: center; flex: none; }
   .hc-meta { min-width: 0; flex: 1; }
