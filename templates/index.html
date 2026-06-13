@@ -150,12 +150,14 @@
 
   /* ---- onglet historique ---- */
   .hist-empty { color: var(--text-faint); font-size: 14px; padding: 48px 20px; text-align: center; }
-  .hist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 12px; }
-  .hist-card { display: flex; align-items: center; gap: 14px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: pointer; transition: background .15s, border-color .15s; }
+  .hist-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 1100px) { .hist-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 680px) { .hist-grid { grid-template-columns: 1fr; } }
+  .hist-card { display: flex; align-items: center; gap: 16px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; cursor: pointer; transition: background .15s, border-color .15s; }
   .hist-card:hover { background: var(--bg-3); border-color: var(--line-2); }
-  .hc-grade { font-family: var(--display); font-weight: 700; font-size: 26px; width: 38px; text-align: center; flex: none; }
+  .hc-grade { font-family: var(--display); font-weight: 700; font-size: 30px; width: 44px; text-align: center; flex: none; }
   .hc-meta { min-width: 0; flex: 1; }
-  .hc-target { font-family: var(--mono); font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hc-target { font-family: var(--mono); font-size: 14.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hc-date { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
   .hc-score { font-family: var(--mono); font-size: 15px; color: var(--text-dim); white-space: nowrap; }
   .hc-score small { font-size: 11px; color: var(--text-faint); }
