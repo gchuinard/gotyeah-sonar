@@ -71,6 +71,7 @@
   },
 
   "history": {
+    "all": "All sites",
     "for": "History of",
     "show_all": "All history",
     "none_for": "No scan for this domain yet.",

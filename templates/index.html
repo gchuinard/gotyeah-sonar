@@ -197,6 +197,15 @@
   .hist-empty p { margin: 0 0 16px; }
   .dom-link { cursor: pointer; transition: color .15s; }
   .dom-link:hover { color: var(--accent); text-decoration: underline; }
+  /* Filtre par site (chips) dans l'historique : suivi de la note d'un seul site à la fois. */
+  .hist-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .hchip { display: inline-flex; align-items: center; gap: 7px; background: var(--bg-2); border: 1px solid var(--line); color: var(--text-dim); border-radius: 999px; padding: 6px 12px; font-family: var(--mono); font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+  .hchip:hover { background: var(--bg-3); border-color: var(--line-2); color: var(--text); }
+  .hchip.active { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+  .hchip-grade { font-family: var(--display); font-weight: 700; font-size: 13px; }
+  .hchip-host { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hchip-n { font-size: 10.5px; color: var(--text-faint); background: var(--bg); border-radius: 999px; padding: 1px 7px; }
+  .hchip.active .hchip-n { color: var(--text-dim); }
 
   /* ---- tally ---- */
   .tally { display: flex; flex-direction: column; gap: 2px; }
@@ -655,6 +664,20 @@
   </div><!-- /onglet Rapport -->
 
   <div v-show="activeTab === 'history'" class="history-tab tab-pane history-pane">
+    <!-- Filtre par site : un chip par host déjà testé (clic = match exact, sans mélanger
+         les sous-domaines). Affiche le compte de scans et la dernière note de chaque site. -->
+    <div v-if="history.length" class="hist-chips">
+      <button class="hchip" :class="{ active: !historyFilter }" @click="clearHistoryFilter">
+        {{ T('history.all', 'Tous les sites') }} <span class="hchip-n">{{ history.length }}</span>
+      </button>
+      <button v-for="d in historyDomains" :key="d.host"
+              class="hchip" :class="{ active: historyFilter === d.host }"
+              @click="setHistoryFilter(d.host)" :title="d.host">
+        <span v-if="d.grade" class="hchip-grade" :style="{ color: colorOf(d.score) }">{{ d.grade }}</span>
+        <span class="hchip-host">{{ d.host }}</span>
+        <span class="hchip-n">{{ d.count }}</span>
+      </button>
+    </div>
     <div v-if="historyFilter" class="hist-filter">
       {{ T('history.for', 'Historique de') }} <b>{{ historyFilter }}</b>
       <button class="reset-link" @click="clearHistoryFilter">{{ T('history.show_all', "Tout l'historique") }}</button>
@@ -722,6 +745,7 @@ createApp({
       // onglets : 'report' (scan courant / dernier rapport) ou 'history'
       activeTab: 'report',
       historyFilter: '',   // si défini, l'historique est filtré sur ce domaine
+      histExact: false,    // true = filtre sur le host EXACT (chips), sans inclure les sous-domaines
 
       // affichage du feed uniquement (n'affecte JAMAIS score/jauge/répartition)
       sevFilter: [], catFilter: [], sortBy: 'severity',
@@ -844,9 +868,25 @@ createApp({
       if (!this.historyFilter) return this.history;
       const dom = this.historyFilter.toLowerCase();
       return this.history.filter(h => {
-        const host = (h.target || '').replace(/^https?:\/\//, '').replace(/[\/:].*$/, '').toLowerCase();
-        return host === dom || host.endsWith('.' + dom);
+        const host = this.hostOf(h.target);
+        // Chips = match EXACT (un site = un host, pas de mélange avec ses sous-domaines).
+        // Panneau « Mes domaines » = inclut les sous-domaines (un domaine vérifié les couvre).
+        return this.histExact ? host === dom : (host === dom || host.endsWith('.' + dom));
       });
+    },
+    // Sites distincts présents dans l'historique → chips de filtre, avec compte et
+    // dernière note (l'historique arrive le plus récent en tête).
+    historyDomains() {
+      const map = new Map();
+      for (const h of this.history) {
+        const host = this.hostOf(h.target);
+        if (!host) continue;
+        if (!map.has(host)) map.set(host, { host, count: 0, grade: null, score: null });
+        const e = map.get(host);
+        e.count++;
+        if (e.grade === null && h.status === 'done') { e.grade = h.grade; e.score = h.score; }
+      }
+      return Array.from(map.values()).sort((a, b) => a.host.localeCompare(b.host));
     },
   },
   methods: {
@@ -1016,20 +1056,30 @@ createApp({
         await this.loadHistory();
       } catch (e) {}
     },
+    hostOf(target) {
+      return (target || '').replace(/^https?:\/\//, '').replace(/[\/:].*$/, '').toLowerCase();
+    },
     openDomain(d) {
       // Clic sur un domaine vérifié → pré-remplit l'input de scan et RESTE sur Rapport
       // (prêt à lancer). L'onglet Historique est filtré sur ce domaine si on y va ensuite.
       this.target = d.domain;
       this.historyFilter = d.domain;
+      this.histExact = false;   // un domaine vérifié couvre ses sous-domaines
       this.activeTab = 'report';
       this.loadHistory();
+    },
+    setHistoryFilter(host) {
+      // Chip de l'historique → filtre sur ce host EXACT (suivi de note d'un seul site).
+      this.historyFilter = host;
+      this.histExact = true;
     },
     scanDomain(domain) {
       this.target = domain;
       this.historyFilter = '';
+      this.histExact = false;
       this.startScan();   // bascule sur Rapport + lance le scan
     },
-    clearHistoryFilter() { this.historyFilter = ''; },
+    clearHistoryFilter() { this.historyFilter = ''; this.histExact = false; },
     sevCounts(h) {
       const c = h.counts || {};
       return this.SEV_ORDER.filter(s => c[s]).map(s => ({ s, n: c[s] }));
