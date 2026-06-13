@@ -159,8 +159,31 @@
   .hist-card { display: flex; align-items: center; gap: 16px; min-width: 0; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; cursor: pointer; transition: background .15s, border-color .15s; }
   .hist-card:hover { background: var(--bg-3); border-color: var(--line-2); }
   .hc-grade { font-family: var(--display); font-weight: 700; font-size: 30px; width: 44px; text-align: center; flex: none; }
-  .hc-meta { min-width: 0; flex: 1; }
+  .hc-meta { min-width: 0; flex: 1; position: relative; }
   .hc-target { font-family: var(--mono); font-size: 14.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Tooltip URL custom : remplace le `title` natif (lent ~1 s, moche). Apparition quasi
+     instantanée (transition .1s, zéro délai) et stylé comme l'app. Porté par .hc-meta car
+     .hc-target a overflow:hidden (pour l'ellipsis) → un pseudo dessus serait clippé.
+     word-break:break-all → une URL géante (JWT) s'affiche en bloc lisible, pas une ligne. */
+  .hc-meta::after {
+    content: attr(data-url);
+    position: absolute; left: 0; bottom: calc(100% + 9px); z-index: 40;
+    width: max-content; max-width: 380px; padding: 9px 12px;
+    background: var(--bg); border: 1px solid var(--line-2); border-radius: 9px;
+    color: var(--text); font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
+    letter-spacing: .01em; white-space: normal; word-break: break-all; text-align: left;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 0 1px var(--accent-dim);
+    opacity: 0; transform: translateY(4px) scale(.98); transform-origin: bottom left;
+    pointer-events: none; transition: opacity .1s ease, transform .1s ease;
+  }
+  .hc-meta::before {
+    content: ""; position: absolute; left: 17px; bottom: calc(100% + 4px); z-index: 41;
+    width: 9px; height: 9px; background: var(--bg);
+    border-right: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2);
+    transform: rotate(45deg); opacity: 0; pointer-events: none; transition: opacity .1s ease;
+  }
+  .hist-card:hover .hc-meta::after { opacity: 1; transform: translateY(0) scale(1); }
+  .hist-card:hover .hc-meta::before { opacity: 1; }
   .hc-date { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
   .hc-score { font-family: var(--mono); font-size: 15px; color: var(--text-dim); white-space: nowrap; }
   .hc-score small { font-size: 11px; color: var(--text-faint); }
@@ -650,8 +673,8 @@
           <template v-else-if="h.status === 'error'">⚠</template>
           <template v-else>{{ h.grade }}</template>
         </span>
-        <div class="hc-meta">
-          <div class="hc-target" :title="h.target">{{ h.target.replace(/^https?:\/\//,'') }}</div>
+        <div class="hc-meta" :data-url="h.target" :aria-label="h.target">
+          <div class="hc-target">{{ h.target.replace(/^https?:\/\//,'') }}</div>
           <div class="hc-date">{{ fmtDate(h.created_at) }}</div>
           <div class="hc-sev" v-if="sevCounts(h).length">
             <span v-for="b in sevCounts(h)" :key="b.s" class="hc-badge"
