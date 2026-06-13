@@ -34,6 +34,8 @@ services:
       - NUCLEI_SEVERITY=${NUCLEI_SEVERITY:-}
       - NUCLEI_RATE_LIMIT=${NUCLEI_RATE_LIMIT:-}     # req/s max
       - NUCLEI_TIMEOUT=${NUCLEI_TIMEOUT:-}
+      # --- Scan de ports : vise l'origine réelle derrière Cloudflare (IP publique fixe) ---
+      - SONAR_ORIGIN_IP=${SONAR_ORIGIN_IP:-}
       # Autres réglages possibles (mêmes que le code) : SONAR_MAGIC_TTL_MIN,
       # SONAR_SESSION_DAYS, SONAR_RATE_EMAIL/IP, ZAP_ACTIVE, NUCLEI_ARGS…
     networks:
