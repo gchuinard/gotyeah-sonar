@@ -30,6 +30,7 @@ from scanner.runner import normalize_target, run_scan
 BASE = Path(__file__).parent
 PAGE = (BASE / "templates" / "index.html").read_text(encoding="utf-8")
 LOGIN_PAGE = (BASE / "templates" / "login.html").read_text(encoding="utf-8")
+HELP_MCP_PAGE = (BASE / "templates" / "help_mcp.html").read_text(encoding="utf-8")
 
 SESSION_COOKIE = "sonar_session"
 LANG_COOKIE = "sonar_lang"
@@ -209,6 +210,17 @@ async def index(request: Request):
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
     return HTMLResponse(LOGIN_PAGE)
+
+
+@app.get("/help/mcp", response_class=HTMLResponse)
+async def help_mcp(request: Request):
+    """Page d'aide : connecter une app IA à Sonar via MCP (10 clients). L'URL publique de
+    l'instance est injectée pour pré-remplir les exemples (URL /mcp + commande locale)."""
+    user = _current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    page = HELP_MCP_PAGE.replace("__SONAR_HELP_BASE__", json.dumps(_base_url(request)))
+    return HTMLResponse(page)
 
 
 # --------------------------------------------------------------------------- #

@@ -27,3 +27,17 @@ def test_login_message_adapts_to_registration_mode(client, monkeypatch):
     monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "false")
     r = c.post("/api/auth/request", json={"email": "ghost@b.com"})
     assert "Si un compte existe" in r.json()["message"]
+
+
+def test_help_mcp_page(client):
+    """Page d'aide MCP : login requis (302) puis 200 avec l'URL d'instance injectée."""
+    import auth
+    c, _ = client
+    r = c.get("/help/mcp", follow_redirects=False)
+    assert r.status_code == 302 and "/login" in r.headers["location"]
+    u = auth.create_user("a@b.com")
+    c.cookies.set("sonar_session", auth.create_session(u["id"]))
+    r2 = c.get("/help/mcp")
+    assert r2.status_code == 200
+    assert "__SONAR_HELP_BASE__" not in r2.text   # placeholder bien remplacé
+    assert "/mcp" in r2.text and "sonar_mcp" in r2.text

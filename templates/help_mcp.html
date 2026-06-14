@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sonar — connecter ton app IA (MCP)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#070b10; --bg-2:#0b121a; --bg-3:#101a25;
+    --line:rgba(122,160,180,.12); --line-2:rgba(122,160,180,.22);
+    --text:#d6e2ea; --text-dim:#7d8c98; --text-faint:#46535d;
+    --accent:#2ee6a6; --accent-dim:rgba(46,230,166,.12);
+    --sev-medium:#ffd23f;
+    --mono:'IBM Plex Mono', ui-monospace, monospace;
+    --sans:'IBM Plex Sans', system-ui, sans-serif;
+    --display:'Chakra Petch', var(--sans);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; min-height: 100vh;
+    background-image:
+      radial-gradient(900px 500px at 80% -10%, rgba(46,230,166,.07), transparent 60%),
+      radial-gradient(700px 500px at 0% 0%, rgba(91,141,239,.06), transparent 55%);
+  }
+  .app { max-width: 1100px; margin: 0 auto; padding: 26px 22px 80px; }
+  a { color: var(--accent); }
+
+  .topbar { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+  .wordmark b { font-family: var(--display); font-weight: 700; font-size: 19px; }
+  .wordmark span { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-left: 8px; }
+  .spacer { flex: 1; }
+  .back { font-family: var(--mono); font-size: 12px; color: var(--text-dim); text-decoration: none; border: 1px solid var(--line); border-radius: 6px; padding: 6px 11px; }
+  .back:hover { color: var(--text); border-color: var(--line-2); }
+
+  h1 { font-family: var(--display); font-weight: 700; font-size: 24px; margin: 0 0 6px; }
+  .lead { color: var(--text-dim); margin: 0 0 18px; max-width: 760px; }
+  .lead code { font-family: var(--mono); color: var(--accent); }
+
+  .panel { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+  .panel h3 { font-family: var(--display); font-size: 14px; margin: 0 0 8px; }
+  .two { display: flex; gap: 14px; flex-wrap: wrap; }
+  .two > div { flex: 1; min-width: 240px; }
+  .kv { font-size: 13px; color: var(--text-dim); }
+  .kv b { color: var(--text); }
+
+  .patbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .patbar input { flex: 1; min-width: 220px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 7px; padding: 8px 11px; font-family: var(--mono); font-size: 12px; }
+  .patbar input:focus { outline: none; border-color: var(--line-2); }
+  .hint { font-size: 12px; color: var(--text-faint); }
+
+  .layout { display: grid; grid-template-columns: 230px minmax(0,1fr); gap: 18px; align-items: start; }
+  @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+
+  .nav { display: flex; flex-direction: column; gap: 3px; position: sticky; top: 16px; }
+  .nav-group { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint); margin: 12px 0 4px; }
+  .nav-group:first-child { margin-top: 0; }
+  .nav-item { display: flex; align-items: center; gap: 8px; text-align: left; background: none; border: 1px solid transparent; color: var(--text-dim); border-radius: 8px; padding: 8px 11px; cursor: pointer; font-family: var(--sans); font-size: 13px; }
+  .nav-item:hover { color: var(--text); background: var(--bg-2); }
+  .nav-item.active { color: var(--text); background: var(--accent-dim); border-color: var(--accent); }
+
+  .content { min-width: 0; }
+  .client-h { font-family: var(--display); font-weight: 700; font-size: 20px; margin: 0 0 4px; }
+  .client-sub { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; }
+
+  .method { border: 1px solid var(--line); border-radius: 11px; padding: 14px 15px; margin-bottom: 14px; background: var(--bg-2); }
+  .method-h { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .method-h .t { font-family: var(--display); font-weight: 700; font-size: 14px; }
+  .badge { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; border-radius: 5px; padding: 2px 7px; }
+  .badge.oauth { color: var(--accent); border: 1px solid var(--accent); }
+  .badge.pat { color: var(--sev-medium); border: 1px solid var(--sev-medium); }
+  .note { font-size: 12.5px; color: var(--text-dim); margin: 0 0 9px; line-height: 1.5; }
+  .note.warn { color: var(--sev-medium); }
+  ol.steps { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+  ol.steps code { font-family: var(--mono); font-size: 12px; background: var(--bg-3); padding: 1px 5px; border-radius: 4px; color: var(--text); }
+
+  .codebox { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 11px; }
+  .codebox .file { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); margin-bottom: 6px; }
+  .codebox pre { margin: 0; font-family: var(--mono); font-size: 11.5px; color: var(--text); white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
+  .codebox .copy { position: absolute; top: 8px; right: 8px; font-family: var(--mono); font-size: 11px; color: var(--bg); background: var(--accent); border: none; border-radius: 6px; padding: 4px 9px; cursor: pointer; }
+  .codebox .copy:hover { filter: brightness(1.08); }
+</style>
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar">
+    <div class="wordmark"><b>Sonar</b><span>connexion MCP</span></div>
+    <div class="spacer"></div>
+    <a class="back" href="/">← Retour au dashboard</a>
+  </header>
+
+  <h1>Connecter Sonar à ton app IA</h1>
+  <p class="lead">
+    Sonar parle le <b>MCP</b> (Model Context Protocol) : une app IA peut lire tes scans (lecture seule).
+    Le MCP se branche au niveau de l'<b>application</b>, pas du modèle. Deux façons selon ton app :
+  </p>
+
+  <div class="panel">
+    <div class="two">
+      <div>
+        <h3>A · Connecteur distant <span class="badge oauth">OAuth</span></h3>
+        <div class="kv">Zéro installation. Tu ajoutes une URL : <b>{{ mcpUrl }}</b>, et tu te connectes via l'identité.
+        ⚠️ Réservé aux <b>comptes autorisés</b> à accéder au service (sinon « accès refusé »).</div>
+      </div>
+      <div>
+        <h3>B · Serveur local <span class="badge pat">jeton</span></h3>
+        <div class="kv">Marche partout. Demande le dépôt Sonar + un <b>jeton</b> (PAT) généré dans le dashboard
+        (panneau « Connexion à Claude »). Prérequis une fois :</div>
+        <div class="codebox" style="margin-top:8px">
+          <button class="copy" @click="copy(prereq, 'pre')">{{ copied==='pre' ? 'Copié !' : 'Copier' }}</button>
+          <pre>{{ prereq }}</pre>
+        </div>
+      </div>
+    </div>
+    <div class="patbar">
+      <span class="hint">Colle ton jeton pour pré-remplir les exemples ↓</span>
+      <input v-model="pat" spellcheck="false" placeholder="sonar_pat_…" />
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav class="nav">
+      <template v-for="g in groups" :key="g">
+        <div class="nav-group">{{ g }}</div>
+        <button v-for="c in clientsIn(g)" :key="c.id"
+                class="nav-item" :class="{ active: c.id === sel }" @click="sel = c.id">
+          {{ c.name }}
+        </button>
+      </template>
+    </nav>
+
+    <section class="content" v-if="cur">
+      <div class="client-h">{{ cur.name }}</div>
+      <div class="client-sub">{{ cur.sub }}</div>
+
+      <div class="method" v-for="(m, i) in cur.methods" :key="i">
+        <div class="method-h">
+          <span class="t">{{ m.label }}</span>
+          <span class="badge" :class="m.badge">{{ m.badge === 'oauth' ? 'distant' : 'local' }}</span>
+        </div>
+        <p v-if="m.note" class="note" :class="{ warn: m.warn }">{{ m.note }}</p>
+        <ol v-if="m.steps" class="steps">
+          <li v-for="(s, j) in m.steps" :key="j" v-html="fillHtml(s)"></li>
+        </ol>
+        <div v-if="m.code" class="codebox">
+          <div class="file" v-if="m.file">{{ m.file }}</div>
+          <button class="copy" @click="copy(fill(m.code), 'c'+i)">{{ copied === 'c'+i ? 'Copié !' : 'Copier' }}</button>
+          <pre>{{ fill(m.code) }}</pre>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script>
+const { createApp } = Vue;
+
+const BASE = (function () { try { return __SONAR_HELP_BASE__; } catch (e) { return 'https://ton-instance-sonar'; } })();
+const PYBIN = '/chemin/vers/gotyeah_sonar/.mcpvenv/bin/python';
+const REPO  = '/chemin/vers/gotyeah_sonar';
+
+// Config locale (stdio) commune aux éditeurs qui utilisent command/args/env, paramétrée par
+// la clé racine (mcpServers / servers selon le client).
+function localJson(root) {
+  return `{
+  "${root}": {
+    "sonar": {
+      "command": "${PYBIN}",
+      "args": ["-m", "sonar_mcp"],
+      "env": {
+        "SONAR_TOKEN": "{PAT}",
+        "SONAR_BASE_URL": "{BASE}",
+        "PYTHONPATH": "${REPO}"
+      }
+    }
+  }
+}`;
+}
+// Config distante (HTTP) paramétrée par la clé racine + le corps du serveur.
+function remoteJson(root, body) { return `{\n  "${root}": {\n    "sonar": ${body}\n  }\n}`; }
+
+const LOCAL_CODE_CLI = `claude mcp add sonar \\
+  --env SONAR_TOKEN={PAT} \\
+  --env SONAR_BASE_URL={BASE} \\
+  --env PYTHONPATH=${REPO} \\
+  -- ${PYBIN} -m sonar_mcp`;
+
+const CLIENTS = [
+  // ---- Claude (3 clients) ----
+  { id: 'claude-web', group: 'Claude', name: 'Claude.ai (web)', sub: 'Assistant de chat — connecteur distant, sans rien installer.',
+    methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
+      note: 'Connecte-toi avec un compte AUTORISÉ à accéder au service, sinon « accès refusé » à l\'étape de consentement.',
+      steps: [
+        'Dans claude.ai : <b>Réglages → Connecteurs</b>.',
+        'Clique <b>« Ajouter un connecteur personnalisé »</b>.',
+        'Colle l\'URL : <code>{BASE}/mcp</code> puis connecte-toi via ton fournisseur d\'identité.',
+      ] }] },
+  { id: 'claude-desktop', group: 'Claude', name: 'Claude Desktop', sub: 'Appli de bureau — connecteur distant OU serveur local.',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', steps: [
+        '<b>Réglages → Connecteurs → Ajouter un connecteur personnalisé</b>.',
+        'URL : <code>{BASE}/mcp</code>, puis login via l\'identité (compte autorisé).' ] },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: 'claude_desktop_config.json',
+        note: 'Réglages → Développeur → Modifier la config, colle ce bloc :', code: localJson('mcpServers') },
+    ] },
+  { id: 'claude-code', group: 'Claude', name: 'Claude Code', sub: 'CLI — une commande suffit.',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: 'terminal',
+        note: 'OAuth 2.1 natif : la commande ouvre le navigateur pour te connecter.', code: `claude mcp add --transport http sonar {BASE}/mcp` },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: 'terminal', code: LOCAL_CODE_CLI },
+    ] },
+
+  // ---- ChatGPT ----
+  { id: 'chatgpt', group: 'Assistants', name: 'ChatGPT', sub: 'OpenAI — connecteur MCP via le « Developer mode » (Pro/Plus/Business/Enterprise/Edu).',
+    methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
+      note: 'OAuth uniquement (pas de clé API) — donc compte autorisé requis. Le mode développeur est puissant : attention aux actions d\'écriture (ici tout est en lecture seule).',
+      steps: [
+        'Active le mode dev : <b>Réglages → Apps → Paramètres avancés → Developer mode</b>.',
+        '<b>Réglages → Connecteurs (Apps) → Créer</b>.',
+        'Nom + description, URL du serveur : <code>{BASE}/mcp</code>, auth = OAuth.',
+      ] }] },
+
+  // ---- Éditeurs & outils dev ----
+  { id: 'cursor', group: 'Éditeurs & outils dev', name: 'Cursor', sub: 'Éditeur — fichier mcp.json.',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: '~/.cursor/mcp.json (ou .cursor/mcp.json)',
+        code: remoteJson('mcpServers', '{ "url": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.cursor/mcp.json', code: localJson('mcpServers') },
+    ] },
+  { id: 'vscode', group: 'Éditeurs & outils dev', name: 'GitHub Copilot (VS Code)', sub: 'Mode agent — fichier .vscode/mcp.json (clé « servers »).',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: '.vscode/mcp.json',
+        code: remoteJson('servers', '{ "type": "http", "url": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: '.vscode/mcp.json', code: localJson('servers') },
+    ] },
+  { id: 'windsurf', group: 'Éditeurs & outils dev', name: 'Windsurf', sub: 'Codeium — fichier mcp_config.json (clé « serverUrl »).',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: '~/.codeium/windsurf/mcp_config.json',
+        code: remoteJson('mcpServers', '{ "serverUrl": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.codeium/windsurf/mcp_config.json', code: localJson('mcpServers') },
+    ] },
+  { id: 'cline', group: 'Éditeurs & outils dev', name: 'Cline', sub: 'Extension — panneau Cline → MCP Servers → Configure.',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: 'cline_mcp_settings.json',
+        note: 'Le type DOIT être « streamableHttp » (camelCase) sinon Cline retombe en SSE.',
+        code: remoteJson('mcpServers', '{ "type": "streamableHttp", "url": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: 'cline_mcp_settings.json', code: localJson('mcpServers') },
+    ] },
+  { id: 'gemini-cli', group: 'Éditeurs & outils dev', name: 'Gemini CLI', sub: 'Google — fichier settings.json (clé « httpUrl » pour le distant).',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: '~/.gemini/settings.json',
+        code: remoteJson('mcpServers', '{ "httpUrl": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.gemini/settings.json', code: localJson('mcpServers') },
+    ] },
+  { id: 'zed', group: 'Éditeurs & outils dev', name: 'Zed', sub: 'Éditeur — clé « context_servers » (command est un objet).',
+    methods: [
+      { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.config/zed/settings.json',
+        code: `{
+  "context_servers": {
+    "sonar": {
+      "command": {
+        "path": "${PYBIN}",
+        "args": ["-m", "sonar_mcp"],
+        "env": { "SONAR_TOKEN": "{PAT}", "SONAR_BASE_URL": "{BASE}", "PYTHONPATH": "${REPO}" }
+      }
+    }
+  }
+}` },
+      { label: 'Connecteur distant (via proxy)', badge: 'oauth',
+        note: 'Zed n\'a pas encore le HTTP distant natif : on passe par un proxy local mcp-remote.', file: '~/.config/zed/settings.json',
+        code: `{
+  "context_servers": {
+    "sonar": {
+      "command": { "path": "npx", "args": ["-y", "mcp-remote", "{BASE}/mcp"] }
+    }
+  }
+}` },
+    ] },
+  { id: 'jetbrains', group: 'Éditeurs & outils dev', name: 'JetBrains AI Assistant / Junie', sub: 'IntelliJ & co — Réglages → Tools → AI Assistant → MCP (colle un JSON).',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: 'Settings → Tools → AI Assistant → MCP → New (JSON)',
+        code: remoteJson('mcpServers', '{ "url": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: 'même dialogue MCP (JSON)', code: localJson('mcpServers') },
+    ] },
+  { id: 'continue', group: 'Éditeurs & outils dev', name: 'Continue.dev', sub: 'Extension — un fichier YAML par serveur.',
+    methods: [
+      { label: 'Serveur local (jeton)', badge: 'pat', file: '.continue/mcpServers/sonar.yaml',
+        code: `name: Sonar
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: sonar
+    command: ${PYBIN}
+    args: ["-m", "sonar_mcp"]
+    env:
+      SONAR_TOKEN: "{PAT}"
+      SONAR_BASE_URL: "{BASE}"
+      PYTHONPATH: ${REPO}` },
+    ] },
+];
+
+createApp({
+  data() {
+    return {
+      base: BASE,
+      pat: '',
+      sel: 'claude-web',
+      copied: '',
+      clients: CLIENTS,
+      prereq: 'cd gotyeah_sonar\npython3 -m venv .mcpvenv && . .mcpvenv/bin/activate\npip install -r requirements-mcp.txt',
+    };
+  },
+  computed: {
+    mcpUrl() { return this.base + '/mcp'; },
+    groups() { return [...new Set(this.clients.map(c => c.group))]; },
+    cur() { return this.clients.find(c => c.id === this.sel); },
+  },
+  methods: {
+    clientsIn(g) { return this.clients.filter(c => c.group === g); },
+    fill(text) { return String(text).split('{BASE}').join(this.base).split('{PAT}').join(this.pat.trim() || 'sonar_pat_TON_JETON'); },
+    fillHtml(text) { return this.fill(text); },   // les steps contiennent déjà du HTML sûr (statique)
+    copy(text, key) {
+      const done = () => { this.copied = key; setTimeout(() => { if (this.copied === key) this.copied = ''; }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => {});
+      else { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); done(); }
+    },
+  },
+}).mount('#app');
+</script>
+</body>
+</html>
