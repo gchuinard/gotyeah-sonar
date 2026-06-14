@@ -374,6 +374,29 @@ mcpServers:
           'Endpoint URL = <code>{BASE}/mcp</code> (transport <b>HTTP Streamable</b>).',
           'Ajoute le node <b>« MCP Client Tool »</b> dans ton workflow avec ce credential.' ] },
     ] },
+
+  // ---- Grandes IA grand public (connecteur distant uniquement) ----
+  { id: 'mistral', group: 'Assistants', name: 'Mistral (Le Chat)', sub: 'Le Chat — connecteurs MCP personnalisés.',
+    methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
+      note: 'Compte autorisé requis. Le serveur MCP doit être en HTTPS.',
+      steps: [
+        'Dans Le Chat : <b>Connecteurs</b> (Réglages → Connecteurs).',
+        'Ajoute un <b>connecteur MCP personnalisé</b>.',
+        'URL : <code>{BASE}/mcp</code>, puis connecte-toi via l\'identité.' ] }] },
+  { id: 'perplexity', group: 'Assistants', name: 'Perplexity', sub: 'Pro / Max / Enterprise — connecteurs personnalisés.',
+    methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
+      note: 'Réservé aux abonnements Pro / Max / Enterprise. URL en HTTPS, compte autorisé.',
+      steps: [
+        '<b>Réglages → Connecteurs</b>.',
+        'Clique <b>« + Custom connector »</b>.',
+        'URL du serveur MCP : <code>{BASE}/mcp</code>, auth = OAuth.' ] }] },
+  { id: 'grok', group: 'Assistants', name: 'Grok (xAI)', sub: '« Bring Your Own MCP » — Web, iOS, Android.',
+    methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
+      note: 'Compte autorisé requis.',
+      steps: [
+        'Dans Grok : <b>Réglages → Connecteurs</b>.',
+        'Choisis <b>« Bring Your Own MCP »</b> (connecteur personnalisé).',
+        'URL : <code>{BASE}/mcp</code>.' ] }] },
 ];
 
 createApp({
