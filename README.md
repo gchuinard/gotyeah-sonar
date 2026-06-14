@@ -126,6 +126,15 @@ access tokens (JWT signés par l'IdP). L'identité (`email` du token, ou du *use
 repli) est mappée sur ton compte Sonar — donc accès **scopé à l'utilisateur** (l'admin voit
 tout l'historique). Trois outils en lecture + `run_scan` (action), borné aux domaines vérifiés.
 
+> 🔐 **Mapping d'identité & inscription.** Par défaut (`SONAR_OPEN_REGISTRATION=false`) seuls
+> les comptes **créés par l'admin** existent : un email inconnu est rejeté (lookup strict).
+> Si tu ouvres l'inscription (`=true`, le **même** flag que le web), le MCP **crée le compte à
+> la volée** au 1er login — mais **uniquement si l'IdP atteste un email vérifié** (claim
+> `email_verified`). En mode ouvert, un email **non vérifié** est refusé pour *toute*
+> correspondance (rempart anti-usurpation : un inconnu ne peut pas revendiquer l'email de
+> l'admin). ⚠️ Le mode ouvert n'est donc sûr que si l'IdP **vérifie réellement les emails**
+> (Pocket ID : configurer la vérif SMTP, ne PAS « marquer tous les emails comme vérifiés »).
+
 > ⚠️ C'est une **surface publique authentifiée** : elle est **désactivée par défaut**
 > (`SONAR_MCP_REMOTE` non défini). Active-la seulement si tu veux brancher claude.ai web.
 

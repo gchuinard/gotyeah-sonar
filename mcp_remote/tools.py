@@ -17,12 +17,28 @@ from urllib.parse import urlparse
 # --------------------------------------------------------------------------- #
 # Identité : access token (claims.email, ou userinfo en repli) -> compte Sonar
 # --------------------------------------------------------------------------- #
+def _claim_truthy(val) -> bool:
+    """`email_verified` (OIDC) est un booléen ; on tolère la string "true" par robustesse."""
+    return val is True or (isinstance(val, str) and val.strip().lower() == "true")
+
+
 def resolve_user_from_token(tok, userinfo_endpoint: str | None = None, *, http_get=None):
     """Mappe un access token vers un compte Sonar, ou None.
 
     tok : objet avec `.claims` (dict) et `.token` (str), ou None.
     Pocket ID ne met PAS l'email dans l'access token (seulement dans le userinfo) → repli
     sur le userinfo avec le token porteur. `http_get` est injectable pour les tests.
+
+    Modes d'inscription (gouvernés par SONAR_OPEN_REGISTRATION, le MÊME flag que le web) :
+      • FERMÉ (défaut) : lookup strict — seules les identités créées par l'admin existent.
+        Comportement historique ; un email inconnu → None. (En pratique l'IdP est lui-même
+        en signup fermé, donc seul l'admin peut même atteindre cette étape.)
+      • OUVERT : surface PUBLIQUE. On EXIGE alors un email VÉRIFIÉ par l'IdP (claim
+        `email_verified`) pour TOUTE correspondance — création comme mapping sur un compte
+        existant — puis on crée le compte à la volée au 1er login. C'est le REMPART
+        anti-usurpation : sans email vérifié, un inconnu s'inscrivant chez un IdP laxiste
+        avec l'email de l'admin récupérerait le compte admin. On lit l'email ET sa vérif à
+        la MÊME source (claims, ou userinfo en repli — Pocket ID ne met l'email que là).
     """
     import auth as sonar_auth
 
@@ -30,6 +46,7 @@ def resolve_user_from_token(tok, userinfo_endpoint: str | None = None, *, http_g
         return None
     claims = getattr(tok, "claims", None) or {}
     email = (claims.get("email") or "").strip()
+    verified = _claim_truthy(claims.get("email_verified"))
     if not email and userinfo_endpoint and getattr(tok, "token", None):
         getter = http_get
         if getter is None:
@@ -39,12 +56,19 @@ def resolve_user_from_token(tok, userinfo_endpoint: str | None = None, *, http_g
             r = getter(userinfo_endpoint,
                        headers={"Authorization": f"Bearer {tok.token}"}, timeout=10)
             if r.status_code == 200:
-                email = (r.json().get("email") or "").strip()
+                info = r.json()
+                email = (info.get("email") or "").strip()
+                verified = _claim_truthy(info.get("email_verified"))
         except Exception:
             pass
     if not email:
         return None
-    return sonar_auth.get_user_by_email(sonar_auth.normalize_email(email))
+    norm = sonar_auth.normalize_email(email)
+    if sonar_auth.open_registration():
+        # Surface publique : email vérifié obligatoire (anti-usurpation), puis auto-création.
+        return sonar_auth.get_or_create_user(norm) if verified else None
+    # Inscription fermée : lookup strict, identités gérées par l'admin (comportement historique).
+    return sonar_auth.get_user_by_email(norm)
 
 
 # --------------------------------------------------------------------------- #

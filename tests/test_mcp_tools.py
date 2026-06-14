@@ -57,6 +57,51 @@ def test_resolve_user_userinfo_fallback(authdb):
     assert calls["url"] == "https://idp/userinfo" and calls["auth"] == "Bearer ACCESS"
 
 
+def test_resolve_user_autoprovision_open_and_verified(authdb, monkeypatch):
+    """Inscription ouverte + email vérifié → compte créé à la volée au 1er login (idempotent)."""
+    monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "true")
+    assert auth.get_user_by_email("new@b.com") is None
+    tok = SimpleNamespace(claims={"email": "New@B.com", "email_verified": True}, token="t")
+    got = tools.resolve_user_from_token(tok)
+    assert got is not None and got["email"] == "new@b.com"
+    again = tools.resolve_user_from_token(tok)     # 2ᵉ login → MÊME compte, pas de doublon
+    assert again["id"] == got["id"]
+
+
+def test_resolve_user_open_mode_existing_user_still_maps(authdb, monkeypatch):
+    """Mode ouvert + email vérifié sur un compte EXISTANT (admin) → mappe dessus (login normal)."""
+    monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "true")
+    admin = auth.create_user("admin@b.com", is_admin=True)
+    tok = SimpleNamespace(claims={"email": "admin@b.com", "email_verified": True}, token="t")
+    assert tools.resolve_user_from_token(tok)["id"] == admin["id"]
+
+
+def test_resolve_user_open_mode_unverified_email_refused(authdb, monkeypatch):
+    """REMPART anti-usurpation : en mode OUVERT, email NON vérifié → refus pour TOUTE correspondance.
+
+    Ni création d'un inconnu, ni mapping sur un compte existant : un inconnu revendiquant
+    l'email de l'admin chez un IdP laxiste ne récupère PAS le compte admin.
+    """
+    monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "true")
+    admin = auth.create_user("admin@b.com", is_admin=True)
+    # inconnu non vérifié → None, rien créé
+    tok_unknown = SimpleNamespace(claims={"email": "intrus@b.com", "email_verified": False}, token="t")
+    assert tools.resolve_user_from_token(tok_unknown) is None
+    assert auth.get_user_by_email("intrus@b.com") is None
+    # usurpation de l'email admin sans vérif → REFUSÉ (ne mappe PAS sur l'admin)
+    spoof = SimpleNamespace(claims={"email": "admin@b.com", "email_verified": False}, token="t")
+    assert tools.resolve_user_from_token(spoof) is None
+    assert auth.get_user_by_id(admin["id"]) is not None   # le compte admin est intact
+
+
+def test_resolve_user_closed_mode_no_autoprovision(authdb, monkeypatch):
+    """Inscription fermée (défaut) : email vérifié mais inconnu → rejeté, aucun compte créé."""
+    monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "false")
+    tok = SimpleNamespace(claims={"email": "nope@b.com", "email_verified": True}, token="t")
+    assert tools.resolve_user_from_token(tok) is None
+    assert auth.get_user_by_email("nope@b.com") is None
+
+
 # --------------------------------------------------------------------------- #
 # Garde-fou identité + cloisonnement (IDOR)
 # --------------------------------------------------------------------------- #
