@@ -47,6 +47,19 @@ def test_list_users_counts(authdb):
     assert users["admin@b.com"]["scans"] == 0
 
 
+def test_purge_expired(authdb):
+    u = auth.create_user("u@b.com")
+    valid = auth.create_session(u["id"])           # expiration future
+    with sqlite3.connect(db.DB_PATH) as conn:      # une session + un lien magique EXPIRÉS
+        conn.execute("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) "
+                     "VALUES (?,?,?,?)", ("old", u["id"], "2000-01-01T00:00:00", "2000-01-02T00:00:00"))
+        conn.execute("INSERT INTO magic_tokens (token_hash, email, purpose, created_at, expires_at) "
+                     "VALUES (?,?,?,?,?)", ("oldmt", "u@b.com", "login",
+                                            "2000-01-01T00:00:00", "2000-01-02T00:00:00"))
+    assert auth.purge_expired() == 2               # les 2 expirés supprimés
+    assert auth.get_session_user(valid) is not None  # la session valide est intacte
+
+
 def test_wal_mode_enabled(authdb):
     """WAL persistant posé par init_db → lecteurs/écrivains ne se bloquent plus."""
     with db.connect() as conn:

@@ -99,6 +99,19 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     Retourne (mcp, http_app). PUR : aucun effet de bord (pas de réseau hors init OIDCProxy,
     pas de DB). L'appelant monte `http_app` en dernier et exécute son lifespan.
     """
+    # Validation de la config AVANT d'importer fastmcp : une config OIDC incomplète doit
+    # lever RuntimeError même si la dépendance lourde n'est pas installée (dev local), et
+    # c'est ce comportement que teste la suite (sans fastmcp).
+    base = base_url.rstrip("/")
+    config_url = oidc_config_url()
+    client_id = (os.environ.get("SONAR_OIDC_CLIENT_ID") or "").strip()
+    client_secret = (os.environ.get("SONAR_OIDC_CLIENT_SECRET") or "").strip() or None
+    if not (config_url and client_id and client_secret):
+        raise RuntimeError(
+            "Config OIDC incomplète : SONAR_OIDC_CONFIG_URL (ou SONAR_OIDC_ISSUER) + "
+            "SONAR_OIDC_CLIENT_ID + SONAR_OIDC_CLIENT_SECRET sont requis."
+        )
+
     import httpx
     from fastmcp import FastMCP
     from fastmcp.server.auth import JWTVerifier, OAuthProxy
@@ -110,16 +123,6 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     READ_ANN = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)
     ACTION_ANN = ToolAnnotations(
         readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
-
-    base = base_url.rstrip("/")
-    config_url = oidc_config_url()
-    client_id = (os.environ.get("SONAR_OIDC_CLIENT_ID") or "").strip()
-    client_secret = (os.environ.get("SONAR_OIDC_CLIENT_SECRET") or "").strip() or None
-    if not (config_url and client_id and client_secret):
-        raise RuntimeError(
-            "Config OIDC incomplète : SONAR_OIDC_CONFIG_URL (ou SONAR_OIDC_ISSUER) + "
-            "SONAR_OIDC_CLIENT_ID + SONAR_OIDC_CLIENT_SECRET sont requis."
-        )
 
     # Découverte OIDC de l'IdP (endpoints + JWKS). On utilise OAuthProxy + JWTVerifier
     # plutôt qu'OIDCProxy : OIDCProxy COUPLE les scopes valides (DCR) avec les scopes

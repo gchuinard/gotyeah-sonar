@@ -172,6 +172,18 @@ def init_auth() -> None:
         ucols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         if "lang" not in ucols:
             conn.execute("ALTER TABLE users ADD COLUMN lang TEXT")
+    purge_expired()   # nettoyage au démarrage (sessions / liens magiques expirés)
+
+
+def purge_expired() -> int:
+    """Supprime les sessions et liens magiques EXPIRÉS. Sans ça ces tables grossissent sans
+    fin (un anonyme peut générer des magic_tokens à volonté en inscription ouverte). Appelé
+    au démarrage ; renvoie le nombre de lignes supprimées. Idempotent."""
+    now = _iso(_now())
+    with _conn() as conn:
+        n = conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,)).rowcount
+        n += conn.execute("DELETE FROM magic_tokens WHERE expires_at < ?", (now,)).rowcount
+    return n
 
 
 # --------------------------------------------------------------------------- #
