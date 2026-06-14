@@ -75,22 +75,36 @@ async def _sourcemaps(ctx) -> list[Finding]:
     return [Finding("leak-sourcemap", C, Severity.PASS, code="clean")]
 
 
+def _bases(ctx) -> list[str]:
+    """URL finale + racine du domaine (dédupliquées). Sonder seulement `ctx.url` ratait un
+    swagger/graphql/security.txt servi à la RACINE quand l'accueil redirige (`/` → `/en/`)."""
+    parsed = urlparse(ctx.url)
+    root = f"{parsed.scheme}://{parsed.netloc}/"
+    return [ctx.url] if ctx.url == root else [ctx.url, root]
+
+
 _SWAGGER_PATHS = ["openapi.json", "swagger.json", "api-docs", "v2/api-docs",
                   "swagger/v1/swagger.json", "api/swagger.json"]
 
 
 async def _swagger(ctx) -> list[Finding]:
-    for path in _SWAGGER_PATHS:
-        resp = await _get(ctx, urljoin(ctx.url, path))
-        if not resp or resp.status_code != 200:
-            continue
-        try:
-            data = json.loads(resp.text or "")
-        except Exception:
-            continue
-        if isinstance(data, dict) and ("openapi" in data or "swagger" in data or "paths" in data):
-            return [Finding("leak-swagger", C, Severity.MEDIUM, code="exposed",
-                            params={"path": path}, evidence=urljoin(ctx.url, path))]
+    seen: set[str] = set()
+    for base in _bases(ctx):
+        for path in _SWAGGER_PATHS:
+            url = urljoin(base, path)
+            if url in seen:
+                continue
+            seen.add(url)
+            resp = await _get(ctx, url)
+            if not resp or resp.status_code != 200:
+                continue
+            try:
+                data = json.loads(resp.text or "")
+            except Exception:
+                continue
+            if isinstance(data, dict) and ("openapi" in data or "swagger" in data or "paths" in data):
+                return [Finding("leak-swagger", C, Severity.MEDIUM, code="exposed",
+                                params={"path": path}, evidence=url)]
     return [Finding("leak-swagger", C, Severity.PASS, code="clean")]
 
 
@@ -99,22 +113,27 @@ _INTROSPECTION = '{"query":"{__schema{queryType{name}}}"}'
 
 
 async def _graphql(ctx) -> list[Finding]:
-    for path in _GRAPHQL_PATHS:
-        url = urljoin(ctx.url, path)
-        try:
-            resp = await ctx.client.post(url, content=_INTROSPECTION,
-                                         headers={"content-type": "application/json"})
-        except Exception:
-            continue
-        if not resp or resp.status_code != 200:
-            continue
-        try:
-            data = json.loads(resp.text or "")
-        except Exception:
-            continue
-        if isinstance(data, dict) and isinstance(data.get("data"), dict) and "__schema" in data["data"]:
-            return [Finding("leak-graphql", C, Severity.MEDIUM, code="introspection",
-                            params={"path": path}, evidence=url)]
+    seen: set[str] = set()
+    for base in _bases(ctx):
+        for path in _GRAPHQL_PATHS:
+            url = urljoin(base, path)
+            if url in seen:
+                continue
+            seen.add(url)
+            try:
+                resp = await ctx.client.post(url, content=_INTROSPECTION,
+                                             headers={"content-type": "application/json"})
+            except Exception:
+                continue
+            if not resp or resp.status_code != 200:
+                continue
+            try:
+                data = json.loads(resp.text or "")
+            except Exception:
+                continue
+            if isinstance(data, dict) and isinstance(data.get("data"), dict) and "__schema" in data["data"]:
+                return [Finding("leak-graphql", C, Severity.MEDIUM, code="introspection",
+                                params={"path": path}, evidence=url)]
     return [Finding("leak-graphql", C, Severity.PASS, code="clean")]
 
 
@@ -143,17 +162,25 @@ async def _autoindex(ctx) -> list[Finding]:
 
 
 async def _securitytxt(ctx) -> list[Finding]:
-    for path in (".well-known/security.txt", "security.txt"):
-        resp = await _get(ctx, urljoin(ctx.url, path))
-        if not resp or resp.status_code != 200:
-            continue
-        try:
-            body = (resp.text or "").lower()
-        except Exception:
-            body = ""
-        if "contact:" in body or "policy:" in body or "expires:" in body:
-            return [Finding("leak-securitytxt", C, Severity.PASS, code="present",
-                            evidence=urljoin(ctx.url, path))]
+    # security.txt est conventionnellement à la RACINE (/.well-known/security.txt) : sonder
+    # relativement à `ctx.url` (ex. /en/) le ratait. On sonde donc aussi la racine du domaine.
+    seen: set[str] = set()
+    for base in _bases(ctx):
+        for path in (".well-known/security.txt", "security.txt"):
+            url = urljoin(base, path)
+            if url in seen:
+                continue
+            seen.add(url)
+            resp = await _get(ctx, url)
+            if not resp or resp.status_code != 200:
+                continue
+            try:
+                body = (resp.text or "").lower()
+            except Exception:
+                body = ""
+            if "contact:" in body or "policy:" in body or "expires:" in body:
+                return [Finding("leak-securitytxt", C, Severity.PASS, code="present",
+                                evidence=url)]
     return [Finding("leak-securitytxt", C, Severity.INFO, code="missing")]
 
 

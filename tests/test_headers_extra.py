@@ -31,6 +31,11 @@ async def test_csp_value_not_just_presence():
     assert (await code_of("default-src 'self' 'UNSAFE-INLINE'")).code == "weak"
     # strict-dynamic + nonce neutralise unsafe-inline (CSP en réalité robuste) → ok.
     assert (await code_of("script-src 'self' 'unsafe-inline' 'strict-dynamic' 'nonce-abc'")).code == "ok"
+    # nonce SEUL (sans strict-dynamic) neutralise aussi unsafe-inline (CSP2+) → ok, plus de faux weak.
+    assert (await code_of("script-src 'self' 'nonce-abc' 'unsafe-inline'")).code == "ok"
+    assert (await code_of("script-src 'self' 'sha256-xyz' 'unsafe-inline'")).code == "ok"
+    # mais unsafe-eval n'est PAS neutralisé par un nonce → weak.
+    assert (await code_of("script-src 'self' 'nonce-abc' 'unsafe-eval'")).code == "weak"
 
 
 async def test_xfo_value_validated():

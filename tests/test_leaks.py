@@ -56,6 +56,22 @@ async def test_all_findings():
     }
 
 
+async def test_root_probing_when_homepage_is_subpath():
+    # Accueil redirigé vers /en/ : swagger + security.txt servis à la RACINE doivent être
+    # trouvés (avant : sondés seulement sous /en/ → manqués). Les routes ne matchent que la
+    # racine (URL complète), pas le sous-chemin.
+    routes = {
+        "https://x/openapi.json": _resp(200, {"content-type": "application/json"}, '{"openapi":"3.0.0"}'),
+        "https://x/.well-known/security.txt": _resp(200, {}, "Contact: mailto:a@b.com"),
+    }
+    ctx = SimpleNamespace(url="https://x/en/", host="x",
+                          response=_resp(200, HTML, "<html></html>"), client=Fake(routes, {}))
+    out = await leaks(ctx)
+    codes = {f.check_id: f.code for f in out}
+    assert codes["leak-swagger"] == "exposed"
+    assert codes["leak-securitytxt"] == "present"
+
+
 async def test_all_clean():
     out = await leaks(_ctx("<html></html>", Fake({}, {})))
     codes = {f.check_id: f.code for f in out}

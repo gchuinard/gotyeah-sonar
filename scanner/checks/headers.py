@@ -44,10 +44,11 @@ async def csp(ctx):
     # faux négatif n°1 d'une détection par simple présence (`default-src *` passait « ok »).
     if script_src is None or any(s in _CSP_BROAD for s in script_src):
         return [Finding("hdr-csp", C, Severity.MEDIUM, code="permissive", evidence=v[:300])]
-    # `unsafe-inline`/`unsafe-eval` : comparaison INSENSIBLE à la casse, et NEUTRALISÉE si la
-    # politique combine `strict-dynamic` + un nonce/hash (les navigateurs modernes ignorent
-    # alors `unsafe-inline` → ne pas pénaliser une CSP en réalité robuste).
-    neutralized = "'strict-dynamic'" in low and any(
+    # `unsafe-inline`/`unsafe-eval` : comparaison INSENSIBLE à la casse. `unsafe-inline` est
+    # NEUTRALISÉ dès qu'un nonce OU un hash est présent dans la directive : les navigateurs
+    # CSP2+ ignorent alors `'unsafe-inline'` (rétro-compat). `strict-dynamic` n'est PAS requis
+    # → ne pas pénaliser `script-src 'nonce-xxx' 'unsafe-inline'`, qui est en réalité robuste.
+    neutralized = any(
         marker in low for marker in ("'nonce-", "'sha256-", "'sha384-", "'sha512-"))
     weak = []
     if "'unsafe-inline'" in low and not neutralized:
