@@ -47,6 +47,30 @@ def test_list_users_counts(authdb):
     assert users["admin@b.com"]["scans"] == 0
 
 
+def test_wal_mode_enabled(authdb):
+    """WAL persistant posé par init_db → lecteurs/écrivains ne se bloquent plus."""
+    with db.connect() as conn:
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+
+
+def test_demote_and_delete_guard_last_admin(authdb):
+    """Garde-fous ATOMIQUES anti-lockout : ni rétrograder ni supprimer le dernier admin."""
+    a1 = auth.create_user("a1@b.com", is_admin=True)
+    # un seul admin → rétrogradation refusée, compte intact
+    assert auth.demote_admin(a1["id"]) is False
+    assert auth.get_user_by_id(a1["id"])["is_admin"] == 1
+    assert auth.delete_user_guarded(a1["id"]) == "last_admin"
+    assert auth.get_user_by_id(a1["id"]) is not None
+    # 2ᵉ admin → on peut rétrograder le 1er
+    auth.create_user("a2@b.com", is_admin=True)
+    assert auth.demote_admin(a1["id"]) is True
+    assert auth.get_user_by_id(a1["id"])["is_admin"] == 0
+    # suppression : inconnu → not_found ; non-admin (a1) → ok, cascade
+    assert auth.delete_user_guarded("inexistant") == "not_found"
+    assert auth.delete_user_guarded(a1["id"]) == "ok"
+    assert auth.get_user_by_id(a1["id"]) is None
+
+
 def test_count_admins(authdb):
     assert auth.count_admins() == 0
     auth.create_user("u@b.com")

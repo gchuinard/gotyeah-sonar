@@ -101,7 +101,7 @@ def normalize_email(email: str) -> str:
 
 
 def _conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(db.DB_PATH)
+    conn = db.connect()                 # busy_timeout + WAL persistant (cf. db.connect)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -269,6 +269,51 @@ def delete_user(user_id: str) -> bool:
         conn.execute("DELETE FROM magic_tokens WHERE email = ?", (user["email"],))
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     return True
+
+
+def demote_admin(user_id: str) -> bool:
+    """Retire le rôle admin en UNE instruction atomique, SAUF si c'est le dernier admin.
+    La sous-requête `COUNT(...) > 1` est évaluée dans l'UPDATE (sous le verrou d'écriture) →
+    deux rétrogradations concurrentes ne peuvent pas tomber à zéro admin. True si retiré ;
+    False si c'était le dernier admin (ou la cible n'est pas/plus admin)."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE users SET is_admin = 0 "
+            "WHERE id = ? AND is_admin = 1 "
+            "AND (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1",
+            (user_id,))
+        return cur.rowcount > 0
+
+
+def delete_user_guarded(user_id: str) -> str:
+    """Supprime un compte + ses données (cascade), en refusant le DERNIER admin de façon
+    ATOMIQUE. `BEGIN IMMEDIATE` prend le verrou d'écriture AVANT le COUNT → anti-course
+    (deux suppressions concurrentes de deux admins ne peuvent pas vider la table d'admins).
+    Renvoie 'ok' | 'last_admin' | 'not_found'."""
+    conn = _conn()
+    try:
+        conn.isolation_level = None        # gestion manuelle de la transaction
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT is_admin, email FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None:
+            conn.execute("ROLLBACK")
+            return "not_found"
+        if row["is_admin"]:
+            n = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1").fetchone()[0]
+            if n <= 1:
+                conn.execute("ROLLBACK")
+                return "last_admin"
+        for sql in ("DELETE FROM scans WHERE user_id = ?",
+                    "DELETE FROM verified_domains WHERE user_id = ?",
+                    "DELETE FROM personal_tokens WHERE user_id = ?",
+                    "DELETE FROM sessions WHERE user_id = ?"):
+            conn.execute(sql, (user_id,))
+        conn.execute("DELETE FROM magic_tokens WHERE email = ?", (row["email"],))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.execute("COMMIT")
+        return "ok"
+    finally:
+        conn.close()
 
 
 # --------------------------------------------------------------------------- #

@@ -15,11 +15,25 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent / "data" / "scans.db"
 
+# Délai d'attente d'un verrou avant d'échouer (ms). Sous charge (scans qui finalisent +
+# rate-limit + sessions sur la même base), évite les `database is locked` immédiats.
+_BUSY_TIMEOUT_MS = 5000
+
+
+def connect() -> sqlite3.Connection:
+    """Connexion SQLite partagée : applique `busy_timeout` (par-connexion). Le mode WAL,
+    lui, est PERSISTANT (posé une fois par `init_db`) → vaut pour toutes les connexions,
+    y compris celles d'`auth.py`. WAL = lecteurs et écrivains ne se bloquent plus."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
+    return conn
+
 
 def init_db() -> None:
     """Crée le dossier de données et la table `scans` ; migre les bases existantes."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")   # persistant : tous les accès suivants en WAL
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS scans (
@@ -53,7 +67,7 @@ def init_db() -> None:
 def get_setting(key: str, default: str | None = None) -> str | None:
     """Lit un réglage applicatif (None/`default` si absent). Robuste si la table manque."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with connect() as conn:
             row = conn.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
         return row[0] if row else default
     except sqlite3.Error:
@@ -62,7 +76,7 @@ def get_setting(key: str, default: str | None = None) -> str | None:
 
 def set_setting(key: str, value: str) -> None:
     """Écrit (upsert) un réglage applicatif."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
         conn.execute(
             "INSERT INTO app_settings (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -74,7 +88,7 @@ def save_scan(target: str, summary: dict, findings: list[dict], user_id: str | N
     """Persiste un scan TERMINÉ (rattaché à `user_id` si fourni) ; retourne son id."""
     scan_id = uuid.uuid4().hex
     created_at = datetime.datetime.now().isoformat(timespec="seconds")
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
         conn.execute(
             """
             INSERT INTO scans
@@ -105,7 +119,7 @@ def create_running_scan(target: str, user_id: str | None = None) -> str:
     """
     scan_id = uuid.uuid4().hex
     created_at = datetime.datetime.now().isoformat(timespec="seconds")
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
         conn.execute(
             """
             INSERT INTO scans
@@ -119,7 +133,7 @@ def create_running_scan(target: str, user_id: str | None = None) -> str:
 
 def finalize_scan(scan_id: str, summary: dict, findings: list[dict]) -> None:
     """Complète une ligne 'running' avec le résultat du scan (statut -> 'done')."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
         conn.execute(
             "UPDATE scans SET score=?, grade=?, counts=?, total=?, findings=?, "
             "target=?, status='done' WHERE id=?",
@@ -147,7 +161,7 @@ def fail_scan(scan_id: str, message: str) -> None:
         "title": "Scan en échec",
         "detail": message or "Scan en échec.",
     }]
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
         conn.execute(
             "UPDATE scans SET status='error', findings=? WHERE id=?",
             (json.dumps(note), scan_id),
@@ -160,7 +174,7 @@ def list_scans(user_id: str | None = None) -> list[dict]:
     Si `user_id` est fourni, on ne renvoie que les scans de cet utilisateur ; sinon
     (ex. admin) on renvoie tout l'historique.
     """
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
         conn.row_factory = sqlite3.Row
         if user_id is None:
             rows = conn.execute(
@@ -188,7 +202,7 @@ def get_scan(scan_id: str, user_id: str | None = None) -> dict | None:
     Si `user_id` est fourni, on applique le contrôle de propriété : un scan qui ne
     lui appartient pas est traité comme introuvable.
     """
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             """
@@ -222,7 +236,7 @@ def delete_scan(scan_id: str, user_id: str | None = None) -> bool:
     propriétaire n'est PAS supprimé (pas d'IDOR). Si None (ex. admin), supprime quel que
     soit le propriétaire.
     """
-    with sqlite3.connect(DB_PATH) as conn:
+    with connect() as conn:
         if user_id is None:
             cur = conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
         else:

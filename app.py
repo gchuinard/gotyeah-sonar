@@ -212,7 +212,10 @@ async def lifespan(app: FastAPI):
         yield
 
 
-app = FastAPI(title="Sonar", lifespan=lifespan)
+# `/docs`, `/redoc`, `/openapi.json` DÉSACTIVÉS : surface publique non authentifiée qui
+# divulgue toute l'API à un anonyme. L'API est petite et documentée dans le README/code.
+app = FastAPI(title="Sonar", lifespan=lifespan,
+              docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # En-têtes de sécurité sur TOUTES les réponses — l'app défensive doit suivre ses propres
@@ -262,6 +265,18 @@ app.add_middleware(_SecurityHeadersMiddleware)
 # Assets statiques auto-hébergés (Vue épinglé) — plus de dépendance CDN (supply-chain) ni de
 # page blanche hors-ligne. Servis sous /static.
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
+
+# Anti Host-header forgé : si SONAR_BASE_URL est défini (prod), on n'accepte que ce host
+# (+ loopback pour les healthchecks). Sans lui, `_base_url` retombe sur le header Host → un
+# lien magique pourrait être forgé vers `evil.com`. On restreint donc le Host à la source.
+_BASE_HOST = urlparse((os.environ.get("SONAR_BASE_URL") or "").strip()).hostname
+if _BASE_HOST:
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+    app.add_middleware(TrustedHostMiddleware,
+                       allowed_hosts=[_BASE_HOST, "localhost", "127.0.0.1"])
+else:
+    print("[app] SONAR_BASE_URL non défini : les liens magiques utilisent le header Host "
+          "(potentiellement forgeable). Définis SONAR_BASE_URL en production.")
 
 
 def _sse(event: str, data: dict) -> str:
@@ -419,11 +434,12 @@ async def admin_set_admin(request: Request, user_id: str):
     target = auth.get_user_by_id(user_id)
     if not target:
         return JSONResponse({"error": "not found"}, status_code=404)
-    if not make_admin and target["is_admin"] and auth.count_admins() <= 1:
+    if make_admin:
+        auth.set_admin(user_id, True)
+    elif target["is_admin"] and not auth.demote_admin(user_id):   # atomique : refuse le dernier admin
         return JSONResponse(
             {"error": "Impossible de retirer le dernier admin.", "code": "last_admin"},
             status_code=409)
-    auth.set_admin(user_id, make_admin)
     return JSONResponse({"ok": True})
 
 
@@ -437,14 +453,14 @@ async def admin_delete_user(request: Request, user_id: str):
         return JSONResponse(
             {"error": "Tu ne peux pas supprimer ton propre compte ici.", "code": "self"},
             status_code=409)
-    target = auth.get_user_by_id(user_id)
-    if not target:
+    # Vérif dernier-admin + suppression ATOMIQUES (anti-course → jamais zéro admin).
+    result = auth.delete_user_guarded(user_id)
+    if result == "not_found":
         return JSONResponse({"error": "not found"}, status_code=404)
-    if target["is_admin"] and auth.count_admins() <= 1:
+    if result == "last_admin":
         return JSONResponse(
             {"error": "Impossible de supprimer le dernier admin.", "code": "last_admin"},
             status_code=409)
-    auth.delete_user(user_id)
     return JSONResponse({"ok": True})
 
 

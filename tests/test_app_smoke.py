@@ -69,6 +69,13 @@ def test_scan_stream_rate_limited(client, monkeypatch):
     assert r.status_code == 429 and r.json()["code"] == "rate_limited"
 
 
+def test_docs_disabled(client):
+    """/docs, /redoc et /openapi.json ne doivent pas être servis (fuite de surface API)."""
+    c, _ = client
+    assert c.get("/docs").status_code == 404
+    assert c.get("/openapi.json").status_code == 404
+
+
 def test_security_headers(client):
     """#5 — l'app pose ses en-têtes de sécurité (anti-clickjacking) sur ses réponses."""
     c, _ = client
