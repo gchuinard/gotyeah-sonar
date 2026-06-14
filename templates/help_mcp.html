@@ -404,6 +404,13 @@ mcpServers:
         'Page <b>Tools</b> de ton agent → <b>Add a tool → New tool</b>.',
         'Choisis <b>Model Context Protocol</b>.',
         'Server name + description, <b>Server URL</b> = <code>{BASE}/mcp</code>, puis <b>Add to agent</b>.' ] }] },
+  { id: 'gemini-enterprise', group: 'CLI, terminaux & agents', name: 'Gemini Enterprise', sub: 'Google Cloud — serveur MCP perso en « Data Store » (admin).',
+    methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
+      note: 'Entreprise / admin GCP. Prérequis : autoriser les Data Stores MCP (org policy) + rôle Discovery Engine Editor, et enregistrer Gemini Enterprise comme client OAuth de ton IdP.',
+      steps: [
+        'Console Google Cloud → <b>Gemini Enterprise → Data stores → Create data store</b>.',
+        'Cherche <b>« Custom MCP Server »</b>.',
+        'Server URL = <code>{BASE}/mcp</code> + détails d\'authentification (OAuth).' ] }] },
 ];
 
 createApp({
