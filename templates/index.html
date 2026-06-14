@@ -359,6 +359,8 @@
   .dom-msg { margin-top: 9px; font-size: 12px; color: var(--text-dim); }
   .admin-toggle { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
   .admin-actions { margin-top: 8px; }
+  /* Vue Admin (onglet dédié) : un panneau centré, largeur lisible. */
+  .admin-pane { max-width: 720px; margin: 0 auto; }
 
   /* ---- jetons d'accès (MCP) ---- */
   .tok-intro { font-size: 12px; color: var(--text-dim); margin-bottom: 11px; }
@@ -432,6 +434,9 @@
     </button>
     <button class="tabbtn" :class="{ active: activeTab === 'history' }" @click="goHistory">
       {{ T('tabs.history', 'Historique') }}<span v-if="history.length" class="tab-count">{{ history.length }}</span>
+    </button>
+    <button v-if="me && me.is_admin" class="tabbtn" :class="{ active: activeTab === 'admin' }" @click="goAdmin">
+      {{ T('tabs.admin', 'Admin') }}<span v-if="adminUsers.length" class="tab-count">{{ adminUsers.length }}</span>
     </button>
   </nav>
 
@@ -537,36 +542,6 @@
           <button class="btn-sm" @click="createToken" :disabled="tokenBusy">{{ T('tokens.generate', 'Générer') }}</button>
         </div>
         <div v-if="tokenMsg" class="dom-msg">{{ tokenMsg }}</div>
-      </div>
-
-      <!-- Administration des comptes — visible uniquement pour les admins. -->
-      <div class="panel" v-if="me && me.is_admin">
-        <h2>{{ T('admin.users_title', 'Administration — comptes') }}</h2>
-        <div class="tok-intro">{{ T('admin.users_intro', 'Tous les comptes Sonar. Supprimer un compte efface aussi ses domaines, scans et jetons.') }}</div>
-        <div class="doms">
-          <div v-if="!adminUsers.length" class="empty">{{ T('admin.no_users', 'Aucun compte.') }}</div>
-          <div v-for="u in adminUsers" :key="u.id" class="dom">
-            <div class="dom-top">
-              <span class="dom-name" :title="u.email">{{ u.email }}</span>
-              <span v-if="u.is_admin" class="dom-badge ok">{{ T('admin.role_admin', 'admin') }}</span>
-              <span v-if="u.email === me.email" class="dom-badge pending">{{ T('admin.you', 'toi') }}</span>
-              <button v-if="u.email !== me.email" class="dom-x" @click="deleteUser(u)"
-                      :title="T('admin.delete_user', 'Supprimer ce compte et toutes ses données')">🗑</button>
-            </div>
-            <div class="tok-meta">
-              {{ T('admin.created', 'Créé') }} {{ fmtDate(u.created_at) }}
-              · {{ u.verified_domains }} {{ T('admin.domains', 'domaine(s)') }}
-              · {{ u.scans }} {{ T('admin.scans', 'scan(s)') }}
-              · {{ u.active_tokens }} {{ T('admin.tokens', 'jeton(s)') }}
-            </div>
-            <div class="admin-actions" v-if="u.email !== me.email">
-              <button class="btn-sm" @click="toggleUserAdmin(u)">
-                {{ u.is_admin ? T('admin.demote', 'Retirer admin') : T('admin.promote', 'Promouvoir admin') }}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div v-if="adminMsg" class="dom-msg">{{ adminMsg }}</div>
       </div>
 
       <div class="panel" v-if="hasResult || scanning">
@@ -777,6 +752,38 @@
         </div>
       </div>
     </template>
+  </div>
+
+  <!-- Vue Admin — gestion des comptes (onglet visible uniquement aux admins). -->
+  <div v-show="activeTab === 'admin'" class="tab-pane admin-pane">
+    <div class="panel" v-if="me && me.is_admin">
+      <h2>{{ T('admin.users_title', 'Administration — comptes') }}</h2>
+      <div class="tok-intro">{{ T('admin.users_intro', 'Tous les comptes Sonar. Supprimer un compte efface aussi ses domaines, scans et jetons.') }}</div>
+      <div class="doms">
+        <div v-if="!adminUsers.length" class="empty">{{ T('admin.no_users', 'Aucun compte.') }}</div>
+        <div v-for="u in adminUsers" :key="u.id" class="dom">
+          <div class="dom-top">
+            <span class="dom-name" :title="u.email">{{ u.email }}</span>
+            <span v-if="u.is_admin" class="dom-badge ok">{{ T('admin.role_admin', 'admin') }}</span>
+            <span v-if="u.email === me.email" class="dom-badge pending">{{ T('admin.you', 'toi') }}</span>
+            <button v-if="u.email !== me.email" class="dom-x" @click="deleteUser(u)"
+                    :title="T('admin.delete_user', 'Supprimer ce compte et toutes ses données')">🗑</button>
+          </div>
+          <div class="tok-meta">
+            {{ T('admin.created', 'Créé') }} {{ fmtDate(u.created_at) }}
+            · {{ u.verified_domains }} {{ T('admin.domains', 'domaine(s)') }}
+            · {{ u.scans }} {{ T('admin.scans', 'scan(s)') }}
+            · {{ u.active_tokens }} {{ T('admin.tokens', 'jeton(s)') }}
+          </div>
+          <div class="admin-actions" v-if="u.email !== me.email">
+            <button class="btn-sm" @click="toggleUserAdmin(u)">
+              {{ u.is_admin ? T('admin.demote', 'Retirer admin') : T('admin.promote', 'Promouvoir admin') }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div v-if="adminMsg" class="dom-msg">{{ adminMsg }}</div>
+    </div>
   </div>
 
   <!-- Bouton « remonter en haut » : visible une fois qu'on a défilé vers le bas. -->
@@ -1169,6 +1176,7 @@ createApp({
       } catch (e) {}
     },
     goHistory() { this.activeTab = 'history'; this.loadHistory(); },
+    goAdmin() { this.activeTab = 'admin'; this.loadAdminUsers(); },
     onScroll() { this.showScrollTop = (window.scrollY || window.pageYOffset || 0) > 400; },
     scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); },
     async deleteScan(h) {
