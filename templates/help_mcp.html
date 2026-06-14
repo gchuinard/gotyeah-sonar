@@ -397,6 +397,13 @@ mcpServers:
         'Dans Grok : <b>Réglages → Connecteurs</b>.',
         'Choisis <b>« Bring Your Own MCP »</b> (connecteur personnalisé).',
         'URL : <code>{BASE}/mcp</code>.' ] }] },
+  { id: 'copilot-studio', group: 'CLI, terminaux & agents', name: 'Microsoft Copilot Studio', sub: 'Entreprise — ajoute un serveur MCP comme outil d\'agent.',
+    methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
+      note: 'Outil entreprise (maker). Compte autorisé requis ; URL en HTTPS.',
+      steps: [
+        'Page <b>Tools</b> de ton agent → <b>Add a tool → New tool</b>.',
+        'Choisis <b>Model Context Protocol</b>.',
+        'Server name + description, <b>Server URL</b> = <code>{BASE}/mcp</code>, puis <b>Add to agent</b>.' ] }] },
 ];
 
 createApp({
