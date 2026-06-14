@@ -11,3 +11,6 @@ data/
 
 # venv local du MCP stdio (hors image Docker)
 .mcpvenv/
+
+# Notes locales (sites + failles) — dépôt PUBLIC, ne JAMAIS pousser ce fichier.
+TODO-securite-sites.md
