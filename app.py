@@ -291,6 +291,73 @@ async def api_admin_scan_any(request: Request):
 
 
 # --------------------------------------------------------------------------- #
+# Administration des comptes (réservé aux admins, session cookie uniquement —
+# jamais via un PAT lecture seule). Garde-fous anti-lockout : on ne supprime pas
+# son propre compte ici, ni le dernier admin.
+# --------------------------------------------------------------------------- #
+def _require_admin(request: Request):
+    """(user, None) si l'appelant est un admin connecté ; sinon (None, réponse d'erreur)."""
+    user = _current_user(request)
+    if not user:
+        return None, JSONResponse({"error": "auth required"}, status_code=401)
+    if not user["is_admin"]:
+        return None, JSONResponse({"error": "forbidden"}, status_code=403)
+    return user, None
+
+
+@app.get("/api/admin/users")
+async def admin_users_list(request: Request):
+    """Liste tous les comptes + compteurs (domaines/scans/jetons) — admin only."""
+    user, err = _require_admin(request)
+    if err:
+        return err
+    return JSONResponse({"users": auth.list_users(), "me_id": user["id"]})
+
+
+@app.post("/api/admin/users/{user_id}/admin")
+async def admin_set_admin(request: Request, user_id: str):
+    """Promeut/rétrograde un compte admin. Refuse de retirer le DERNIER admin."""
+    user, err = _require_admin(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    make_admin = bool(body.get("is_admin")) if isinstance(body, dict) else False
+    target = auth.get_user_by_id(user_id)
+    if not target:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if not make_admin and target["is_admin"] and auth.count_admins() <= 1:
+        return JSONResponse(
+            {"error": "Impossible de retirer le dernier admin.", "code": "last_admin"},
+            status_code=409)
+    auth.set_admin(user_id, make_admin)
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(request: Request, user_id: str):
+    """Supprime un compte et toutes ses données. Refuse soi-même et le dernier admin."""
+    user, err = _require_admin(request)
+    if err:
+        return err
+    if user_id == user["id"]:
+        return JSONResponse(
+            {"error": "Tu ne peux pas supprimer ton propre compte ici.", "code": "self"},
+            status_code=409)
+    target = auth.get_user_by_id(user_id)
+    if not target:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if target["is_admin"] and auth.count_admins() <= 1:
+        return JSONResponse(
+            {"error": "Impossible de supprimer le dernier admin.", "code": "last_admin"},
+            status_code=409)
+    auth.delete_user(user_id)
+    return JSONResponse({"ok": True})
+
+
+# --------------------------------------------------------------------------- #
 # i18n (chrome UI + préférence de langue)
 # --------------------------------------------------------------------------- #
 @app.get("/api/i18n/ui")

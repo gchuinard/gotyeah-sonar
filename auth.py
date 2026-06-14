@@ -222,6 +222,55 @@ def get_or_create_user(email: str, is_admin: bool = False):
     return create_user(email, is_admin=is_admin)
 
 
+def count_admins() -> int:
+    """Nombre de comptes admin — sert de garde-fou anti-lockout (ne pas tomber à zéro)."""
+    with _conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=1").fetchone()[0]
+
+
+def list_users() -> list[dict]:
+    """Tous les comptes + compteurs (domaines vérifiés, scans, jetons actifs) — usage ADMIN.
+
+    Sous-requêtes corrélées plutôt que des JOIN/GROUP BY : pas de double comptage quand un
+    user a à la fois des domaines et des scans. La base est petite (homelab), c'est suffisant.
+    """
+    with _conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT u.id, u.email, u.is_admin, u.created_at, u.lang,
+                   (SELECT COUNT(*) FROM verified_domains d
+                      WHERE d.user_id = u.id AND d.verified = 1)        AS verified_domains,
+                   (SELECT COUNT(*) FROM scans s WHERE s.user_id = u.id) AS scans,
+                   (SELECT COUNT(*) FROM personal_tokens p
+                      WHERE p.user_id = u.id AND p.revoked_at IS NULL)   AS active_tokens
+            FROM users u
+            ORDER BY u.created_at
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_user(user_id: str) -> bool:
+    """Supprime un compte et TOUTES ses données (cascade), en une transaction.
+
+    Couvre les scans (table `scans`, même base), domaines, jetons perso, sessions, et les
+    liens magiques encore en vol pour son email. Renvoie False si le compte n'existe pas.
+    Aucun garde-fou ici (dernier admin / soi-même) : c'est à l'appelant (endpoint) de poser
+    la politique — cette fonction est l'outil brut.
+    """
+    user = get_user_by_id(user_id)
+    if not user:
+        return False
+    with _conn() as conn:
+        conn.execute("DELETE FROM scans WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM verified_domains WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM personal_tokens WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM magic_tokens WHERE email = ?", (user["email"],))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    return True
+
+
 # --------------------------------------------------------------------------- #
 # Rate limiting (email + IP, fenêtre glissante)
 # --------------------------------------------------------------------------- #

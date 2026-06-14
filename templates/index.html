@@ -358,6 +358,7 @@
   .dom-add .btn-sm { align-self: auto; }
   .dom-msg { margin-top: 9px; font-size: 12px; color: var(--text-dim); }
   .admin-toggle { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .admin-actions { margin-top: 8px; }
 
   /* ---- jetons d'accès (MCP) ---- */
   .tok-intro { font-size: 12px; color: var(--text-dim); margin-bottom: 11px; }
@@ -536,6 +537,36 @@
           <button class="btn-sm" @click="createToken" :disabled="tokenBusy">{{ T('tokens.generate', 'Générer') }}</button>
         </div>
         <div v-if="tokenMsg" class="dom-msg">{{ tokenMsg }}</div>
+      </div>
+
+      <!-- Administration des comptes — visible uniquement pour les admins. -->
+      <div class="panel" v-if="me && me.is_admin">
+        <h2>{{ T('admin.users_title', 'Administration — comptes') }}</h2>
+        <div class="tok-intro">{{ T('admin.users_intro', 'Tous les comptes Sonar. Supprimer un compte efface aussi ses domaines, scans et jetons.') }}</div>
+        <div class="doms">
+          <div v-if="!adminUsers.length" class="empty">{{ T('admin.no_users', 'Aucun compte.') }}</div>
+          <div v-for="u in adminUsers" :key="u.id" class="dom">
+            <div class="dom-top">
+              <span class="dom-name" :title="u.email">{{ u.email }}</span>
+              <span v-if="u.is_admin" class="dom-badge ok">{{ T('admin.role_admin', 'admin') }}</span>
+              <span v-if="u.email === me.email" class="dom-badge pending">{{ T('admin.you', 'toi') }}</span>
+              <button v-if="u.email !== me.email" class="dom-x" @click="deleteUser(u)"
+                      :title="T('admin.delete_user', 'Supprimer ce compte et toutes ses données')">🗑</button>
+            </div>
+            <div class="tok-meta">
+              {{ T('admin.created', 'Créé') }} {{ fmtDate(u.created_at) }}
+              · {{ u.verified_domains }} {{ T('admin.domains', 'domaine(s)') }}
+              · {{ u.scans }} {{ T('admin.scans', 'scan(s)') }}
+              · {{ u.active_tokens }} {{ T('admin.tokens', 'jeton(s)') }}
+            </div>
+            <div class="admin-actions" v-if="u.email !== me.email">
+              <button class="btn-sm" @click="toggleUserAdmin(u)">
+                {{ u.is_admin ? T('admin.demote', 'Retirer admin') : T('admin.promote', 'Promouvoir admin') }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div v-if="adminMsg" class="dom-msg">{{ adminMsg }}</div>
       </div>
 
       <div class="panel" v-if="hasResult || scanning">
@@ -788,6 +819,8 @@ createApp({
       domains: [], newDomain: '', domainBusy: false, domainMsg: '',
       // jetons d'accès (MCP) — le secret brut (newToken) n'est affiché qu'une fois
       tokens: [], newTokenName: '', tokenBusy: false, tokenMsg: '', newToken: '', tokenCopied: false,
+      // administration des comptes (panneau visible aux admins uniquement)
+      adminUsers: [], adminMsg: '',
       // i18n
       ui: ui, lang: SONAR_BOOT.lang || 'fr', langs: SONAR_BOOT.available || ['fr'],
       // remédiation (cartes dépliables)
@@ -1001,6 +1034,43 @@ createApp({
           body: JSON.stringify({ enabled }),
         });
         await this.loadMe();   // rafraîchit can_scan + l'état du toggle
+      } catch (e) {}
+    },
+    async loadAdminUsers() {
+      if (!this.me || !this.me.is_admin) return;
+      try {
+        const r = await fetch('/api/admin/users');
+        if (!r.ok) return;
+        this.adminUsers = (await r.json()).users || [];
+      } catch (e) {}
+    },
+    async toggleUserAdmin(u) {
+      this.adminMsg = '';
+      try {
+        const r = await fetch('/api/admin/users/' + u.id + '/admin', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_admin: !u.is_admin }),
+        });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          this.adminMsg = e.error || this.T('admin.action_failed', 'Action impossible.');
+          return;
+        }
+        await this.loadAdminUsers();
+      } catch (e) {}
+    },
+    async deleteUser(u) {
+      const warn = this.T('admin.confirm_delete', 'Supprimer DÉFINITIVEMENT ce compte et toutes ses données (domaines, scans, jetons) ?');
+      if (!window.confirm(warn + '\n\n' + u.email)) return;
+      this.adminMsg = '';
+      try {
+        const r = await fetch('/api/admin/users/' + u.id, { method: 'DELETE' });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          this.adminMsg = e.error || this.T('admin.delete_failed', 'Suppression impossible.');
+          return;
+        }
+        await this.loadAdminUsers();
       } catch (e) {}
     },
     logout() {
@@ -1249,7 +1319,8 @@ createApp({
     },
   },
   mounted() {
-    this.loadMe(); this.loadDomains(); this.loadTokens(); this.loadHistory();
+    this.loadMe().then(() => this.loadAdminUsers());   // les comptes (admin) après avoir su qui on est
+    this.loadDomains(); this.loadTokens(); this.loadHistory();
     window.addEventListener('scroll', this.onScroll, { passive: true });
     this.onScroll();   // état initial (au cas où la page est déjà défilée)
   },
