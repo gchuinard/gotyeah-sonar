@@ -25,6 +25,7 @@ import os
 import socket
 
 from ..finding import Category, Finding, Severity
+from ..netguard import allow_private, is_blocked_ip
 from ..registry import check
 
 C = Category.PORTS
@@ -160,6 +161,16 @@ async def ports(ctx):
             # Toutes les IP sont derrière un CDN → on ne scanne pas l'edge du tiers.
             return [Finding("ports", C, Severity.INFO, code="behind-cdn",
                             params={"cdn": cdn, "host": host})]
+
+    # Garde anti-SSRF des SOCKETS BRUTS (la garde httpx ne couvre pas ce check) : on ne
+    # port-scanne JAMAIS une IP interne, même si un domaine vérifié repointe son A vers
+    # 127.0.0.1 / 192.168.x / 169.254.169.254. `SONAR_ALLOW_PRIVATE=on` lève la garde (homelab).
+    if not allow_private():
+        internal = [ip for ip in scan_ips if is_blocked_ip(ip)]
+        scan_ips = [ip for ip in scan_ips if not is_blocked_ip(ip)]
+        if not scan_ips:
+            return [Finding("ports", C, Severity.INFO, code="blocked-internal",
+                            params={"host": host, "ip": ", ".join(internal)})]
 
     sem = asyncio.Semaphore(max(1, concurrency))
 

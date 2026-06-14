@@ -13,6 +13,7 @@ import time
 from urllib.parse import urlparse
 
 from ..finding import Category, Finding, Severity
+from ..netguard import allow_private, host_is_internal
 from ..registry import check
 
 # Import optionnel : sert UNIQUEMENT au check `tls-key` (analyse clé/signature du certificat).
@@ -27,6 +28,16 @@ C = Category.TLS
 
 # Timeout court sur le socket : on ne veut pas pendre le scan sur un port filtré.
 _TIMEOUT = 8.0
+
+
+async def _ssrf_blocked(host: str) -> bool:
+    """Garde anti-SSRF des sockets bruts de ce module (la garde httpx ne les couvre pas) :
+    True si l'hôte résout vers une IP interne et que `SONAR_ALLOW_PRIVATE` n'est pas levé.
+    En pratique la garde httpx du runner fait déjà avorter le scan pour un hôte interne ;
+    ceci est une défense-en-profondeur contre une re-résolution (round-robin / rebinding)."""
+    if allow_private():
+        return False
+    return await asyncio.to_thread(host_is_internal, host)
 
 # Versions négociées considérées comme obsolètes (< TLS 1.2).
 _OBSOLETE_VERSIONS = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
@@ -132,6 +143,9 @@ async def tls(ctx):
 
     host = ctx.host
     port = parsed.port or 443
+    if await _ssrf_blocked(host):
+        return [Finding("tls", C, Severity.INFO, code="unreachable",
+                        params={"host": host, "port": port, "error_type": "blocked-internal"})]
 
     try:
         # 1. Handshake VÉRIFIANT (chaîne + hostname).
@@ -209,6 +223,9 @@ async def tls_protocols(ctx):
         return []
     host = ctx.host
     port = parsed.port or 443
+    if await _ssrf_blocked(host):
+        return [Finding("tls-protocols", C, Severity.INFO, code="unverifiable",
+                        params={"host": host, "port": port})]
 
     modern = await asyncio.to_thread(_handshake, host, port,
                                      ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3)
@@ -324,6 +341,9 @@ async def tls_key(ctx):
     if parsed.scheme != "https":
         return []
     port = parsed.port or 443
+    if await _ssrf_blocked(ctx.host):
+        return [Finding("tls-key", C, Severity.INFO, code="unreachable",
+                        params={"host": ctx.host, "port": port})]
     der = await asyncio.to_thread(_peer_cert_der, ctx.host, port)
     if not der:
         return [Finding("tls-key", C, Severity.INFO, code="unreachable",

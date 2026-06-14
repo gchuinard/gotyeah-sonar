@@ -28,6 +28,14 @@ ports:
     title: "Hôte non résolu"
     detail: "Impossible de résoudre `{host}` en adresse IP : le scan de ports a été ignoré."
     why: "Sans résolution DNS, aucune IP à sonder. Vérifie le nom d'hôte ou la connectivité DNS de l'environnement de scan."
+  blocked-internal:
+    title: "Scan de ports bloqué (cible interne)"
+    detail: "`{host}` résout vers une adresse IP interne/non routable ({ip}) : le scan de ports a été refusé par sécurité (anti-SSRF)."
+    why: "Port-scanner une IP interne reviendrait à sonder le réseau privé qui héberge Sonar — c'est exactement le vecteur SSRF qu'on bloque (un domaine vérifié repointé vers `127.0.0.1`/`192.168.x`/`169.254.169.254`)."
+    steps:
+      - "C'est volontaire : Sonar ne scanne jamais une IP interne depuis un domaine public."
+      - "Pour scanner une cible interne en homelab, lance Sonar avec `SONAR_ALLOW_PRIVATE=on` (à n'activer que sur une instance de confiance)."
+    a_verifier: false
   clean:
     title: "Aucun service sensible exposé"
     detail: "Aucun des ports sensibles sondés (bases de données, caches, API d'admin…) n'accepte de connexion publique sur `{ip}`."

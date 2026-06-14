@@ -15,9 +15,7 @@ en SSE.
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import os
-import socket
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -27,6 +25,9 @@ import httpx
 
 from . import checks as _checks  # noqa: F401  -> importe les modules = enregistre les checks
 from .finding import Category, Finding, Severity, summarize
+from .netguard import allow_private
+from .netguard import host_is_internal as _host_is_internal
+from .netguard import is_blocked_ip as _is_blocked_ip  # noqa: F401 (ré-export, tests)
 from .registry import Check, all_checks
 
 USER_AGENT = "Sonar/0.1 (+homelab; authorized use only)"
@@ -34,30 +35,6 @@ USER_AGENT = "Sonar/0.1 (+homelab; authorized use only)"
 # Plafond de durée du scan complet (s) : si un check se bloque malgré ses propres timeouts,
 # le scan ne reste pas « en cours » indéfiniment. > NUCLEI_TIMEOUT/ZAP_TIMEOUT (240) + marge.
 _SCAN_DEADLINE = float(os.environ.get("SONAR_SCAN_DEADLINE") or "300")
-
-
-def _is_blocked_ip(ip_str: str) -> bool:
-    """True si l'IP est interne/non routable : privée (RFC1918), loopback, lien-local
-    (169.254/16 → endpoint de métadonnées cloud 169.254.169.254), réservée, multicast…"""
-    try:
-        ip = ipaddress.ip_address(ip_str)
-    except ValueError:
-        return False
-    return (ip.is_private or ip.is_loopback or ip.is_link_local
-            or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
-
-
-def _host_is_internal(host: str) -> bool:
-    """True si `host` (IP littérale ou nom DNS) résout UNIQUEMENT vers des IPs internes.
-    Bloquant (getaddrinfo) → à appeler via to_thread."""
-    if not host:
-        return False
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except Exception:
-        return False  # irrésoluble : on laisse httpx échouer normalement, pas notre rôle
-    ips = {i[4][0] for i in infos}
-    return bool(ips) and all(_is_blocked_ip(ip) for ip in ips)
 
 
 class _SSRFGuardTransport(httpx.AsyncHTTPTransport):
@@ -133,8 +110,7 @@ def _make_client() -> httpx.AsyncClient:
     Sauf `SONAR_ALLOW_PRIVATE=on` (utile en homelab pour scanner une IP interne explicitement),
     on enrobe le transport d'une garde anti-SSRF qui bloque les cibles/redirections internes.
     """
-    guard = (os.environ.get("SONAR_ALLOW_PRIVATE") or "").strip().lower() != "on"
-    transport = _SSRFGuardTransport(verify=False) if guard else None
+    transport = None if allow_private() else _SSRFGuardTransport(verify=False)
     return httpx.AsyncClient(
         transport=transport,
         follow_redirects=True,
