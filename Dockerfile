@@ -1,18 +1,17 @@
-# Image unique : un seul service Python (FastAPI + moteur de scan).
-FROM python:3.12-slim
+# ---------------------------------------------------------------------------
+# Builder : télécharge + VÉRIFIE nuclei. Les outils de build (curl/unzip) restent
+# dans ce stage et ne polluent pas l'image finale.
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim AS nuclei-builder
 
-WORKDIR /app
+# Version ÉPINGLÉE (build reproductible : plus de résolution "latest" via l'API GitHub,
+# qui rendait deux builds non identiques et cassait au moindre rate-limit). Bump volontaire
+# après lecture des release notes. Le checksum officiel est vérifié ci-dessous.
+ARG NUCLEI_VERSION=3.9.0
 
-# Dépendances d'abord pour profiter du cache Docker.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# nuclei (Phase 3) — moteur de pentest, installé pour l'architecture de l'image
-# (le Pi est généralement en arm64). La dernière version est résolue dynamiquement.
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends curl unzip jq ca-certificates; \
-    rm -rf /var/lib/apt/lists/*; \
+    apt-get install -y --no-install-recommends curl unzip ca-certificates; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) na=linux_amd64 ;; \
@@ -20,18 +19,35 @@ RUN set -eux; \
       armhf) na=linux_arm ;; \
       *) echo "architecture non supportee pour nuclei : $arch" >&2; exit 1 ;; \
     esac; \
-    ver="$(curl -fsSL https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | jq -r .tag_name | sed 's/^v//')"; \
-    curl -fsSL -o /tmp/nuclei.zip "https://github.com/projectdiscovery/nuclei/releases/download/v${ver}/nuclei_${ver}_${na}.zip"; \
-    unzip -o /tmp/nuclei.zip -d /usr/local/bin nuclei; \
-    rm /tmp/nuclei.zip; \
-    nuclei -version
+    base="https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}"; \
+    zip="nuclei_${NUCLEI_VERSION}_${na}.zip"; \
+    cd /tmp; \
+    curl -fsSL -o "$zip" "${base}/${zip}"; \
+    curl -fsSL -o checksums.txt "${base}/nuclei_${NUCLEI_VERSION}_checksums.txt"; \
+    grep " ${zip}\$" checksums.txt | sha256sum -c -; \
+    unzip -o "$zip" -d /usr/local/bin nuclei; \
+    /usr/local/bin/nuclei -version
 
-# Pré-télécharge les templates nuclei DANS l'image. Sans ça, le 1er scan échoue avec
-# « no templates provided for scan » (le dossier /root/nuclei-templates n'existe pas).
-# On NE passe PAS -disable-update-check ici : ce flag empêche nuclei de résoudre la
-# dernière version des templates, donc -update-templates devient un no-op (c'était le bug).
-# On vérifie ensuite que le dossier n'est pas vide => le build casse si le téléchargement
-# a échoué, au lieu de livrer une image sans templates.
+# ---------------------------------------------------------------------------
+# Image finale : un seul service Python (FastAPI + moteur de scan).
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Dépendances Python d'abord (cache Docker).
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ca-certificates : requêtes HTTPS du moteur de scan + téléchargement des templates nuclei.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Binaire nuclei vérifié (depuis le builder), sans les outils de build.
+COPY --from=nuclei-builder /usr/local/bin/nuclei /usr/local/bin/nuclei
+
+# Pré-télécharge les templates nuclei DANS l'image (sinon « no templates provided » au 1er scan).
 RUN set -eux; \
     nuclei -update-templates; \
     [ -n "$(ls -A /root/nuclei-templates 2>/dev/null)" ]
@@ -43,5 +59,9 @@ COPY . .
 RUN mkdir -p /app/data
 
 EXPOSE 8000
+
+# Healthcheck natif (pas de curl/wget dans l'image) : GET /login en local.
+HEALTHCHECK --interval=30s --timeout=4s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=3).status==200 else 1)"
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
