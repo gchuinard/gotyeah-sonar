@@ -1,0 +1,44 @@
+name: CI
+
+# Qualité sur CHAQUE push et CHAQUE pull request (le déploiement, lui, vit dans deploy.yml
+# et n'a lieu que sur main). Lint/format/typage/audit sont INFORMATIFS pour l'instant
+# (continue-on-error) le temps de résorber la dette ; les tests + la couverture, eux, bloquent.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installer les dépendances (dev)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        continue-on-error: true        # informatif tant que la dette n'est pas résorbée
+        run: ruff check .
+
+      - name: Format (ruff)
+        continue-on-error: true
+        run: ruff format --check .
+
+      - name: Typage (mypy)
+        continue-on-error: true
+        run: mypy app.py auth.py db.py scan_jobs.py scan_compare.py scanner mcp_remote sonar_mcp
+
+      - name: Audit des dépendances (pip-audit)
+        continue-on-error: true
+        run: pip-audit
+
+      - name: Tests + couverture
+        run: pytest --cov=. --cov-report=term-missing

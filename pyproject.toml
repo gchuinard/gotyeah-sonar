@@ -1,0 +1,21 @@
+# Outillage de qualité (lint / format / typage). La config des tests reste dans pytest.ini.
+# Ruff et mypy tournent en CI (ci.yml), d'abord en mode INFORMATIF (continue-on-error) le
+# temps de résorber la dette, puis on pourra les rendre bloquants.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["static", "tools/zap_sources"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]   # erreurs, pyflakes, imports, pyupgrade, bugbear
+# E501 (longueur de ligne) : géré par le formateur ; beaucoup de commentaires/chaînes longs
+# volontaires → on ne veut pas du bruit en lint.
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true       # fastmcp/mcp/dns/cryptography optionnels
+warn_unused_ignores = false
+check_untyped_defs = false
+exclude = ["tests/", "tools/"]
