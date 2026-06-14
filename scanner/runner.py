@@ -36,6 +36,12 @@ USER_AGENT = "Sonar/0.1 (+homelab; authorized use only)"
 # le scan ne reste pas « en cours » indéfiniment. > NUCLEI_TIMEOUT/ZAP_TIMEOUT (240) + marge.
 _SCAN_DEADLINE = float(os.environ.get("SONAR_SCAN_DEADLINE") or "300")
 
+# Plafond de scans SIMULTANÉS (web + MCP, tous deux passent par run_scan). Anti-DoS : un scan
+# `full` fork nuclei/ZAP + ouvre des dizaines de sockets ; sans borne, N scans concurrents
+# saturent l'hôte. Les scans en excès attendent un créneau (le flux SSE émet des heartbeats).
+_MAX_CONCURRENT_SCANS = max(1, int(os.environ.get("SONAR_MAX_CONCURRENT_SCANS") or "4"))
+_SCAN_SEMAPHORE = asyncio.Semaphore(_MAX_CONCURRENT_SCANS)
+
 
 class _SSRFGuardTransport(httpx.AsyncHTTPTransport):
     """Transport httpx qui REFUSE toute requête (cible initiale OU saut de redirection) vers
@@ -238,10 +244,13 @@ async def _stream_results(ctx: Context, checks, deadline: float):
 
 
 async def run_scan(target: str, fast: bool = False):
-    try:
-        ctx = await _build_context(target)
-    except Exception as exc:
-        yield {"event": "scan_error", "data": {"message": f"Cible injoignable : {exc}"}}
-        return
-    async for ev in _stream_results(ctx, checks_for(fast), _SCAN_DEADLINE):
-        yield ev
+    # Sémaphore global : borne le nombre de scans simultanés (web + MCP). Acquis au 1er
+    # `__anext__`, libéré à l'épuisement OU à l'aclose (déconnexion client) du générateur.
+    async with _SCAN_SEMAPHORE:
+        try:
+            ctx = await _build_context(target)
+        except Exception as exc:
+            yield {"event": "scan_error", "data": {"message": f"Cible injoignable : {exc}"}}
+            return
+        async for ev in _stream_results(ctx, checks_for(fast), _SCAN_DEADLINE):
+            yield ev

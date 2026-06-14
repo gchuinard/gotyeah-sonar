@@ -48,6 +48,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int((os.environ.get(name) or "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
 def _cookie_kwargs() -> dict:
     # secure=True en prod (derrière NPM en HTTPS) ; passe SONAR_COOKIE_SECURE=false
     # pour tester en local sur http://.
@@ -56,11 +63,25 @@ def _cookie_kwargs() -> dict:
 
 
 def _client_ip(request: Request) -> str:
-    # Derrière Nginx Proxy Manager, l'IP réelle est dans X-Forwarded-For.
+    """IP RÉELLE du client, anti-usurpation de rate-limit.
+
+    Derrière des proxys de confiance (NPM, éventuellement Cloudflare devant), chaque proxy
+    APPEND l'IP qu'il a vue à X-Forwarded-For → la chaîne est
+    `[…valeurs falsifiables par le client…, ajout proxy1, …, ajout proxyN]`. Prendre la 1ʳᵉ
+    valeur (ancien comportement) laissait le client forger son IP et contourner le quota.
+    On remonte donc de `SONAR_TRUSTED_PROXY_HOPS` (défaut 1) depuis la DROITE = la 1ʳᵉ entrée
+    réellement ajoutée par un proxy de confiance. hops≤0 → exposition directe, on ignore XFF."""
+    peer = request.client.host if request.client else "?"
+    hops = _env_int("SONAR_TRUSTED_PROXY_HOPS", 1)
+    if hops <= 0:
+        return peer
     xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "?"
+    if not xff:
+        return peer
+    parts = [p.strip() for p in xff.split(",") if p.strip()]
+    if not parts:
+        return peer
+    return parts[max(0, len(parts) - hops)]
 
 
 def _base_url(request: Request) -> str:
@@ -581,6 +602,12 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
         return JSONResponse(
             {"error": "Tu ne peux scanner que tes domaines vérifiés.", "code": "domain_not_owned"},
             status_code=403)
+    # Rate-limit (même garde-fou que le MCP) : empêche un compte d'enchaîner des scans `full`
+    # à l'infini (nuclei/ZAP/sockets) → anti-DoS. La concurrence globale est bornée dans le moteur.
+    if not auth.scan_rate_ok(user["id"]):
+        return JSONResponse(
+            {"error": "Trop de scans lancés récemment. Réessaie dans quelques minutes.",
+             "code": "rate_limited"}, status_code=429)
 
     lang = _lang(request, user)
 

@@ -29,6 +29,46 @@ def test_login_message_adapts_to_registration_mode(client, monkeypatch):
     assert "Si un compte existe" in r.json()["message"]
 
 
+def _req(headers=None, peer="9.9.9.9"):
+    from starlette.requests import Request
+    raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+    return Request({"type": "http", "method": "GET", "path": "/", "query_string": b"",
+                    "headers": raw, "client": (peer, 12345)})
+
+
+def test_client_ip_anti_spoof(monkeypatch):
+    """#3 — on ne fait JAMAIS confiance à la 1ʳᵉ valeur XFF (falsifiable par le client)."""
+    import app
+    monkeypatch.delenv("SONAR_TRUSTED_PROXY_HOPS", raising=False)   # défaut 1 (NPM)
+    # `1.2.3.4` est forgé par le client ; `5.6.7.8` est ajouté par NPM (le vrai peer).
+    assert app._client_ip(_req({"x-forwarded-for": "1.2.3.4, 5.6.7.8"})) == "5.6.7.8"
+    # 2 hops (Cloudflare + NPM) : la vraie IP est l'avant-dernière.
+    monkeypatch.setenv("SONAR_TRUSTED_PROXY_HOPS", "2")
+    assert app._client_ip(_req({"x-forwarded-for": "evil, vrai, cf"})) == "vrai"
+    # Pas de XFF → IP du peer direct.
+    monkeypatch.delenv("SONAR_TRUSTED_PROXY_HOPS", raising=False)
+    assert app._client_ip(_req({})) == "9.9.9.9"
+    # hops=0 (exposition directe) → XFF ignoré.
+    monkeypatch.setenv("SONAR_TRUSTED_PROXY_HOPS", "0")
+    assert app._client_ip(_req({"x-forwarded-for": "1.2.3.4"})) == "9.9.9.9"
+
+
+def test_scan_stream_rate_limited(client, monkeypatch):
+    """#4 — l'endpoint de scan web applique le rate-limit (429), comme le MCP."""
+    import sqlite3
+    import auth
+    import db
+    c, _ = client
+    u = auth.create_user("a@b.com")
+    d = auth.add_domain(u["id"], "ex.com")
+    with sqlite3.connect(db.DB_PATH) as conn:        # vérifie le domaine sans passer par le DNS
+        conn.execute("UPDATE verified_domains SET verified=1 WHERE id=?", (d["id"],))
+    c.cookies.set("sonar_session", auth.create_session(u["id"]))
+    monkeypatch.setattr(auth, "scan_rate_ok", lambda uid: False)
+    r = c.get("/api/scan/stream?target=ex.com")
+    assert r.status_code == 429 and r.json()["code"] == "rate_limited"
+
+
 def test_help_mcp_page(client):
     """Page d'aide MCP : login requis (302) puis 200 avec l'URL d'instance injectée."""
     import auth
