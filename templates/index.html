@@ -192,20 +192,35 @@
   .hc-del { flex: none; align-self: flex-start; background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px; opacity: 0; transition: opacity .15s, color .15s; }
   .hist-card:hover .hc-del { opacity: .7; }
   .hc-del:hover { opacity: 1; color: var(--sev-critical); }
-  .hist-filter { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 13px; color: var(--text-dim); }
-  .hist-filter b { font-family: var(--mono); color: var(--text); }
   .hist-empty p { margin: 0 0 16px; }
   .dom-link { cursor: pointer; transition: color .15s; }
   .dom-link:hover { color: var(--accent); text-decoration: underline; }
-  /* Filtre par site (chips) dans l'historique : suivi de la note d'un seul site à la fois. */
-  .hist-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-  .hchip { display: inline-flex; align-items: center; gap: 7px; background: var(--bg-2); border: 1px solid var(--line); color: var(--text-dim); border-radius: 999px; padding: 6px 12px; font-family: var(--mono); font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
-  .hchip:hover { background: var(--bg-3); border-color: var(--line-2); color: var(--text); }
-  .hchip.active { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
-  .hchip-grade { font-family: var(--display); font-weight: 700; font-size: 13px; }
-  .hchip-host { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .hchip-n { font-size: 10.5px; color: var(--text-faint); background: var(--bg); border-radius: 999px; padding: 1px 7px; }
-  .hchip.active .hchip-n { color: var(--text-dim); }
+  /* Tableau de bord par site : une ligne par site (son dernier scan), triable + recherche.
+     Clic sur une ligne → l'historique complet de CE site. Tient la charge avec beaucoup de sites. */
+  .hist-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .site-search { flex: 1; min-width: 160px; background: var(--bg-2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px 12px; font-family: var(--mono); font-size: 13px; }
+  .site-search::placeholder { color: var(--text-faint); }
+  .site-search:focus { outline: none; border-color: var(--line-2); }
+  .site-sort { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .site-sort select { background: var(--bg-2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 7px 10px; font-family: var(--mono); font-size: 12px; cursor: pointer; }
+  .site-sort select:focus { outline: none; border-color: var(--line-2); }
+
+  .site-list { display: flex; flex-direction: column; gap: 8px; }
+  .site-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto auto 16px; align-items: center; gap: 16px; text-align: left; width: 100%; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; cursor: pointer; transition: background .15s, border-color .15s; }
+  .site-row:hover { background: var(--bg-3); border-color: var(--line-2); }
+  .site-grade { font-family: var(--display); font-weight: 700; font-size: 24px; text-align: center; }
+  .site-host { font-family: var(--mono); font-size: 14.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .site-score { font-family: var(--mono); font-size: 14px; color: var(--text-dim); white-space: nowrap; }
+  .site-score small { font-size: 11px; color: var(--text-faint); }
+  .site-count { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
+  .site-chev { color: var(--text-faint); font-size: 16px; text-align: center; }
+  .site-row:hover .site-chev { color: var(--accent); }
+
+  /* Fil d'Ariane quand on a ouvert l'historique d'un seul site. */
+  .hist-back { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 13px; color: var(--text-dim); }
+  .hist-back .back-link { background: none; border: none; color: var(--accent); font-family: var(--mono); font-size: 12px; cursor: pointer; padding: 0; }
+  .hist-back .back-link:hover { text-decoration: underline; }
+  .hist-back b { font-family: var(--mono); color: var(--text); }
 
   /* ---- tally ---- */
   .tally { display: flex; flex-direction: column; gap: 2px; }
@@ -664,33 +679,51 @@
   </div><!-- /onglet Rapport -->
 
   <div v-show="activeTab === 'history'" class="history-tab tab-pane history-pane">
-    <!-- Filtre par site : un chip par host déjà testé (clic = match exact, sans mélanger
-         les sous-domaines). Affiche le compte de scans et la dernière note de chaque site. -->
-    <div v-if="history.length" class="hist-chips">
-      <button class="hchip" :class="{ active: !historyFilter }" @click="clearHistoryFilter">
-        {{ T('history.all', 'Tous les sites') }} <span class="hchip-n">{{ history.length }}</span>
-      </button>
-      <button v-for="d in historyDomains" :key="d.host"
-              class="hchip" :class="{ active: historyFilter === d.host }"
-              @click="setHistoryFilter(d.host)" :title="d.host">
-        <span v-if="d.grade" class="hchip-grade" :style="{ color: colorOf(d.score) }">{{ d.grade }}</span>
-        <span class="hchip-host">{{ d.host }}</span>
-        <span class="hchip-n">{{ d.count }}</span>
-      </button>
-    </div>
-    <div v-if="historyFilter" class="hist-filter">
-      {{ T('history.for', 'Historique de') }} <b>{{ historyFilter }}</b>
-      <button class="reset-link" @click="clearHistoryFilter">{{ T('history.show_all', "Tout l'historique") }}</button>
-    </div>
-    <div v-if="!filteredHistory.length" class="hist-empty">
-      <template v-if="historyFilter">
+    <!-- Aucun scan du tout. -->
+    <div v-if="!history.length" class="hist-empty">{{ T('panels.history_empty', 'Aucun scan enregistré.') }}</div>
+
+    <!-- VUE 1 — Tableau de bord par site : une ligne par site (son dernier scan),
+         triable (pire note / récent / nom / nb scans) + recherche. Clic → historique du site. -->
+    <template v-else-if="!historyFilter">
+      <div class="hist-toolbar">
+        <input class="site-search" v-model="siteSearch" spellcheck="false"
+               :placeholder="T('history.filter_site', 'Filtrer un site…')" />
+        <div class="site-sort">
+          <span>{{ T('history.sort', 'Tri') }}</span>
+          <select v-model="siteSort">
+            <option value="grade">{{ T('history.sort_grade', 'Pire note') }}</option>
+            <option value="recent">{{ T('history.sort_recent', 'Récent') }}</option>
+            <option value="name">{{ T('history.sort_name', 'Nom') }}</option>
+            <option value="scans">{{ T('history.sort_scans', 'Nb scans') }}</option>
+          </select>
+        </div>
+      </div>
+      <div v-if="!siteCardsSorted.length" class="hist-empty">{{ T('history.no_match', 'Aucun site ne correspond.') }}</div>
+      <div v-else class="site-list">
+        <button class="site-row" v-for="s in siteCardsSorted" :key="s.host"
+                @click="setHistoryFilter(s.host)" :title="s.host">
+          <span class="site-grade" :style="{ color: s.score != null ? colorOf(s.score) : 'var(--text-faint)' }">{{ s.grade || '—' }}</span>
+          <span class="site-host">{{ s.host }}</span>
+          <span class="site-score" v-if="s.score != null">{{ s.score }}<small>/100</small></span>
+          <span class="site-score" v-else>—</span>
+          <span class="site-count">{{ s.count }} {{ T('history.scans', 'scans') }}</span>
+          <span class="site-chev">›</span>
+        </button>
+      </div>
+    </template>
+
+    <!-- VUE 2 — Historique complet d'un seul site sélectionné. -->
+    <template v-else>
+      <div class="hist-back">
+        <button class="back-link" @click="clearHistoryFilter">‹ {{ T('history.all', 'Tous les sites') }}</button>
+        <b>{{ historyFilter }}</b>
+      </div>
+      <div v-if="!filteredHistory.length" class="hist-empty">
         <p>{{ T('history.none_for', 'Aucun scan pour ce domaine.') }}</p>
         <button class="btn" @click="scanDomain(historyFilter)">{{ T('history.scan_now', 'Lancer le scan') }}</button>
-      </template>
-      <template v-else>{{ T('panels.history_empty', 'Aucun scan enregistré.') }}</template>
-    </div>
-    <div v-else class="hist-grid">
-      <div class="hist-card" v-for="h in filteredHistory" :key="h.id" @click="openScan(h.id)">
+      </div>
+      <div v-else class="hist-grid">
+        <div class="hist-card" v-for="h in filteredHistory" :key="h.id" @click="openScan(h.id)">
         <span class="hc-grade" :style="{ color: colorOf(h.score) }">
           <template v-if="h.status === 'running'">⏳</template>
           <template v-else-if="h.status === 'error'">⚠</template>
@@ -710,8 +743,9 @@
         <div class="hc-score" v-else>{{ h.score }}<small>/100</small></div>
         <button class="hc-del" @click.stop="deleteScan(h)"
                 :title="T('history.delete', 'Supprimer ce rapport')">🗑</button>
+        </div>
       </div>
-    </div>
+    </template>
   </div>
 
   <!-- Bouton « remonter en haut » : visible une fois qu'on a défilé vers le bas. -->
@@ -744,8 +778,10 @@ createApp({
       showScrollTop: false,   // bouton « remonter » (visible une fois défilé vers le bas)
       // onglets : 'report' (scan courant / dernier rapport) ou 'history'
       activeTab: 'report',
-      historyFilter: '',   // si défini, l'historique est filtré sur ce domaine
-      histExact: false,    // true = filtre sur le host EXACT (chips), sans inclure les sous-domaines
+      historyFilter: '',   // si défini, l'historique est filtré sur ce domaine (drill-down d'un site)
+      histExact: false,    // true = filtre sur le host EXACT (clic d'une ligne du tableau de bord)
+      // Tableau de bord par site (vue par défaut de l'historique) : recherche + tri.
+      siteSearch: '', siteSort: 'grade',   // grade=pire note d'abord | recent | name | scans
 
       // affichage du feed uniquement (n'affecte JAMAIS score/jauge/répartition)
       sevFilter: [], catFilter: [], sortBy: 'severity',
@@ -874,19 +910,37 @@ createApp({
         return this.histExact ? host === dom : (host === dom || host.endsWith('.' + dom));
       });
     },
-    // Sites distincts présents dans l'historique → chips de filtre, avec compte et
-    // dernière note (l'historique arrive le plus récent en tête).
-    historyDomains() {
+    // Sites distincts présents dans l'historique → une carte par site pour le tableau de
+    // bord. Compte de scans, date du dernier scan, et dernière note (l'historique arrive le
+    // plus récent en tête, donc la 1ʳᵉ occurrence d'un host = son scan le plus récent).
+    siteCards() {
       const map = new Map();
       for (const h of this.history) {
         const host = this.hostOf(h.target);
         if (!host) continue;
-        if (!map.has(host)) map.set(host, { host, count: 0, grade: null, score: null });
+        if (!map.has(host)) {
+          map.set(host, { host, count: 0, grade: null, score: null, lastDate: h.created_at });
+        }
         const e = map.get(host);
         e.count++;
+        // Première occurrence « done » rencontrée = la note la plus récente du site.
         if (e.grade === null && h.status === 'done') { e.grade = h.grade; e.score = h.score; }
       }
-      return Array.from(map.values()).sort((a, b) => a.host.localeCompare(b.host));
+      return Array.from(map.values());
+    },
+    // Le tableau de bord : cartes filtrées (recherche) puis triées selon siteSort.
+    siteCardsSorted() {
+      const q = this.siteSearch.trim().toLowerCase();
+      let arr = q ? this.siteCards.filter(s => s.host.includes(q)) : this.siteCards.slice();
+      const by = this.siteSort;
+      return arr.sort((a, b) => {
+        if (by === 'name') return a.host.localeCompare(b.host);
+        if (by === 'scans') return b.count - a.count || a.host.localeCompare(b.host);
+        if (by === 'recent') return (b.lastDate || '').localeCompare(a.lastDate || '');
+        // 'grade' (défaut) : pire note d'abord = score croissant ; jamais noté (null) en dernier.
+        const sa = a.score == null ? 1e9 : a.score, sb = b.score == null ? 1e9 : b.score;
+        return sa - sb || a.host.localeCompare(b.host);
+      });
     },
   },
   methods: {
