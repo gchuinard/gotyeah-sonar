@@ -250,7 +250,7 @@ const CLIENTS = [
         code: remoteJson('mcpServers', '{ "type": "streamableHttp", "url": "{BASE}/mcp" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: 'cline_mcp_settings.json', code: localJson('mcpServers') },
     ] },
-  { id: 'gemini-cli', group: 'Éditeurs & outils dev', name: 'Gemini CLI', sub: 'Google — fichier settings.json (clé « httpUrl » pour le distant).',
+  { id: 'gemini-cli', group: 'CLI, terminaux & agents', name: 'Gemini CLI', sub: 'Google — fichier settings.json (clé « httpUrl » pour le distant).',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: '~/.gemini/settings.json',
         code: remoteJson('mcpServers', '{ "httpUrl": "{BASE}/mcp" }') },
@@ -300,6 +300,79 @@ mcpServers:
       SONAR_TOKEN: "{PAT}"
       SONAR_BASE_URL: "{BASE}"
       PYTHONPATH: ${REPO}` },
+    ] },
+
+  // ---- Assistants de chat (suite) ----
+  { id: 'cherry-studio', group: 'Assistants', name: 'Cherry Studio', sub: 'Chat multi-modèles (bureau) — Réglages → MCP Servers.',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', steps: [
+        '<b>Réglages → MCP Servers → « Add server »</b>.',
+        'Type = <b>Streamable HTTP</b> (ou SSE), URL = <code>{BASE}/mcp</code>, puis <b>Save</b>.' ] },
+      { label: 'Serveur local (jeton)', badge: 'pat', steps: [
+        'Type = <b>stdio</b>, Command = <code>' + PYBIN + '</code>, Args = <code>-m sonar_mcp</code>.',
+        'Env : <code>SONAR_TOKEN={PAT}</code>, <code>SONAR_BASE_URL={BASE}</code>, <code>PYTHONPATH=' + REPO + '</code>.' ] },
+    ] },
+  { id: 'lm-studio', group: 'Assistants', name: 'LM Studio', sub: 'Modèles locaux — onglet Program → Edit mcp.json (notation Cursor).',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: 'mcp.json (Program → Edit mcp.json)',
+        code: remoteJson('mcpServers', '{ "url": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: 'mcp.json', code: localJson('mcpServers') },
+    ] },
+
+  // ---- Éditeur (suite) ----
+  { id: 'roo-code', group: 'Éditeurs & outils dev', name: 'Roo Code', sub: 'Extension VS Code — panneau Roo → MCP → Edit MCP.',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: 'mcp_settings.json (Roo → MCP)',
+        code: remoteJson('mcpServers', '{ "type": "streamableHttp", "url": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: 'mcp_settings.json', code: localJson('mcpServers') },
+    ] },
+
+  // ---- CLI, terminaux & agents ----
+  { id: 'amazon-q', group: 'CLI, terminaux & agents', name: 'Amazon Q Developer', sub: 'AWS (CLI & IDE) — fichier mcp.json.',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: '~/.aws/amazonq/mcp.json (ou .amazonq/mcp.json)',
+        code: remoteJson('mcpServers', '{ "type": "http", "url": "{BASE}/mcp" }') },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.aws/amazonq/mcp.json', code: localJson('mcpServers') },
+    ] },
+  { id: 'goose', group: 'CLI, terminaux & agents', name: 'Goose', sub: 'Agent open source (Block) — extensions MCP.',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: 'terminal',
+        note: 'Ou : `goose configure` → Add Extension → « Remote Extension (Streaming HTTP) » → colle l\'URL.',
+        code: `goose session --with-streamable-http-extension "{BASE}/mcp"` },
+      { label: 'Serveur local (jeton)', badge: 'pat', steps: [
+        'Lance <code>goose configure</code> → <b>Add Extension</b> → <b>Command-line Extension</b>.',
+        'Commande : <code>' + PYBIN + ' -m sonar_mcp</code> ; ajoute les variables d\'env <code>SONAR_TOKEN</code> / <code>SONAR_BASE_URL</code> / <code>PYTHONPATH</code>.' ] },
+    ] },
+  { id: 'warp', group: 'CLI, terminaux & agents', name: 'Warp', sub: 'Terminal IA — Settings → Agents → MCP servers (colle un JSON).',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', file: 'Settings → Agents → MCP servers → Add (URL-based)',
+        code: `{ "sonar": { "type": "http", "url": "{BASE}/mcp" } }` },
+      { label: 'Serveur local (jeton)', badge: 'pat', file: 'Settings → Agents → MCP servers → Add (CLI-based)',
+        code: `{
+  "sonar": {
+    "command": "${PYBIN}",
+    "args": ["-m", "sonar_mcp"],
+    "env": { "SONAR_TOKEN": "{PAT}", "SONAR_BASE_URL": "{BASE}", "PYTHONPATH": "${REPO}" }
+  }
+}` },
+    ] },
+  { id: 'raycast', group: 'CLI, terminaux & agents', name: 'Raycast', sub: 'Launcher macOS — commande « Manage MCP Servers ».',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', steps: [
+        'Commande <b>« Manage MCP Servers »</b> → <b>Install New Server</b>.',
+        'Transport = <b>HTTP</b>, URL = <code>{BASE}/mcp</code>, puis <b>Install</b>.' ] },
+      { label: 'Serveur local (jeton)', badge: 'pat', steps: [
+        'Même écran → Transport = <b>stdio</b>.',
+        'Command = <code>' + PYBIN + '</code>, Args = <code>-m sonar_mcp</code>, + env <code>SONAR_TOKEN</code> / <code>SONAR_BASE_URL</code> / <code>PYTHONPATH</code>.' ] },
+    ] },
+  { id: 'n8n', group: 'CLI, terminaux & agents', name: 'n8n', sub: 'Automatisation no-code — node « MCP Client Tool ».',
+    methods: [
+      { label: 'Connecteur distant', badge: 'oauth', warn: true,
+        note: 'Ton instance n8n doit pouvoir joindre Sonar par le réseau. Compte autorisé requis.',
+        steps: [
+          '<b>Credentials → New → « MCP Client »</b>.',
+          'Endpoint URL = <code>{BASE}/mcp</code> (transport <b>HTTP Streamable</b>).',
+          'Ajoute le node <b>« MCP Client Tool »</b> dans ton workflow avec ce credential.' ] },
     ] },
 ];
 
