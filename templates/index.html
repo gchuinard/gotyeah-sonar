@@ -361,6 +361,15 @@
   .admin-actions { margin-top: 8px; }
   /* Vue Admin (onglet dédié) : un panneau centré, largeur lisible. */
   .admin-pane { max-width: 720px; margin: 0 auto; }
+  .usr-caret { color: var(--text-faint); font-size: 11px; }
+  /* Domaines d'un utilisateur (drill-down déplié sous son compte). */
+  .usr-domains { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .usr-dom { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .usr-dom-name { font-family: var(--mono); font-size: 13px; color: var(--text); }
+  .usr-dom-input { font-family: var(--mono); font-size: 13px; background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text); border-radius: 6px; padding: 5px 9px; min-width: 200px; }
+  .usr-dom-input:focus { outline: none; border-color: var(--accent); }
+  .usr-dom .dom-x { opacity: .7; }
+  .usr-dom-hint { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
 
   /* ---- jetons d'accès (MCP) ---- */
   .tok-intro { font-size: 12px; color: var(--text-dim); margin-bottom: 11px; }
@@ -763,7 +772,10 @@
         <div v-if="!adminUsers.length" class="empty">{{ T('admin.no_users', 'Aucun compte.') }}</div>
         <div v-for="u in adminUsers" :key="u.id" class="dom">
           <div class="dom-top">
-            <span class="dom-name" :title="u.email">{{ u.email }}</span>
+            <span class="dom-name dom-link" :title="T('admin.open_domains', 'Voir / gérer ses domaines')"
+                  @click="toggleUserDomains(u)">
+              <span class="usr-caret">{{ expandedUser === u.id ? '▾' : '▸' }}</span> {{ u.email }}
+            </span>
             <span v-if="u.is_admin" class="dom-badge ok">{{ T('admin.role_admin', 'admin') }}</span>
             <span v-if="u.email === me.email" class="dom-badge pending">{{ T('admin.you', 'toi') }}</span>
             <button v-if="u.email !== me.email" class="dom-x" @click="deleteUser(u)"
@@ -779,6 +791,28 @@
             <button class="btn-sm" @click="toggleUserAdmin(u)">
               {{ u.is_admin ? T('admin.demote', 'Retirer admin') : T('admin.promote', 'Promouvoir admin') }}
             </button>
+          </div>
+
+          <!-- Domaines de l'utilisateur (dépliés au clic sur l'email). -->
+          <div v-if="expandedUser === u.id" class="usr-domains">
+            <div v-if="!(userDomains[u.id] || []).length" class="empty">{{ T('admin.user_no_domains', 'Aucun domaine.') }}</div>
+            <div v-for="d in (userDomains[u.id] || [])" :key="d.id" class="usr-dom">
+              <template v-if="editingDomain === d.id">
+                <input class="usr-dom-input" v-model="editDomainVal" spellcheck="false"
+                       @keyup.enter="saveDomain(u.id, d)" @keyup.esc="cancelEditDomain" />
+                <button class="btn-sm" @click="saveDomain(u.id, d)">{{ T('admin.save', 'Enregistrer') }}</button>
+                <button class="reset-link" @click="cancelEditDomain">{{ T('admin.cancel', 'Annuler') }}</button>
+              </template>
+              <template v-else>
+                <span class="usr-dom-name">{{ d.domain }}</span>
+                <span class="dom-badge" :class="d.verified ? 'ok' : 'pending'">{{ d.verified ? T('domains.verified', '✓ vérifié') : T('domains.pending', 'en attente') }}</span>
+                <button class="btn-sm" @click="startEditDomain(d)">{{ T('admin.edit', 'Modifier') }}</button>
+                <button class="dom-x" @click="deleteUserDomain(u.id, d)"
+                        :title="T('admin.delete_domain', 'Supprimer ce domaine')">🗑</button>
+              </template>
+            </div>
+            <div class="usr-dom-hint">{{ T('admin.rename_hint', 'Renommer un domaine le remet en attente de vérification (nouveau TXT).') }}</div>
+            <div v-if="adminDomMsg" class="dom-msg">{{ adminDomMsg }}</div>
           </div>
         </div>
       </div>
@@ -828,6 +862,8 @@ createApp({
       tokens: [], newTokenName: '', tokenBusy: false, tokenMsg: '', newToken: '', tokenCopied: false,
       // administration des comptes (panneau visible aux admins uniquement)
       adminUsers: [], adminMsg: '',
+      // drill-down : domaines d'un user déplié, + édition inline d'un domaine
+      expandedUser: null, userDomains: {}, editingDomain: null, editDomainVal: '', adminDomMsg: '',
       // i18n
       ui: ui, lang: SONAR_BOOT.lang || 'fr', langs: SONAR_BOOT.available || ['fr'],
       // remédiation (cartes dépliables)
@@ -1077,6 +1113,49 @@ createApp({
           this.adminMsg = e.error || this.T('admin.delete_failed', 'Suppression impossible.');
           return;
         }
+        await this.loadAdminUsers();
+      } catch (e) {}
+    },
+    async toggleUserDomains(u) {
+      this.editingDomain = null; this.adminDomMsg = '';
+      if (this.expandedUser === u.id) { this.expandedUser = null; return; }
+      this.expandedUser = u.id;
+      await this.loadUserDomains(u.id);
+    },
+    async loadUserDomains(uid) {
+      try {
+        const r = await fetch('/api/admin/users/' + uid + '/domains');
+        if (!r.ok) return;
+        this.userDomains[uid] = (await r.json()).domains || [];
+      } catch (e) {}
+    },
+    startEditDomain(d) { this.editingDomain = d.id; this.editDomainVal = d.domain; this.adminDomMsg = ''; },
+    cancelEditDomain() { this.editingDomain = null; this.editDomainVal = ''; },
+    async saveDomain(uid, d) {
+      const val = this.editDomainVal.trim();
+      if (!val) return;
+      this.adminDomMsg = '';
+      try {
+        const r = await fetch('/api/admin/users/' + uid + '/domains/' + d.id, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: val }),
+        });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          this.adminDomMsg = e.error || this.T('admin.domain_save_failed', 'Modification impossible.');
+          return;
+        }
+        this.editingDomain = null;
+        await this.loadUserDomains(uid);
+        await this.loadAdminUsers();   // les compteurs (domaines vérifiés) ont pu changer
+      } catch (e) {}
+    },
+    async deleteUserDomain(uid, d) {
+      if (!window.confirm(this.T('admin.confirm_delete_domain', 'Supprimer ce domaine ?') + '\n\n' + d.domain)) return;
+      this.adminDomMsg = '';
+      try {
+        await fetch('/api/admin/users/' + uid + '/domains/' + d.id, { method: 'DELETE' });
+        await this.loadUserDomains(uid);
         await this.loadAdminUsers();
       } catch (e) {}
     },

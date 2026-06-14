@@ -138,3 +138,69 @@ def test_cannot_remove_last_admin(client):
     assert c.post("/api/admin/users/" + admin["id"] + "/admin",
                   json={"is_admin": False}).status_code == 200
     assert auth.get_user_by_id(admin["id"])["is_admin"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# Domaines d'un utilisateur (drill-down admin) : renommer / supprimer
+# --------------------------------------------------------------------------- #
+def test_update_domain_rename_resets_verification(authdb):
+    u = auth.create_user("u@b.com")
+    d = _verify_domain(u["id"], "old.com")
+    assert auth.get_domain(d["id"], u["id"])["verified"] is True
+    res = auth.update_domain(d["id"], u["id"], "New.COM")
+    assert res["domain"] == "new.com"      # normalisé
+    assert res["verified"] is False        # renommage → non vérifié (nom non prouvé)
+    assert res["token"] != d["token"]      # nouveau token de challenge
+
+
+def test_update_domain_noop_conflict_invalid_missing(authdb):
+    u = auth.create_user("u@b.com")
+    keep = _verify_domain(u["id"], "keep.com")
+    a = auth.add_domain(u["id"], "a.com")
+    auth.add_domain(u["id"], "b.com")
+    # même nom → no-op, la vérification est préservée
+    assert auth.update_domain(keep["id"], u["id"], "keep.com")["verified"] is True
+    # nom déjà pris par un autre domaine du même user → "conflict"
+    assert auth.update_domain(a["id"], u["id"], "b.com") == "conflict"
+    # nom invalide / domaine inexistant → None
+    assert auth.update_domain(a["id"], u["id"], "pas valide!!") is None
+    assert auth.update_domain("inexistant", u["id"], "x.com") is None
+
+
+def test_admin_domain_endpoints_list_rename_delete(client):
+    c, _ = client
+    admin = auth.create_user("admin@b.com", is_admin=True)
+    target = auth.create_user("t@b.com")
+    d = _verify_domain(target["id"], "old.com")
+    _login(c, admin)
+
+    doms = c.get(f"/api/admin/users/{target['id']}/domains").json()["domains"]
+    assert [x["domain"] for x in doms] == ["old.com"]
+
+    r = c.patch(f"/api/admin/users/{target['id']}/domains/{d['id']}", json={"domain": "new.com"})
+    assert r.status_code == 200
+    assert r.json()["domain"]["domain"] == "new.com" and r.json()["domain"]["verified"] is False
+    # nom invalide → 400
+    assert c.patch(f"/api/admin/users/{target['id']}/domains/{d['id']}",
+                   json={"domain": "??"}).status_code == 400
+    # suppression → 200, plus de domaine
+    assert c.delete(f"/api/admin/users/{target['id']}/domains/{d['id']}").status_code == 200
+    assert auth.list_domains(target["id"]) == []
+
+
+def test_admin_domain_conflict_and_gating(client):
+    c, _ = client
+    admin = auth.create_user("admin@b.com", is_admin=True)
+    t = auth.create_user("t@b.com")
+    a = auth.add_domain(t["id"], "a.com")
+    auth.add_domain(t["id"], "b.com")
+    _login(c, admin)
+    assert c.patch(f"/api/admin/users/{t['id']}/domains/{a['id']}",
+                   json={"domain": "b.com"}).status_code == 409
+    # non-admin → 403 sur les 3 routes
+    c.cookies.clear()
+    _login(c, auth.create_user("nobody@b.com"))
+    assert c.get(f"/api/admin/users/{t['id']}/domains").status_code == 403
+    assert c.patch(f"/api/admin/users/{t['id']}/domains/{a['id']}",
+                   json={"domain": "x.com"}).status_code == 403
+    assert c.delete(f"/api/admin/users/{t['id']}/domains/{a['id']}").status_code == 403

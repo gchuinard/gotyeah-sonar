@@ -614,6 +614,35 @@ def delete_domain(domain_id: str, user_id: str) -> None:
         conn.execute("DELETE FROM verified_domains WHERE id=? AND user_id=?", (domain_id, user_id))
 
 
+def update_domain(domain_id: str, user_id: str, new_domain: str):
+    """Renomme un domaine d'un utilisateur (usage ADMIN).
+
+    Un nom de domaine différent n'a PAS été prouvé : le renommage **remet le domaine
+    en attente** (verified=0, nouveau token de challenge). Renvoie :
+      - le domaine mis à jour (dict) en cas de succès (ou inchangé si même nom) ;
+      - None si le domaine est introuvable pour cet utilisateur, ou le nouveau nom invalide ;
+      - la chaîne "conflict" si l'utilisateur a déjà un domaine portant ce nom.
+    """
+    new_domain = normalize_domain(new_domain)
+    if not is_valid_domain(new_domain):
+        return None
+    current = get_domain(domain_id, user_id)
+    if not current:
+        return None
+    if new_domain == current["domain"]:
+        return current   # no-op : même nom, on ne casse pas la vérification existante
+    if get_domain_by_name(user_id, new_domain):
+        return "conflict"
+    token = secrets.token_hex(16)
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE verified_domains SET domain=?, token=?, verified=0, verified_at=NULL "
+            "WHERE id=? AND user_id=?",
+            (new_domain, token, domain_id, user_id),
+        )
+    return get_domain(domain_id, user_id)
+
+
 def _mark_verified(domain_id: str) -> None:
     with _conn() as conn:
         conn.execute(

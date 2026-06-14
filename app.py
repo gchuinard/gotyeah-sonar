@@ -357,6 +357,49 @@ async def admin_delete_user(request: Request, user_id: str):
     return JSONResponse({"ok": True})
 
 
+@app.get("/api/admin/users/{user_id}/domains")
+async def admin_user_domains(request: Request, user_id: str):
+    """Domaines d'un utilisateur donné (drill-down depuis la liste des comptes)."""
+    _, err = _require_admin(request)
+    if err:
+        return err
+    if auth.get_user_by_id(user_id) is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"domains": auth.list_domains(user_id)})
+
+
+@app.patch("/api/admin/users/{user_id}/domains/{domain_id}")
+async def admin_update_domain(request: Request, user_id: str, domain_id: str):
+    """Renomme un domaine d'un utilisateur. Le renommage le remet en attente de vérif."""
+    _, err = _require_admin(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    new_domain = body.get("domain", "") if isinstance(body, dict) else ""
+    res = auth.update_domain(domain_id, user_id, new_domain)
+    if res is None:
+        return JSONResponse(
+            {"error": "Domaine invalide ou introuvable.", "code": "invalid"}, status_code=400)
+    if res == "conflict":
+        return JSONResponse(
+            {"error": "Cet utilisateur a déjà un domaine portant ce nom.", "code": "conflict"},
+            status_code=409)
+    return JSONResponse({"domain": res})
+
+
+@app.delete("/api/admin/users/{user_id}/domains/{domain_id}")
+async def admin_delete_domain(request: Request, user_id: str, domain_id: str):
+    """Supprime un domaine d'un utilisateur."""
+    _, err = _require_admin(request)
+    if err:
+        return err
+    auth.delete_domain(domain_id, user_id)
+    return JSONResponse({"ok": True})
+
+
 # --------------------------------------------------------------------------- #
 # i18n (chrome UI + préférence de langue)
 # --------------------------------------------------------------------------- #
