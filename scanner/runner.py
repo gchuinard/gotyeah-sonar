@@ -155,6 +155,9 @@ _UNEXECUTED_CODES = {
     ("zap", "timeout"), ("zap", "unreachable"),
     ("tls", "unreachable"), ("tls", "error"),
     ("tls-key", "unreachable"), ("tls-key", "unavailable"),
+    # Checks ACTIFS qui n'ont pas pu sonder (erreur réseau) → couverture incomplète, pas un
+    # PASS rassurant. NB : `subresources` "non-html" n'y est PAS (page non-HTML = N/A légitime).
+    ("cors", "error"), ("mixed", "error"), ("subresources", "unreachable"),
 }
 
 

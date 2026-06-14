@@ -46,6 +46,26 @@ def test_pass_and_info_do_not_penalize():
     assert score_and_grade([_f(Severity.PASS), _f(Severity.INFO)]) == (100, "A+")
 
 
+def test_penalty_capped_per_check_and_severity():
+    # 8 findings MEDIUM du MÊME check (ex. cookies × N) → seuls 3 pénalisent (anti-avalanche),
+    # pas 8 → le score n'est plus écrasé à 0 par un seul check répétitif.
+    same = [Finding("cookies", Category.COOKIES, Severity.MEDIUM, code="x") for _ in range(8)]
+    assert score_and_grade(same)[0] == 100 - 3 * 8
+    # check_id DIFFÉRENTS → pas de plafond commun, chacun compte normalement.
+    diverse = [Finding(f"c{i}", Category.HEADERS, Severity.MEDIUM, code="x") for i in range(8)]
+    assert score_and_grade(diverse)[0] == max(0, 100 - 8 * 8)
+
+
+async def test_active_check_network_error_is_unexecuted():
+    # #10 — un check ACTIF qui échoue en réseau (cors/error) doit compter comme couverture
+    # incomplète (unexecuted), pas comme un PASS rassurant.
+    async def cors_err(ctx):
+        return [Finding("cors", Category.CORS, Severity.INFO, code="error")]
+    chk = Check(id="cors", title="CORS", category=Category.CORS, fn=cors_err)
+    _, findings = await _safe_run(chk, ctx=None)
+    assert findings[0].unexecuted is True
+
+
 def test_summarize():
     findings = [_f(Severity.CRITICAL), _f(Severity.LOW), _f(Severity.PASS)]
     s = summarize(findings)

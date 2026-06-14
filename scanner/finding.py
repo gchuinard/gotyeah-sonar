@@ -6,6 +6,7 @@ demain un wrapper nuclei), rend une liste de `Finding`. Tout le reste de l'appli
 """
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
@@ -37,6 +38,10 @@ class Category(str, Enum):
     TRANSPORT = "transport"
     INFO = "info"
 
+
+# Au-delà de N findings de MÊME (check_id, sévérité), les suivants ne pénalisent plus le
+# score (anti-avalanche d'un check répétitif, ex. cookies × N). Cf. score_and_grade.
+_MAX_SAME_PENALIZED = 3
 
 # Poids retirés du score (sur 100) par finding selon sa sévérité.
 _WEIGHTS = {
@@ -138,7 +143,20 @@ def _worst_grade(*grades: str) -> str:
 
 
 def score_and_grade(findings: list["Finding"]) -> tuple[int, str]:
-    penalty = sum(_WEIGHTS[f.severity] for f in findings)
+    # Pénalité PLAFONNÉE par (check_id, sévérité) : au-delà de `_MAX_SAME_PENALIZED` findings
+    # identiques (ex. 8 cookies tiers sans Secure/HttpOnly), les suivants ne pénalisent plus —
+    # sinon un seul check répétitif fait tomber le score à 0 et écrase tout le diagnostic. Le
+    # signal de gravité n'est PAS perdu : la pire sévérité plafonne le grade juste après.
+    seen: Counter = Counter()
+    penalty = 0
+    for f in findings:
+        w = _WEIGHTS[f.severity]
+        if w == 0:
+            continue
+        key = (f.check_id, f.severity)
+        seen[key] += 1
+        if seen[key] <= _MAX_SAME_PENALIZED:
+            penalty += w
     score = max(0, 100 - penalty)
     grade = _grade_from_score(score)
 
