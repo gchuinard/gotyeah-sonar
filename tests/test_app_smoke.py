@@ -69,6 +69,25 @@ def test_scan_stream_rate_limited(client, monkeypatch):
     assert r.status_code == 429 and r.json()["code"] == "rate_limited"
 
 
+def test_security_headers(client):
+    """#5 — l'app pose ses en-têtes de sécurité (anti-clickjacking) sur ses réponses."""
+    c, _ = client
+    r = c.get("/login")
+    assert r.headers.get("x-frame-options") == "DENY"
+    assert r.headers.get("x-content-type-options") == "nosniff"
+    csp = r.headers.get("content-security-policy", "")
+    assert "frame-ancestors 'none'" in csp
+    assert "unpkg.com" not in csp                    # #6 — plus de CDN dans la CSP
+    assert r.headers.get("referrer-policy")
+
+
+def test_vue_self_hosted(client):
+    """#6 — Vue est servi en local (/static), plus depuis un CDN tiers."""
+    c, _ = client
+    r = c.get("/static/vendor/vue.global.prod.js")
+    assert r.status_code == 200 and "Vue" in r.text[:300]
+
+
 def test_help_mcp_page(client):
     """Page d'aide MCP : login requis (302) puis 200 avec l'URL d'instance injectée."""
     import auth

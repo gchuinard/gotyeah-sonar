@@ -20,6 +20,8 @@ from fastapi.responses import (
     RedirectResponse,
     StreamingResponse,
 )
+from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 
 import auth
 import db
@@ -211,6 +213,55 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Sonar", lifespan=lifespan)
+
+
+# En-têtes de sécurité sur TOUTES les réponses — l'app défensive doit suivre ses propres
+# recommandations (dogfooding). `frame-ancestors 'none'` + X-Frame-Options coupent le
+# clickjacking (le dashboard a des actions one-click destructrices). La CSP autorise ce dont
+# les pages ont besoin : Vue (unpkg), polices Google, et l'inline (app Vue + bootstrap injecté).
+_CSP = (
+    "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; "
+    "img-src 'self' data:; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "script-src 'self' 'unsafe-inline'; "        # Vue est auto-hébergé (/static) — plus de CDN
+    "connect-src 'self'"
+)
+
+
+class _SecurityHeadersMiddleware:
+    """Middleware ASGI PUR : pose les en-têtes de sécurité sur `http.response.start`
+    sans jamais toucher au corps → n'interfère PAS avec le streaming SSE (scan live),
+    contrairement à BaseHTTPMiddleware."""
+
+    def __init__(self, app):
+        self.app = app
+        self._hsts = _env_bool("SONAR_COOKIE_SECURE", True)   # HSTS seulement en prod (HTTPS)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                h = MutableHeaders(scope=message)
+                h.setdefault("X-Frame-Options", "DENY")
+                h.setdefault("X-Content-Type-Options", "nosniff")
+                h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+                h.setdefault("Content-Security-Policy", _CSP)
+                if self._hsts:
+                    h.setdefault("Strict-Transport-Security",
+                                 "max-age=63072000; includeSubDomains")
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(_SecurityHeadersMiddleware)
+
+# Assets statiques auto-hébergés (Vue épinglé) — plus de dépendance CDN (supply-chain) ni de
+# page blanche hors-ligne. Servis sous /static.
+app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 
 def _sse(event: str, data: dict) -> str:
