@@ -373,6 +373,16 @@
 
   /* ---- jetons d'accès (MCP) ---- */
   .tok-intro { font-size: 12px; color: var(--text-dim); margin-bottom: 11px; }
+  /* Guide de connexion MCP : un bloc par option (A distant / B local). */
+  .mcp-opt { background: var(--bg-2); border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; margin-bottom: 11px; }
+  .mcp-opt-h { font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .04em; color: var(--text); margin-bottom: 5px; }
+  .mcp-opt-d { font-size: 12px; color: var(--text-dim); margin-bottom: 9px; line-height: 1.5; }
+  .mcp-snippet { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; }
+  .mcp-snippet code { font-family: var(--mono); font-size: 12px; color: var(--accent); flex: 1; min-width: 0; word-break: break-all; }
+  .mcp-snippet.cmd { margin-top: 8px; align-items: flex-start; }
+  .mcp-snippet.cmd code { font-size: 11px; color: var(--text); white-space: pre-wrap; }
+  .mcp-snippet .btn-sm { flex: none; align-self: flex-start; }
+  .tok-list-h { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); margin: 4px 0 9px; }
   .tok-meta { margin-top: 6px; font-size: 11.5px; color: var(--text-faint); }
   .tok-secret { margin-bottom: 12px; background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 11px; display: flex; flex-direction: column; gap: 8px; }
   .tok-secret-warn { font-size: 12px; color: var(--accent); font-weight: 600; }
@@ -524,13 +534,37 @@
       </div>
 
       <div class="panel">
-        <h2>{{ T('tokens.title', 'Jetons d\'accès (MCP)') }}</h2>
-        <div class="tok-intro">{{ T('tokens.intro', 'Pour connecter Sonar à Claude via MCP (lecture seule).') }}</div>
-        <div v-if="newToken" class="tok-secret">
-          <div class="tok-secret-warn">{{ T('tokens.copy_now', 'Copie-le maintenant, il ne sera plus affiché.') }}</div>
-          <code class="tok-secret-val">{{ newToken }}</code>
-          <button class="btn-sm" @click="copyToken">{{ tokenCopied ? T('tokens.copied', 'Copié !') : T('tokens.copy', 'Copier') }}</button>
+        <h2>{{ T('tokens.title', 'Connexion à Claude (MCP)') }}</h2>
+        <div class="tok-intro">{{ T('tokens.intro', 'Interroge tes scans Sonar depuis Claude (lecture seule). Deux façons selon ton client :') }}</div>
+
+        <!-- Option A — claude.ai (web) : connecteur distant, zéro installation (si activé). -->
+        <div v-if="mcpRemote" class="mcp-opt">
+          <div class="mcp-opt-h">{{ T('tokens.remote_title', 'A · claude.ai (web) — connecteur, sans rien installer') }}</div>
+          <div class="mcp-opt-d">{{ T('tokens.remote_desc', 'Dans claude.ai : Réglages → Connecteurs → « Ajouter un connecteur personnalisé », colle cette URL :') }}</div>
+          <div class="mcp-snippet">
+            <code>{{ mcpUrl }}</code>
+            <button class="btn-sm" @click="copyText(mcpUrl, 'url')">{{ copiedWhat === 'url' ? T('tokens.copied', 'Copié !') : T('tokens.copy', 'Copier') }}</button>
+          </div>
+          <div class="tok-meta">{{ T('tokens.remote_hint', "Tu te connecteras via le fournisseur d'identité, avec un compte autorisé à accéder au service. Connecte-toi bien avec le BON compte (sinon accès refusé).") }}</div>
         </div>
+
+        <!-- Option B — Claude Code / Desktop : jeton local + commande prête à coller. -->
+        <div class="mcp-opt">
+          <div class="mcp-opt-h">{{ T('tokens.local_title', 'B · Claude Code / Desktop — jeton local') }}</div>
+          <div class="mcp-opt-d">{{ T('tokens.local_desc', 'Génère un jeton (bouton en bas), puis ajoute le serveur local (adapte les deux chemins) :') }}</div>
+          <div v-if="newToken" class="tok-secret">
+            <div class="tok-secret-warn">{{ T('tokens.copy_now', 'Copie ce jeton maintenant, il ne sera plus affiché.') }}</div>
+            <code class="tok-secret-val">{{ newToken }}</code>
+            <button class="btn-sm" @click="copyText(newToken, 'tok')">{{ copiedWhat === 'tok' ? T('tokens.copied', 'Copié !') : T('tokens.copy', 'Copier') }}</button>
+          </div>
+          <div class="mcp-snippet cmd">
+            <code>{{ mcpAddCommand }}</code>
+            <button class="btn-sm" @click="copyText(mcpAddCommand, 'cmd')">{{ copiedWhat === 'cmd' ? T('tokens.copied', 'Copié !') : T('tokens.copy', 'Copier') }}</button>
+          </div>
+          <div class="tok-meta" v-if="!newToken">{{ T('tokens.local_hint', 'Le jeton se collera tout seul dans la commande une fois généré.') }}</div>
+        </div>
+
+        <div class="tok-list-h">{{ T('tokens.list_title', 'Tes jetons') }}</div>
         <div class="doms">
           <div v-if="!tokens.length" class="empty">{{ T('tokens.empty', 'Aucun jeton.') }}</div>
           <div v-for="tk in tokens" :key="tk.id" class="dom">
@@ -860,6 +894,8 @@ createApp({
       domains: [], newDomain: '', domainBusy: false, domainMsg: '',
       // jetons d'accès (MCP) — le secret brut (newToken) n'est affiché qu'une fois
       tokens: [], newTokenName: '', tokenBusy: false, tokenMsg: '', newToken: '', tokenCopied: false,
+      // guide de connexion MCP : URL publique + si le connecteur distant est monté
+      mcpBase: SONAR_BOOT.base_url || '', mcpRemote: !!SONAR_BOOT.mcp_remote, copiedWhat: '',
       // administration des comptes (panneau visible aux admins uniquement)
       adminUsers: [], adminMsg: '',
       // drill-down : domaines d'un user déplié, + édition inline d'un domaine
@@ -890,6 +926,16 @@ createApp({
   },
   computed: {
     hasResult() { return this.findings.length > 0; },
+    // Guide MCP : URL du connecteur distant + commande locale prête (jeton injecté s'il vient
+    // d'être généré, sinon placeholder). Les chemins locaux restent à adapter par l'utilisateur.
+    mcpUrl() { return (this.mcpBase || '') + '/mcp'; },
+    mcpAddCommand() {
+      const tok = this.newToken || 'sonar_pat_TON_JETON';
+      const base = this.mcpBase || 'https://ton-instance-sonar';
+      return 'claude mcp add sonar --env SONAR_TOKEN=' + tok + ' --env SONAR_BASE_URL=' + base
+        + ' --env PYTHONPATH=/chemin/vers/gotyeah_sonar'
+        + ' -- /chemin/vers/gotyeah_sonar/.mcpvenv/bin/python -m sonar_mcp';
+    },
     penalty() { return this.findings.reduce((s, f) => s + (this.WEIGHTS[f.severity] || 0), 0); },
     score() { return Math.max(0, 100 - this.penalty); },
     grade() { return this.gradeCapped(this.score, this.findings); },
@@ -1237,9 +1283,9 @@ createApp({
         await this.loadTokens();
       } catch (e) {}
     },
-    copyToken() {
-      const text = this.newToken;
-      const done = () => { this.tokenCopied = true; setTimeout(() => { this.tokenCopied = false; }, 1800); };
+    copyText(text, key) {
+      // Copie générique avec retour visuel par clé (plusieurs boutons « Copié ! » indépendants).
+      const done = () => { this.copiedWhat = key; setTimeout(() => { if (this.copiedWhat === key) this.copiedWhat = ''; }, 1800); };
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(done).catch(() => {});
       } else {

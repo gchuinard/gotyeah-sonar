@@ -14,3 +14,16 @@ def test_sse_format():
     out = app._sse("finding", {"a": 1})
     assert out.startswith("event: finding\n")
     assert "data: " in out and out.endswith("\n\n")
+
+
+def test_login_message_adapts_to_registration_mode(client, monkeypatch):
+    """Inscription ouverte → message direct (un lien EST toujours envoyé) ; invite-only →
+    message générique anti-énumération (ne révèle pas si le compte existe)."""
+    c, _ = client
+    # le fixture `client` active SONAR_OPEN_REGISTRATION=true
+    r = c.post("/api/auth/request", json={"email": "new@b.com"})
+    assert r.status_code == 200 and "vient d'être envoyé à cet email" in r.json()["message"]
+    # invite-only → on retombe sur le message générique
+    monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "false")
+    r = c.post("/api/auth/request", json={"email": "ghost@b.com"})
+    assert "Si un compte existe" in r.json()["message"]

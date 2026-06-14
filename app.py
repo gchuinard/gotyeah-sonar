@@ -138,7 +138,10 @@ def _render_index(request: Request, user) -> str:
     """Injecte le bootstrap i18n (langue + dict UI) dans la page (no-op si absent)."""
     lang = _lang(request, user)
     boot = json.dumps(
-        {"lang": lang, "available": i18n.available_langs(), "ui": i18n.render_ui(lang)},
+        {"lang": lang, "available": i18n.available_langs(), "ui": i18n.render_ui(lang),
+         # Pour guider la connexion MCP côté dashboard : URL publique + si le connecteur
+         # distant (claude.ai web) est réellement monté.
+         "base_url": _base_url(request), "mcp_remote": _REMOTE_APP is not None},
         ensure_ascii=False,
     )
     return PAGE.replace("__SONAR_BOOTSTRAP__", boot)
@@ -229,11 +232,15 @@ async def auth_request(request: Request):
         # Pas encore de session : langue déduite du cookie / de l'Accept-Language.
         await mailer.send_magic_link(auth.normalize_email(email), link, _lang(request))
 
-    # Réponse GÉNÉRIQUE quoi qu'il arrive : on ne révèle pas si le compte existe.
-    return JSONResponse({
-        "ok": True,
-        "message": "Si un compte existe pour cet email, un lien de connexion vient d'être envoyé.",
-    })
+    # Message adapté au mode d'inscription :
+    #  - inscription OUVERTE : un lien est envoyé pour tout email valide (le compte se crée
+    #    à la connexion) → on l'annonce directement, l'existence du compte n'est pas un secret ;
+    #  - invite-only : message GÉNÉRIQUE qui ne révèle pas si le compte existe (anti-énumération).
+    if auth.open_registration():
+        message = "Un lien de connexion vient d'être envoyé à cet email."
+    else:
+        message = "Si un compte existe pour cet email, un lien de connexion vient d'être envoyé."
+    return JSONResponse({"ok": True, "message": message})
 
 
 @app.get("/auth/verify")

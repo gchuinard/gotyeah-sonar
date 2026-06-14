@@ -107,7 +107,7 @@
         body: JSON.stringify(nextParam ? { email, next: nextParam } : { email }),
       });
       const d = await r.json().catch(() => ({}));
-      show(d.message || "Si un compte existe, un lien a été envoyé.", 'ok');
+      show(d.message || "Si l'email est valide, un lien de connexion vient d'être envoyé.", 'ok');
     } catch (e) {
       show("Erreur réseau, réessaie.", 'err');
     } finally {
