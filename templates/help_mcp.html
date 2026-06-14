@@ -432,7 +432,15 @@ createApp({
   methods: {
     clientsIn(g) { return this.clients.filter(c => c.group === g); },
     fill(text) { return String(text).split('{BASE}').join(this.base).split('{PAT}').join(this.pat.trim() || 'sonar_pat_TON_JETON'); },
-    fillHtml(text) { return this.fill(text); },   // les steps contiennent déjà du HTML sûr (statique)
+    fillHtml(text) {
+      // Les `steps` contiennent du HTML STATIQUE sûr, mais on les rend en v-html : il faut
+      // ÉCHAPPER les valeurs dynamiques (jeton collé par l'utilisateur, URL) avant injection,
+      // sinon un jeton contenant `<…>` exécuterait du HTML (self-XSS).
+      const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return String(text).split('{BASE}').join(esc(this.base))
+        .split('{PAT}').join(esc(this.pat.trim() || 'sonar_pat_TON_JETON'));
+    },
     copy(text, key) {
       const done = () => { this.copied = key; setTimeout(() => { if (this.copied === key) this.copied = ''; }, 1600); };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => {});
