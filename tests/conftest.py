@@ -53,7 +53,7 @@ class FakeClient:
         self.default = default
         self.calls = []
 
-    async def get(self, url, headers=None):
+    async def get(self, url, headers=None, **kwargs):   # **kwargs : absorbe follow_redirects, etc.
         self.calls.append((str(url), headers))
         for frag, resp in self.routes.items():
             if str(url).endswith(frag):

@@ -1,0 +1,42 @@
+http-redirect:
+  ok:
+    title: "HTTP redirige vers HTTPS"
+    detail: "`http://{...}` répond par une redirection permanente (301/308) vers HTTPS."
+    why: "Tout accès en clair est immédiatement basculé en HTTPS : la fenêtre d'interception sur la 1ʳᵉ requête est fermée, et c'est requis pour l'éligibilité au HSTS preload."
+  no-cleartext:
+    title: "Pas de service HTTP en clair"
+    detail: "`http://{host}` ne répond pas (port 80 fermé) : aucun trafic en clair n'est servi."
+    why: "Sans écouteur HTTP, il n'y a rien à intercepter avant le HTTPS. Bonne hygiène de transport."
+  weak-redirect:
+    title: "Redirection HTTP → HTTPS temporaire"
+    detail: "`http://{...}` redirige vers HTTPS, mais avec un code TEMPORAIRE (302/307) au lieu de permanent."
+    why: "Une redirection temporaire n'est pas mise en cache durablement par le navigateur et ne rend pas le site éligible au HSTS preload."
+    recommendation: "Utilise une redirection PERMANENTE 301 (ou 308) vers `https://`."
+    steps:
+      - "Configure une redirection 301 de tout le trafic port 80 vers `https://{host}$request_uri`."
+      - "Ajoute ensuite l'en-tête HSTS (`Strict-Transport-Security`) côté HTTPS."
+    stacks:
+      nginx: "server { listen 80; server_name {host}; return 301 https://$host$request_uri; }"
+      cloudflare: "Règle « Always Use HTTPS » (SSL/TLS → Edge Certificates), ou une Redirect Rule 301."
+    refs: ["https://developer.mozilla.org/fr/docs/Web/HTTP/Status/301"]
+    a_verifier: false
+  no-https-redirect:
+    title: "HTTP ne redirige pas vers HTTPS"
+    detail: "`http://{host}` sert du contenu en clair (ou redirige ailleurs qu'en HTTPS) : la 1ʳᵉ requête reste interceptable."
+    why: "Sans bascule vers HTTPS, un attaquant en position de MITM lit/modifie le trafic et peut voler des cookies envoyés en clair, avant toute protection TLS."
+    recommendation: "Redirige TOUT le trafic HTTP (port 80) en 301 vers `https://`."
+    steps:
+      - "Mets en place une redirection 301 du port 80 vers `https://{host}$request_uri`."
+      - "Active HSTS côté HTTPS pour que les navigateurs forcent ensuite directement le HTTPS."
+    stacks:
+      nginx: "server { listen 80; server_name {host}; return 301 https://$host$request_uri; }"
+      npm: "Active « Force SSL » sur le proxy host (onglet SSL)."
+      cloudflare: "Active « Always Use HTTPS » (SSL/TLS → Edge Certificates)."
+      apache: "RewriteEngine On\\nRewriteCond %{HTTPS} off\\nRewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]"
+    ai_prompt: "Configure une redirection permanente (301) de http://{host} vers https:// pour la stack {stack}, puis active HSTS."
+    refs: ["https://developer.mozilla.org/fr/docs/Web/Security/Transport_Layer_Security"]
+    a_verifier: false
+  unknown:
+    title: "Redirection HTTP non évaluable"
+    detail: "Hôte indéterminé : la redirection HTTP → HTTPS n'a pas pu être testée."
+    why: "Sans hôte, aucune requête en clair à émettre."

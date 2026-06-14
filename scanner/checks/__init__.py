@@ -6,6 +6,7 @@ registre. Pour ajouter une famille de checks : crée le fichier puis ajoute-le i
 from . import headers   # noqa: F401  Phase 1
 from . import cookies   # noqa: F401  Phase 1
 from . import tls       # noqa: F401  Phase 1
+from . import redirect  # noqa: F401  Phase 1 — redirection HTTP → HTTPS
 from . import dns       # noqa: F401  Phase 1
 from . import takeover  # noqa: F401  Réseau — subdomain takeover (CNAME dangling)
 from . import exposed   # noqa: F401  Phase 2

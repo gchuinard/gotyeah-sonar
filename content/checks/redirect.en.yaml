@@ -1,0 +1,42 @@
+http-redirect:
+  ok:
+    title: "HTTP redirects to HTTPS"
+    detail: "`http://{...}` answers with a permanent redirect (301/308) to HTTPS."
+    why: "Any cleartext access is immediately upgraded to HTTPS: the interception window on the first request is closed, and it is required for HSTS preload eligibility."
+  no-cleartext:
+    title: "No cleartext HTTP service"
+    detail: "`http://{host}` does not answer (port 80 closed): no cleartext traffic is served."
+    why: "With no HTTP listener there is nothing to intercept before HTTPS. Good transport hygiene."
+  weak-redirect:
+    title: "Temporary HTTP → HTTPS redirect"
+    detail: "`http://{...}` redirects to HTTPS, but with a TEMPORARY code (302/307) instead of permanent."
+    why: "A temporary redirect is not durably cached by the browser and does not make the site eligible for HSTS preload."
+    recommendation: "Use a PERMANENT 301 (or 308) redirect to `https://`."
+    steps:
+      - "Configure a 301 redirect of all port-80 traffic to `https://{host}$request_uri`."
+      - "Then add the HSTS header (`Strict-Transport-Security`) on the HTTPS side."
+    stacks:
+      nginx: "server { listen 80; server_name {host}; return 301 https://$host$request_uri; }"
+      cloudflare: "« Always Use HTTPS » rule (SSL/TLS → Edge Certificates), or a 301 Redirect Rule."
+    refs: ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/301"]
+    a_verifier: false
+  no-https-redirect:
+    title: "HTTP does not redirect to HTTPS"
+    detail: "`http://{host}` serves cleartext content (or redirects somewhere other than HTTPS): the first request stays interceptable."
+    why: "Without an upgrade to HTTPS, a MITM attacker can read/modify the traffic and steal cookies sent in the clear, before any TLS protection."
+    recommendation: "Redirect ALL HTTP traffic (port 80) with a 301 to `https://`."
+    steps:
+      - "Set up a 301 redirect from port 80 to `https://{host}$request_uri`."
+      - "Enable HSTS on the HTTPS side so browsers then force HTTPS directly."
+    stacks:
+      nginx: "server { listen 80; server_name {host}; return 301 https://$host$request_uri; }"
+      npm: "Enable « Force SSL » on the proxy host (SSL tab)."
+      cloudflare: "Enable « Always Use HTTPS » (SSL/TLS → Edge Certificates)."
+      apache: "RewriteEngine On\\nRewriteCond %{HTTPS} off\\nRewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]"
+    ai_prompt: "Configure a permanent (301) redirect from http://{host} to https:// for the {stack} stack, then enable HSTS."
+    refs: ["https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"]
+    a_verifier: false
+  unknown:
+    title: "HTTP redirect not evaluable"
+    detail: "Undetermined host: the HTTP → HTTPS redirect could not be tested."
+    why: "Without a host, there is no cleartext request to make."
