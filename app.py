@@ -227,7 +227,7 @@ _CSP = (
     "img-src 'self' data:; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
-    "script-src 'self' 'unsafe-inline'; "        # Vue est auto-hébergé (/static) — plus de CDN
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "        # Vue est auto-hébergé (/static) — plus de CDN
     "connect-src 'self'"
 )
 
