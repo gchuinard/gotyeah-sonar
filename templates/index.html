@@ -819,14 +819,23 @@
         <div v-if="!adminUsers.length" class="empty">{{ T('admin.no_users', 'Aucun compte.') }}</div>
         <div v-for="u in adminUsers" :key="u.id" class="dom">
           <div class="dom-top">
-            <span class="dom-name dom-link" :title="T('admin.open_domains', 'Voir / gérer ses domaines')"
-                  @click="toggleUserDomains(u)">
-              <span class="usr-caret">{{ expandedUser === u.id ? '▾' : '▸' }}</span> {{ u.email }}
-            </span>
-            <span v-if="u.is_admin" class="dom-badge ok">{{ T('admin.role_admin', 'admin') }}</span>
-            <span v-if="u.email === me.email" class="dom-badge pending">{{ T('admin.you', 'toi') }}</span>
-            <button v-if="u.email !== me.email" class="dom-x" @click="deleteUser(u)"
-                    :title="T('admin.delete_user', 'Supprimer ce compte et toutes ses données')">🗑</button>
+            <template v-if="editingEmail === u.id">
+              <input class="usr-dom-input" type="email" v-model="editEmailVal" spellcheck="false"
+                     :aria-label="T('admin.edit_email', 'Modifier l\'email')"
+                     @keyup.enter="saveEmail(u)" @keyup.esc="cancelEditEmail" />
+              <button class="btn-sm" @click="saveEmail(u)">{{ T('admin.save', 'Enregistrer') }}</button>
+              <button class="reset-link" @click="cancelEditEmail">{{ T('admin.cancel', 'Annuler') }}</button>
+            </template>
+            <template v-else>
+              <span class="dom-name dom-link" :title="T('admin.open_domains', 'Voir / gérer ses domaines')"
+                    @click="toggleUserDomains(u)">
+                <span class="usr-caret">{{ expandedUser === u.id ? '▾' : '▸' }}</span> {{ u.email }}
+              </span>
+              <span v-if="u.is_admin" class="dom-badge ok">{{ T('admin.role_admin', 'admin') }}</span>
+              <span v-if="u.email === me.email" class="dom-badge pending">{{ T('admin.you', 'toi') }}</span>
+              <button v-if="u.email !== me.email" class="dom-x" @click="deleteUser(u)"
+                      :title="T('admin.delete_user', 'Supprimer ce compte et toutes ses données')">🗑</button>
+            </template>
           </div>
           <div class="tok-meta">
             {{ T('admin.created', 'Créé') }} {{ fmtDate(u.created_at) }}
@@ -834,10 +843,11 @@
             · {{ u.scans }} {{ T('admin.scans', 'scan(s)') }}
             · {{ u.active_tokens }} {{ T('admin.tokens', 'jeton(s)') }}
           </div>
-          <div class="admin-actions" v-if="u.email !== me.email">
+          <div class="admin-actions" v-if="u.email !== me.email && editingEmail !== u.id">
             <button class="btn-sm" @click="toggleUserAdmin(u)">
               {{ u.is_admin ? T('admin.demote', 'Retirer admin') : T('admin.promote', 'Promouvoir admin') }}
             </button>
+            <button class="btn-sm" @click="startEditEmail(u)">{{ T('admin.edit_email', 'Modifier l\'email') }}</button>
           </div>
 
           <!-- Domaines de l'utilisateur (dépliés au clic sur l'email). -->
@@ -912,6 +922,8 @@ createApp({
       mcpBase: SONAR_BOOT.base_url || '', mcpRemote: !!SONAR_BOOT.mcp_remote, copiedWhat: '',
       // administration des comptes (panneau visible aux admins uniquement)
       adminUsers: [], adminMsg: '',
+      // édition inline de l'email d'un compte
+      editingEmail: null, editEmailVal: '',
       // drill-down : domaines d'un user déplié, + édition inline d'un domaine
       expandedUser: null, userDomains: {}, editingDomain: null, editDomainVal: '', adminDomMsg: '',
       // i18n
@@ -1173,6 +1185,26 @@ createApp({
           this.adminMsg = e.error || this.T('admin.delete_failed', 'Suppression impossible.');
           return;
         }
+        await this.loadAdminUsers();
+      } catch (e) {}
+    },
+    startEditEmail(u) { this.editingEmail = u.id; this.editEmailVal = u.email; this.adminMsg = ''; },
+    cancelEditEmail() { this.editingEmail = null; this.editEmailVal = ''; },
+    async saveEmail(u) {
+      const val = this.editEmailVal.trim();
+      if (!val || val === u.email) { this.cancelEditEmail(); return; }
+      this.adminMsg = '';
+      try {
+        const r = await fetch('/api/admin/users/' + u.id, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: val }),
+        });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          this.adminMsg = e.error || this.T('admin.email_save_failed', 'Modification impossible.');
+          return;
+        }
+        this.editingEmail = null;
         await this.loadAdminUsers();
       } catch (e) {}
     },

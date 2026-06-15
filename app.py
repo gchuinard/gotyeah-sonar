@@ -464,6 +464,30 @@ async def admin_delete_user(request: Request, user_id: str):
     return JSONResponse({"ok": True})
 
 
+@app.patch("/api/admin/users/{user_id}")
+async def admin_update_user_email(request: Request, user_id: str):
+    """Modifie l'adresse email d'un compte — admin only."""
+    _, err = _require_admin(request)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    new_email = body.get("email", "") if isinstance(body, dict) else ""
+    result = auth.update_user_email(user_id, new_email)
+    if result == "not_found":
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if result == "invalid":
+        return JSONResponse(
+            {"error": "Adresse email invalide.", "code": "invalid"}, status_code=400)
+    if result == "conflict":
+        return JSONResponse(
+            {"error": "Un autre compte utilise déjà cette adresse.", "code": "conflict"},
+            status_code=409)
+    return JSONResponse({"ok": True, "user": result})
+
+
 @app.get("/api/admin/users/{user_id}/domains")
 async def admin_user_domains(request: Request, user_id: str):
     """Domaines d'un utilisateur donné (drill-down depuis la liste des comptes)."""

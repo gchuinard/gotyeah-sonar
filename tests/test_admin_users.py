@@ -241,3 +241,53 @@ def test_admin_domain_conflict_and_gating(client):
     assert c.patch(f"/api/admin/users/{t['id']}/domains/{a['id']}",
                    json={"domain": "x.com"}).status_code == 403
     assert c.delete(f"/api/admin/users/{t['id']}/domains/{a['id']}").status_code == 403
+
+
+# --------------------------------------------------------------------------- #
+# Édition de l'email d'un compte (admin)
+# --------------------------------------------------------------------------- #
+def test_update_user_email_success_purges_magic_tokens(authdb):
+    u = auth.create_user("old@b.com")
+    # liens magiques en vol sur l'ancienne ET la future adresse
+    with sqlite3.connect(db.DB_PATH) as conn:
+        for em in ("old@b.com", "new@b.com"):
+            conn.execute("INSERT INTO magic_tokens (token_hash, email, purpose, created_at, expires_at) "
+                         "VALUES (?,?,?,?,?)", ("mt-" + em, em, "login",
+                                                "2099-01-01T00:00:00", "2099-01-02T00:00:00"))
+    res = auth.update_user_email(u["id"], "New@B.com")       # casse normalisée
+    assert res["email"] == "new@b.com"
+    assert auth.get_user_by_email("new@b.com")["id"] == u["id"]
+    with sqlite3.connect(db.DB_PATH) as conn:                # les 2 liens purgés
+        n = conn.execute("SELECT COUNT(*) FROM magic_tokens "
+                         "WHERE email IN ('old@b.com','new@b.com')").fetchone()[0]
+    assert n == 0
+
+
+def test_update_user_email_noop_invalid_conflict_missing(authdb):
+    u = auth.create_user("u@b.com")
+    auth.create_user("taken@b.com")
+    assert auth.update_user_email(u["id"], "u@b.com")["email"] == "u@b.com"   # no-op
+    assert auth.update_user_email(u["id"], "pas-un-email") == "invalid"
+    assert auth.update_user_email(u["id"], "taken@b.com") == "conflict"
+    assert auth.update_user_email("inexistant", "x@y.com") == "not_found"
+    assert auth.get_user_by_id(u["id"])["email"] == "u@b.com"   # inchangé après échecs
+
+
+def test_admin_update_email_endpoint(client):
+    c, _ = client
+    admin = auth.create_user("admin@b.com", is_admin=True)
+    t = auth.create_user("t@b.com")
+    auth.create_user("taken@b.com")
+    _login(c, admin)
+    # succès
+    assert c.patch("/api/admin/users/" + t["id"], json={"email": "moved@b.com"}).status_code == 200
+    assert auth.get_user_by_id(t["id"])["email"] == "moved@b.com"
+    # invalide → 400 ; conflit → 409 ; inconnu → 404
+    assert c.patch("/api/admin/users/" + t["id"], json={"email": "nope"}).status_code == 400
+    r = c.patch("/api/admin/users/" + t["id"], json={"email": "taken@b.com"})
+    assert r.status_code == 409 and r.json()["code"] == "conflict"
+    assert c.patch("/api/admin/users/inexistant", json={"email": "x@y.com"}).status_code == 404
+    # non-admin → 403
+    c.cookies.clear()
+    _login(c, auth.create_user("nobody@b.com"))
+    assert c.patch("/api/admin/users/" + t["id"], json={"email": "z@b.com"}).status_code == 403

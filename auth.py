@@ -100,6 +100,16 @@ def normalize_email(email: str) -> str:
     return (email or "").strip().lower()
 
 
+# Validation volontairement simple (pas de RFC complète) : un local-part, un domaine
+# avec au moins un point, pas d'espace, longueur bornée. Suffisant pour un homelab.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def is_valid_email(email: str) -> bool:
+    email = normalize_email(email)
+    return bool(email) and len(email) <= 254 and _EMAIL_RE.match(email) is not None
+
+
 def _conn() -> sqlite3.Connection:
     conn = db.connect()                 # busy_timeout + WAL persistant (cf. db.connect)
     conn.row_factory = sqlite3.Row
@@ -205,6 +215,35 @@ def get_user_by_id(uid: str):
 def set_admin(uid: str, value: bool) -> None:
     with _conn() as conn:
         conn.execute("UPDATE users SET is_admin=? WHERE id=?", (1 if value else 0, uid))
+
+
+def update_user_email(user_id: str, new_email: str):
+    """Change l'email d'un compte (usage ADMIN). Renvoie :
+      - le compte mis à jour (dict) en cas de succès (ou inchangé si même email) ;
+      - "not_found" si le compte n'existe pas ;
+      - "invalid"   si l'email est mal formé ;
+      - "conflict"  si un AUTRE compte utilise déjà cette adresse.
+
+    Purge les liens magiques en vol pour l'ancien ET le nouvel email : un lien pendant
+    sur l'ancienne adresse pourrait recréer un compte fantôme, et un lien pendant sur la
+    nouvelle adresse pourrait laisser un tiers se connecter au compte renommé.
+    """
+    new_email = normalize_email(new_email)
+    if not is_valid_email(new_email):
+        return "invalid"
+    user = get_user_by_id(user_id)
+    if not user:
+        return "not_found"
+    if new_email == user["email"]:
+        return user   # no-op : même adresse
+    try:
+        with _conn() as conn:
+            conn.execute("UPDATE users SET email=? WHERE id=?", (new_email, user_id))
+            conn.execute("DELETE FROM magic_tokens WHERE email IN (?, ?)",
+                         (user["email"], new_email))
+    except sqlite3.IntegrityError:
+        return "conflict"   # contrainte UNIQUE(email) : un autre compte a déjà cette adresse
+    return get_user_by_id(user_id)
 
 
 def set_user_lang(uid: str, lang: str) -> None:
