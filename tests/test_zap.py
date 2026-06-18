@@ -11,10 +11,16 @@ from scanner.finding import Category, Severity
 
 # ---- helpers ----
 
-def _handler(alerts):
-    """Simule l'API REST de ZAP : chaque endpoint renvoie un JSON plausible."""
+def _handler(alerts, calls=None):
+    """Simule l'API REST de ZAP : chaque endpoint renvoie un JSON plausible.
+
+    `calls` (optionnel) : liste où l'on enregistre les chemins frappés, dans l'ordre."""
     def handle(request):
         p = request.url.path
+        if calls is not None:
+            calls.append(p)
+        if p.endswith("/core/action/newSession/"):
+            return httpx.Response(200, json={"Result": "OK"})
         if p.endswith("/core/action/accessUrl/"):
             return httpx.Response(200, json={"Result": "OK"})
         if p.endswith("/spider/action/scan/") or p.endswith("/ascan/action/scan/"):
@@ -29,9 +35,9 @@ def _handler(alerts):
     return handle
 
 
-def _mock_client(alerts):
+def _mock_client(alerts, calls=None):
     return httpx.AsyncClient(base_url="http://zap:8090",
-                             transport=httpx.MockTransport(_handler(alerts)))
+                             transport=httpx.MockTransport(_handler(alerts, calls)))
 
 
 # ---- unités pures ----
@@ -114,6 +120,28 @@ async def test_zap_skips_cdn_cgi_alerts(monkeypatch):
     # L'alerte cdn-cgi (ZAP id 2) est écartée ; seule la vraie alerte XSS subsiste.
     assert all(f.entry_id != "2" for f in out)
     assert any(f.entry_id == "40012" for f in out)
+
+
+async def test_zap_resets_session_before_reading_alerts(monkeypatch):
+    """RÉGRESSION (cache « collant ») : le démon ZAP est persistant et son scanner passif
+    ACCUMULE ses alertes en session. Sans reset, `core/view/alerts` ressort les alertes des
+    scans précédents (preuves périmées) → score figé. On vérifie qu'on ouvre une session
+    NEUVE *avant* de lire les alertes."""
+    monkeypatch.delenv("SONAR_ZAP", raising=False)
+    monkeypatch.setenv("ZAP_API_URL", "http://zap:8090")
+    calls: list[str] = []
+    monkeypatch.setattr(zapmod, "_make_client", lambda base: _mock_client([], calls))
+    await zap(SimpleNamespace(url="https://x/"))
+    assert calls, "ZAP doit avoir été contacté"
+    # Invariant fort : la session neuve doit être le TOUT PREMIER appel ZAP — sinon un reset placé
+    # après accessUrl/spider effacerait les alertes du scan en cours (régression silencieuse).
+    assert calls[0].endswith("/core/action/newSession/"), \
+        "le 1er appel ZAP doit ouvrir une session vierge"
+    new_session = next(i for i, p in enumerate(calls) if p.endswith("/core/action/newSession/"))
+    access_url = next(i for i, p in enumerate(calls) if p.endswith("/core/action/accessUrl/"))
+    alerts_read = next(i for i, p in enumerate(calls) if p.endswith("/core/view/alerts/"))
+    assert new_session < access_url < alerts_read, \
+        "ordre attendu : session vierge -> chargement de l'URL -> lecture des alertes"
 
 
 async def test_zap_no_alerts_pass(monkeypatch):

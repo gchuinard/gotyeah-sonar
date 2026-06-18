@@ -23,6 +23,7 @@ Variables d'environnement :
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from urllib.parse import urlparse
 
@@ -32,6 +33,14 @@ from ..finding import Category, Finding, Severity
 from ..registry import check
 
 C = Category.ZAP
+
+# ZAP est un démon PERSISTANT et PARTAGÉ (un seul conteneur pour toute l'instance). Le moteur
+# autorise plusieurs scans en parallèle (cf. `_SCAN_SEMAPHORE` dans runner.py), mais ils visent
+# tous CE démon. On sérialise donc l'accès : chaque scan repart d'une session vierge (voir `_run`)
+# et, sans verrou, la session neuve d'un scan effacerait les alertes d'un scan concurrent.
+_ZAP_LOCK = asyncio.Lock()
+
+log = logging.getLogger("sonar.zap")
 
 # Niveau de risque ZAP -> notre échelle (ZAP n'a pas de "critical").
 _RISK = {
@@ -175,33 +184,51 @@ async def _run(ctx, base: str) -> list[Finding]:
     try:
         target = ctx.url
 
-        # 1) ZAP charge l'URL : le scan passif analyse le trafic.
-        await _zap_get(client, "/JSON/core/action/accessUrl/", url=target, followRedirects="true")
-
-        # 2) Petit spider borné (best effort : on continue même s'il échoue).
-        try:
-            r = await _zap_get(client, "/JSON/spider/action/scan/",
-                               url=target, maxChildren=_env("ZAP_SPIDER_MAX", "10"), recurse="true")
-            await _poll(client, "/JSON/spider/view/status/", {"scanId": r.get("scan")}, key="status")
-        except Exception:
-            pass
-
-        # 3) Scan actif (intrusif) — uniquement si explicitement demandé.
-        if _env("ZAP_ACTIVE").lower() == "on":
+        # On sérialise l'accès au démon ZAP partagé (cf. `_ZAP_LOCK`) : sa session est globale,
+        # donc deux scans concurrents se marcheraient dessus (et le `newSession` ci-dessous
+        # effacerait les alertes de l'autre).
+        async with _ZAP_LOCK:
+            # 0) REPARTIR D'UNE SESSION VIERGE. Le scanner passif de ZAP ACCUMULE ses alertes
+            #    dans la session en mémoire du démon, et `core/view/alerts` les renvoie TOUTES
+            #    — y compris celles de scans précédents, avec leurs preuves PÉRIMÉES (p. ex. une
+            #    ancienne CSP déjà corrigée qui « persiste » scan après scan jusqu'au redémarrage
+            #    du conteneur). Sans ce reset, le score reste FIGÉ sur l'ancien état du site.
+            #    Best effort : si le démon refuse, on scanne quand même (au pire, état antérieur),
+            #    mais on TRACE — un échec récurrent = retour silencieux au bug du cache « collant ».
             try:
-                r = await _zap_get(client, "/JSON/ascan/action/scan/", url=target, recurse="true")
-                await _poll(client, "/JSON/ascan/view/status/", {"scanId": r.get("scan")}, key="status")
+                await _zap_get(client, "/JSON/core/action/newSession/", overwrite="true")
+            except Exception as exc:
+                log.warning("ZAP newSession a échoué (%s: %s) — alertes possiblement périmées",
+                            type(exc).__name__, exc)
+
+            # 1) ZAP charge l'URL : le scan passif analyse le trafic.
+            await _zap_get(client, "/JSON/core/action/accessUrl/", url=target, followRedirects="true")
+
+            # 2) Petit spider borné (best effort : on continue même s'il échoue).
+            try:
+                r = await _zap_get(client, "/JSON/spider/action/scan/",
+                                   url=target, maxChildren=_env("ZAP_SPIDER_MAX", "10"), recurse="true")
+                await _poll(client, "/JSON/spider/view/status/", {"scanId": r.get("scan")}, key="status")
             except Exception:
                 pass
 
-        # 4) Attendre la fin du scan passif.
-        await _poll(client, "/JSON/pscan/view/recordsToScan/", {},
-                    key="recordsToScan", target=0, descending=True)
+            # 3) Scan actif (intrusif) — uniquement si explicitement demandé.
+            if _env("ZAP_ACTIVE").lower() == "on":
+                try:
+                    r = await _zap_get(client, "/JSON/ascan/action/scan/", url=target, recurse="true")
+                    await _poll(client, "/JSON/ascan/view/status/", {"scanId": r.get("scan")}, key="status")
+                except Exception:
+                    pass
 
-        # 5) Récupérer les alertes pour la cible.
-        data = await _zap_get(client, "/JSON/core/view/alerts/", baseurl=target)
-        # Post-traitement : écarter les faux positifs Cloudflare /cdn-cgi/* (cf. _drop_cdn_cgi)
-        # AVANT de créer les Finding.
+            # 4) Attendre la fin du scan passif.
+            await _poll(client, "/JSON/pscan/view/recordsToScan/", {},
+                        key="recordsToScan", target=0, descending=True)
+
+            # 5) Récupérer les alertes pour la cible.
+            data = await _zap_get(client, "/JSON/core/view/alerts/", baseurl=target)
+
+        # Post-traitement (hors verrou : pur CPU) : écarter les faux positifs Cloudflare
+        # /cdn-cgi/* (cf. _drop_cdn_cgi) AVANT de créer les Finding.
         alerts = _drop_cdn_cgi(data.get("alerts") or [])
         findings = _dedup_to_findings(alerts)
 

@@ -15,3 +15,4 @@ data/
 # Notes locales (sites + failles) — dépôt PUBLIC, ne JAMAIS pousser ces fichiers.
 TODO-securite-sites.md
 AMELIORATIONS.md
+sonar-bug-crawl-cache.txt

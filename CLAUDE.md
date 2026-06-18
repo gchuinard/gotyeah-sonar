@@ -42,6 +42,12 @@ structurée → un scan se **re-rend dans n'importe quelle langue**.
 - **Anti-SSRF** : `scanner/netguard.py` est la garde partagée (IP internes). Tout check qui ouvre
   un **socket brut** (ports/tls) doit la consulter — la garde httpx ne couvre QUE httpx.
   `SONAR_ALLOW_PRIVATE=on` lève la garde (homelab).
+- **ZAP = état partagé** : le démon ZAP est **persistant** et son scanner passif **accumule** ses
+  alertes en session → `core/view/alerts` ressort celles des scans **précédents** (preuves périmées
+  = score figé). `zap.py` ouvre donc une **session vierge** (`newSession`) en **1er** appel, sous
+  `_ZAP_LOCK` (un seul démon, mais jusqu'à 4 scans concurrents). nuclei, lui, est un sous-process
+  neuf par scan → sans état. Tout futur check branché sur un **service à état partagé** doit
+  réinitialiser cet état en début de scan.
 - **Auth** : routes d'écriture/admin = **cookie de session uniquement** ; les PAT (Bearer) sont
   **lecture seule** (default-deny par construction). Cloisonnement par `user_id` (admin = tout).
 - **Front zéro build** : Vue est servi en local (`/static/vendor/`), pas de CDN ; pas de
