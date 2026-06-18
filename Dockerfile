@@ -60,8 +60,8 @@ RUN mkdir -p /app/data
 
 EXPOSE 8000
 
-# Healthcheck natif (pas de curl/wget dans l'image) : GET /login en local.
+# Healthcheck natif (pas de curl/wget dans l'image) : GET /healthz en local (200 + JSON).
 HEALTHCHECK --interval=30s --timeout=4s --start-period=20s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=3).status==200 else 1)"
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status==200 else 1)"
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

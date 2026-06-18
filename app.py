@@ -300,6 +300,14 @@ async def login_page():
     return HTMLResponse(LOGIN_PAGE)
 
 
+@app.get("/healthz")
+async def healthz():
+    """Sonde de santé PUBLIQUE (liveness) : 200 + JSON, sans auth ni accès DB. Pensée pour un
+    monitor externe — contrairement à `/`, qui REDIRIGE (302 → /login) toute requête non
+    authentifiée. Pas d'effet de bord : confirme juste que l'app répond."""
+    return JSONResponse({"status": "ok"})
+
+
 @app.get("/help/mcp", response_class=HTMLResponse)
 async def help_mcp(request: Request):
     """Page d'aide : connecter une app IA à Sonar via MCP (10 clients). L'URL publique de
