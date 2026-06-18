@@ -92,6 +92,64 @@ def _resolve_user(userinfo_endpoint: str | None = None):
     return user
 
 
+def _persistent_oauth_state():
+    """Persiste l'état OAuth du MCP (clients DCR + tokens émis) sur le volume `data`, pour qu'un
+    REBUILD du conteneur ne déconnecte plus claude.ai. Sur Linux, FastMCP retombe sinon sur un
+    stockage EN MÉMOIRE (perdu au redémarrage) → re-consentement à chaque déploiement.
+
+    Les secrets (clé de signature des tokens + clé de chiffrement du store) doivent être STABLES,
+    sinon les tokens émis seraient invalidés à chaque redémarrage. Priorité à l'env
+    (`SONAR_MCP_JWT_KEY` / `SONAR_MCP_STORAGE_KEY`, utile en multi-instances) ; à défaut, générés
+    une fois et persistés sur le volume. Le store FileTree est chiffré (Fernet) pour ne pas
+    écrire les tokens amont en clair.
+
+    Retourne `(jwt_signing_key, client_storage)`. En cas d'échec (volume non inscriptible,
+    dépendance absente…) retourne `(None, None)` → comportement FastMCP par défaut (état en
+    mémoire), SANS jamais empêcher le MCP de démarrer.
+    """
+    try:
+        import json
+        import secrets as _secrets
+
+        import db
+        from cryptography.fernet import Fernet
+        from key_value.aio.stores.filetree import FileTreeStore
+        from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
+
+        base_dir = db.DB_PATH.parent / "mcp-oauth"
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        jwt_key = (os.environ.get("SONAR_MCP_JWT_KEY") or "").strip()
+        fernet_key = (os.environ.get("SONAR_MCP_STORAGE_KEY") or "").strip()
+        sec_file = base_dir / "secrets.json"
+        if (not jwt_key or not fernet_key) and sec_file.exists():
+            try:
+                cached = json.loads(sec_file.read_text())
+                jwt_key = jwt_key or (cached.get("jwt_signing_key") or "")
+                fernet_key = fernet_key or (cached.get("fernet_key") or "")
+            except Exception:
+                pass
+        if not jwt_key or not fernet_key:
+            jwt_key = jwt_key or _secrets.token_urlsafe(48)
+            fernet_key = fernet_key or Fernet.generate_key().decode()
+            sec_file.write_text(json.dumps({"jwt_signing_key": jwt_key, "fernet_key": fernet_key}))
+            try:
+                sec_file.chmod(0o600)
+            except OSError:
+                pass
+
+        storage = FernetEncryptionWrapper(
+            key_value=FileTreeStore(data_directory=str(base_dir / "clients")),
+            fernet=Fernet(fernet_key.encode()),
+        )
+        print(f"[mcp-remote] persistance OAuth activée ({base_dir}) — survit aux rebuilds")
+        return jwt_key, storage
+    except Exception as exc:
+        print(f"[mcp-remote] persistance OAuth indisponible ({type(exc).__name__}: {exc}) "
+              "— état en mémoire (re-auth à chaque rebuild)")
+        return None, None
+
+
 def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
     """Construit le FastMCP distant (auth déléguée à l'IdP via OIDCProxy) et son app ASGI.
 
@@ -139,6 +197,9 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         issuer=disc["issuer"],
         audience=client_id,
     )
+    # Persistance de l'état OAuth (clients DCR + tokens) sur le volume `data` → un rebuild du
+    # conteneur ne re-déconnecte plus claude.ai (None,None = comportement par défaut si indispo).
+    jwt_signing_key, client_storage = _persistent_oauth_state()
     auth_provider = OAuthProxy(
         upstream_authorization_endpoint=disc["authorization_endpoint"],
         upstream_token_endpoint=disc["token_endpoint"],
@@ -150,6 +211,8 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         valid_scopes=OIDC_SCOPES,
         # claude.ai/claude.com s'enregistrent dynamiquement (DCR) ; seuls leurs callbacks.
         allowed_client_redirect_uris=CLAUDE_REDIRECT_URIS,
+        jwt_signing_key=jwt_signing_key,
+        client_storage=client_storage,
     )
 
     mcp = FastMCP(
