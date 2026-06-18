@@ -86,6 +86,10 @@ def test_security_headers(client):
     assert "frame-ancestors 'none'" in csp
     assert "unpkg.com" not in csp                    # #6 — plus de CDN dans la CSP
     assert r.headers.get("referrer-policy")
+    # isolation cross-origin (dogfooding du scan : COOP/CORP/Permissions-Policy)
+    assert r.headers.get("cross-origin-opener-policy") == "same-origin-allow-popups"
+    assert r.headers.get("cross-origin-resource-policy") == "same-origin"
+    assert r.headers.get("permissions-policy")
 
 
 def test_vue_self_hosted(client):

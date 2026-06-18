@@ -253,6 +253,12 @@ class _SecurityHeadersMiddleware:
                 h.setdefault("X-Content-Type-Options", "nosniff")
                 h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
                 h.setdefault("Content-Security-Policy", _CSP)
+                # Isolation cross-origin (défense en profondeur, dogfooding du scan Sonar).
+                # COOP `same-origin-allow-popups` : isole des fenêtres tierces SANS casser un
+                # éventuel flux OAuth en popup (Sonar est lui-même serveur OAuth pour le MCP).
+                h.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
+                h.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+                h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
                 if self._hsts:
                     h.setdefault("Strict-Transport-Security",
                                  "max-age=63072000; includeSubDomains")
