@@ -226,9 +226,10 @@ app = FastAPI(title="Sonar", lifespan=lifespan,
 _CSP = (
     "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; "
     "img-src 'self' data:; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-    "font-src 'self' https://fonts.gstatic.com; "
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "        # Vue est auto-hébergé (/static) — plus de CDN
+    "style-src 'self' 'unsafe-inline'; "                       # polices auto-hébergées (/static/fonts.css) — plus de CDN Google
+    "font-src 'self'; "                                        # woff2 servis depuis /static/fonts/
+    "form-action 'self'; "                                     # n'a PAS de fallback sur default-src (ZAP 10055)
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "        # Vue auto-hébergé (/static) ; 'unsafe-eval' = compilateur de templates (zéro build)
     "connect-src 'self'"
 )
 
