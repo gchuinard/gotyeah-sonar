@@ -1171,9 +1171,11 @@ createApp({
       this.findings = []; this.categories = {}; this.done = 0; this.totalChecks = 0;
       this.finished = false; this.scanning = true;
 
+      let started = false;   // a-t-on reçu le 1er event ? sinon une erreur = échec HTTP pré-flux (403/429/401)
       const es = new EventSource('/api/scan/stream?target=' + encodeURIComponent(t));
       this.es = es;
       es.addEventListener('started', e => {
+        started = true;
         const d = JSON.parse(e.data);
         this.totalChecks = d.total_checks; this.target = d.target;
         const cats = {};
@@ -1198,9 +1200,36 @@ createApp({
       });
       es.onerror = () => {
         if (this.finished) return;
-        this.errorMsg = this.errorMsg || this.T('banners.scan_interrupted', 'Connexion interrompue — cible injoignable ?');
         this.finishScan();
+        if (started) {
+          // le flux avait démarré puis s'est coupé → vraie interruption réseau
+          this.errorMsg = this.errorMsg || this.T('banners.scan_interrupted', 'Connexion interrompue — cible injoignable ?');
+        } else {
+          // EventSource masque le statut/corps d'une réponse non-200 → on relit l'erreur réelle
+          this.explainScanFailure(t);
+        }
       };
+    },
+    // EventSource ne donne ni statut ni corps sur un 403/429/401 (d'où l'opaque « Connexion
+    // interrompue ») : on refait un fetch pour afficher un message clair et guidant.
+    async explainScanFailure(t) {
+      try {
+        const r = await fetch('/api/scan/stream?target=' + encodeURIComponent(t), { headers: { Accept: 'application/json' } });
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        if (r.ok) {   // 200 = le scan tournerait → l'erreur initiale était bien une coupure réseau
+          this.errorMsg = this.errorMsg || this.T('banners.scan_interrupted', 'Connexion interrompue — cible injoignable ?');
+          return;
+        }
+        const d = await r.json().catch(() => ({}));
+        const msgs = {
+          domain_not_owned: this.T('banners.domain_not_owned', "Ce domaine n'est pas dans tes domaines vérifiés. Ajoute-le dans « Mes domaines », puis vérifie-le par DNS pour pouvoir le scanner."),
+          no_verified_domain: this.T('banners.no_verified_domain', "Vérifie d'abord un domaine dans « Mes domaines » (vérification DNS) avant de lancer un scan."),
+          rate_limited: this.T('banners.rate_limited', "Trop de scans lancés récemment — réessaie dans quelques minutes."),
+        };
+        this.errorMsg = msgs[d.code] || d.error || this.T('banners.scan_interrupted', 'Connexion interrompue — cible injoignable ?');
+      } catch (e) {
+        this.errorMsg = this.errorMsg || this.T('banners.scan_interrupted', 'Connexion interrompue — cible injoignable ?');
+      }
     },
     finishScan() { this.scanning = false; this.finished = true; this.closeEs(); },
     closeEs() { if (this.es) { this.es.close(); this.es = null; } },

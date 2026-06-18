@@ -220,7 +220,10 @@
     "new_scan": "Nouveau scan",
     "scan_locked": "Scan verrouillé : ajoute et vérifie un domaine dans « Mes domaines ».",
     "scan_interrupted": "Connexion interrompue — cible injoignable ?",
-    "scan_error": "Erreur pendant le scan."
+    "scan_error": "Erreur pendant le scan.",
+    "domain_not_owned": "Ce domaine n'est pas dans tes domaines vérifiés. Ajoute-le dans « Mes domaines », puis vérifie-le par DNS pour pouvoir le scanner.",
+    "no_verified_domain": "Vérifie d'abord un domaine dans « Mes domaines » (vérification DNS) avant de lancer un scan.",
+    "rate_limited": "Trop de scans lancés récemment — réessaie dans quelques minutes."
   },
 
   "scrolltop": {

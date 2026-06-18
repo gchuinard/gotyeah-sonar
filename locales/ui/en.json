@@ -220,7 +220,10 @@
     "new_scan": "New scan",
     "scan_locked": "Scanning locked: add and verify a domain in “My domains”.",
     "scan_interrupted": "Connection interrupted — target unreachable?",
-    "scan_error": "Error during scan."
+    "scan_error": "Error during scan.",
+    "domain_not_owned": "This domain isn't among your verified domains. Add it under “My domains”, then verify it via DNS to be able to scan it.",
+    "no_verified_domain": "First verify a domain under “My domains” (DNS verification) before running a scan.",
+    "rate_limited": "Too many scans recently — try again in a few minutes."
   },
 
   "scrolltop": {
