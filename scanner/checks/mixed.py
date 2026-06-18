@@ -64,7 +64,8 @@ async def mixed(ctx):
         raison = ("la page finale n'est pas servie en HTTPS"
                   if scheme != "https"
                   else "la réponse n'est pas du HTML")
-        return [Finding("mixed", C, Severity.INFO, code="not-evaluated",
+        # Non-applicable (pas une lacune) : rien à signaler → PASS, pas INFO.
+        return [Finding("mixed", C, Severity.PASS, code="not-evaluated",
                         params={"reason": raison})]
 
     try:

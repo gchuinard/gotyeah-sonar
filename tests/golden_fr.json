@@ -952,7 +952,7 @@
       "evidence": null,
       "params": {},
       "recommendation": "Aucune action requise pour ce point.",
-      "severity": "info",
+      "severity": "pass",
       "source_text": null,
       "title": "Contenu mixte non évalué"
     }
@@ -968,7 +968,7 @@
       "evidence": null,
       "params": {},
       "recommendation": "Aucune action requise pour ce point.",
-      "severity": "info",
+      "severity": "pass",
       "source_text": null,
       "title": "Contenu mixte non évalué"
     }
@@ -1048,7 +1048,7 @@
       "evidence": null,
       "params": {},
       "recommendation": "Aucune action requise pour ce point.",
-      "severity": "info",
+      "severity": "pass",
       "source_text": null,
       "title": "Sous-ressources non évaluées"
     }

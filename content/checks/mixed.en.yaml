@@ -10,6 +10,7 @@ mixed:
     title: "Mixed content not evaluated"
     detail: "Mixed content only concerns HTTPS pages in HTML format; here, {reason}."
     recommendation: "No action required for this point."
+    why: "Mixed content (`http://` resources on an `https://` page) does not apply here: there is nothing to weaken."
   pass:
     title: "No mixed content"
     detail: "No `http://` resource detected in the HTML of this `https://` page."

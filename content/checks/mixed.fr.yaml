@@ -10,6 +10,7 @@ mixed:
     title: "Contenu mixte non évalué"
     detail: "Le contenu mixte ne concerne que les pages HTTPS au format HTML ; ici, {reason}."
     recommendation: "Aucune action requise pour ce point."
+    why: "Le contenu mixte (ressources `http://` sur une page `https://`) ne s'applique pas ici : il n'y a rien à dégrader."
   pass:
     title: "Pas de contenu mixte"
     detail: "Aucune ressource `http://` détectée dans le HTML de cette page `https://`."

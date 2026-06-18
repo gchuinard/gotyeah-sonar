@@ -63,8 +63,9 @@ def _extract_subresources(html: str, base_url: str, host: str) -> list[str]:
 async def subresources(ctx) -> list[Finding]:
     content_type = (ctx.response.headers.get("content-type") or "").lower()
     if "text/html" not in content_type:
-        # La page principale n'est pas du HTML : rien à analyser.
-        return [Finding("subresources", C, Severity.INFO, code="non-html")]
+        # La page principale n'est pas du HTML : rien à analyser (N/A légitime, pas une
+        # lacune de couverture → cf. _UNEXECUTED_CODES dans runner.py). → PASS, pas INFO.
+        return [Finding("subresources", C, Severity.PASS, code="non-html")]
 
     try:
         html = ctx.response.text or ""

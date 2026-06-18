@@ -254,6 +254,14 @@
   .feedhead .gbar > i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
   .toggle { font-family: var(--mono); font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
   .toggle input { accent-color: var(--accent); }
+  /* Interrupteur (toggle switch) : un <input type="checkbox" class="switch"> stylé en glissière. */
+  .switch { appearance: none; -webkit-appearance: none; flex: none; width: 30px; height: 17px;
+    border-radius: 999px; background: var(--line-2); position: relative; cursor: pointer; transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px;
+    border-radius: 50%; background: var(--text-dim); transition: transform .15s, background .15s; }
+  .switch:checked { background: var(--accent); }
+  .switch:checked::after { transform: translateX(13px); background: #fff; }
+  .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* ---- findings feed ---- */
   .feed { display: flex; flex-direction: column; gap: 9px; }
@@ -635,7 +643,8 @@
           <template v-else>{{ T('feed.observations', '{count} observations sur').replace('{count}', findings.length) }} <b>{{ target.replace(/^https?:\/\//,'') }}</b></template>
         </div>
         <div class="gbar" v-if="scanning"><i :style="{ width: progressPct + '%' }"></i></div>
-        <label class="toggle"><input type="checkbox" v-model="hidePass"/> {{ T('feed.hide_pass', 'masquer les conformes') }}</label>
+        <label class="toggle"><input type="checkbox" class="switch" v-model="hideInfo"/> {{ T('feed.hide_info', 'masquer les infos') }}</label>
+        <label class="toggle"><input type="checkbox" class="switch" v-model="hidePass"/> {{ T('feed.hide_pass', 'masquer les conformes') }}</label>
         <select class="sort-sel" v-model="sortBy" :title="T('feed.sort_by', 'Trier par')">
           <option value="severity">{{ T('feed.sort_severity', "Sévérité (critiques d'abord)") }}</option>
           <option value="scan">{{ T('feed.sort_scan', 'Ordre du scan') }}</option>
@@ -904,7 +913,7 @@ createApp({
       totalChecks: 0, done: 0,
       findings: [], categories: {}, history: [],
       isHistorical: false, historical: null,
-      hidePass: false, es: null, me: null,
+      hidePass: false, hideInfo: true, es: null, me: null,
       showScrollTop: false,   // bouton « remonter » (visible une fois défilé vers le bas)
       // onglets : 'report' (scan courant / dernier rapport) ou 'history'
       activeTab: 'report',
@@ -991,10 +1000,15 @@ createApp({
     // Vue du feed UNIQUEMENT : filtre (conformes + sévérités) puis tri. Le score, la
     // jauge et la répartition se calculent toujours sur `this.findings` (tout), jamais ici.
     visibleFindings() {
-      let list = this.findings.filter(f =>
-        (!this.hidePass || f.severity !== 'pass') &&
-        (!this.sevFilter.length || this.sevFilter.includes(f.severity)) &&
-        (!this.catFilter.length || this.catFilter.includes(f.category)));
+      let list = this.findings.filter(f => {
+        if (this.catFilter.length && !this.catFilter.includes(f.category)) return false;
+        // Un filtre de sévérité explicite (clic sur une pastille) PRIME sur les bascules
+        // « masquer » : sinon cliquer INFO/conformes n'afficherait rien tant qu'elles sont actives.
+        if (this.sevFilter.length) return this.sevFilter.includes(f.severity);
+        if (this.hidePass && f.severity === 'pass') return false;
+        if (this.hideInfo && f.severity === 'info') return false;
+        return true;
+      });
       if (this.sortBy === 'severity') {
         const si = s => this.SEV_ORDER.indexOf(s);
         list = list.slice().sort((a, b) => si(a.severity) - si(b.severity));   // critiques d'abord

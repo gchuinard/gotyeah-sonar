@@ -152,6 +152,7 @@
     "checks_progress": "{done}/{total} checks",
     "observations": "{count} observations on",
     "hide_pass": "hide passing",
+    "hide_info": "hide info",
     "empty": "Enter the URL of one of your own sites and run a scan. Observations will appear here as the analysis progresses, and the gauge will measure your exposure surface.",
     "sort_by": "Sort by",
     "sort_severity": "Severity (critical first)",

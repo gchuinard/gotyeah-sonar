@@ -10,6 +10,7 @@ subresources:
     title: "Sous-ressources non évaluées"
     detail: "La page principale n'est pas du HTML : il n'y a pas de sous-ressource à analyser."
     recommendation: "Aucune action requise pour ce point."
+    why: "Pas de page HTML, donc aucune sous-ressource même-origine à protéger : rien à signaler."
 
   pass-none:
     title: "Aucune sous-ressource même-origine"

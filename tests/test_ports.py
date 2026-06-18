@@ -36,6 +36,7 @@ async def test_behind_cdn(monkeypatch):
     monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
     out = await ports(_ctx())
     assert len(out) == 1 and out[0].code == "behind-cdn"
+    assert out[0].severity == Severity.PASS  # non-événement : origine non port-scannable via le CDN
     assert out[0].params["cdn"] == "Cloudflare"
 
 

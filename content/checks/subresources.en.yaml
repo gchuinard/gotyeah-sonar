@@ -10,6 +10,7 @@ subresources:
     title: "Subresources not evaluated"
     detail: "The main page is not HTML: there is no subresource to analyze."
     recommendation: "No action required for this point."
+    why: "No HTML page, so no same-origin subresource to protect: nothing to flag."
 
   pass-none:
     title: "No same-origin subresource"

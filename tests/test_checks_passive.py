@@ -78,10 +78,11 @@ async def test_cookies_well_configured(make_ctx, make_response):
 
 # ---- mixed content ----
 
-async def test_mixed_non_https_info(make_ctx, make_response):
+async def test_mixed_non_https_pass(make_ctx, make_response):
+    # Page non-HTTPS → contenu mixte N/A : non-événement (PASS), pas un INFO bruyant.
     resp = make_response(headers={"content-type": HTML}, text="<img src='http://a/x'>")
     out = await mixed(make_ctx(response=resp, url="http://x/"))
-    assert out[0].severity == Severity.INFO
+    assert out[0].severity == Severity.PASS and out[0].code == "not-evaluated"
 
 
 async def test_mixed_active_two_scripts_high(make_ctx, make_response):

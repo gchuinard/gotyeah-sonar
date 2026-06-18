@@ -159,7 +159,9 @@ async def ports(ctx):
         scan_ips = [ip for ip in ips if not _is_cdn_ip(ip)]
         if not scan_ips:
             # Toutes les IP sont derrière un CDN → on ne scanne pas l'edge du tiers.
-            return [Finding("ports", C, Severity.INFO, code="behind-cdn",
+            # Non-événement (pas une lacune de couverture) : ton origine n'est pas
+            # port-scannable de l'extérieur, c'est un état sain → PASS, pas INFO.
+            return [Finding("ports", C, Severity.PASS, code="behind-cdn",
                             params={"cdn": cdn, "host": host})]
 
     # Garde anti-SSRF des SOCKETS BRUTS (la garde httpx ne couvre pas ce check) : on ne

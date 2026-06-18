@@ -132,7 +132,8 @@ async def test_subresources_cross_origin_ignored(make_ctx, make_response, fake_c
     assert out[0].severity == Severity.PASS and out[0].code == "pass-none"
 
 
-async def test_subresources_non_html_info(make_ctx, make_response, fake_client_cls):
+async def test_subresources_non_html_pass(make_ctx, make_response, fake_client_cls):
+    # Page non-HTML → aucune sous-ressource à analyser : non-événement (PASS), pas un INFO.
     page = make_response(headers={"content-type": "application/json"}, text="{}")
     out = await subresources(make_ctx(response=page, client=fake_client_cls()))
-    assert out[0].severity == Severity.INFO
+    assert out[0].severity == Severity.PASS and out[0].code == "non-html"
