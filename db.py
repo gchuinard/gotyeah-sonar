@@ -62,6 +62,25 @@ def init_db() -> None:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
+        # Annotations de findings : note perso + statut « risque accepté ». Rattachées au
+        # (user, domaine, identité du finding) → elles se REPORTENT de scan en scan (réapparaissent
+        # tant que le finding revient ; disparaissent quand il est corrigé). Le score n'en dépend
+        # jamais (« la note ne ment pas ») : c'est purement documentaire.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS annotations (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                domain TEXT NOT NULL,
+                finding_key TEXT NOT NULL,
+                text TEXT NOT NULL DEFAULT '',
+                accepted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, domain, finding_key)
+            )
+            """
+        )
 
 
 def get_setting(key: str, default: str | None = None) -> str | None:
@@ -82,6 +101,51 @@ def set_setting(key: str, value: str) -> None:
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value),
         )
+
+
+def upsert_annotation(user_id: str, domain: str, finding_key: str, text: str, accepted: bool) -> dict:
+    """Crée ou met à jour l'annotation d'un (user, domaine, finding) ; retourne sa forme rendue."""
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO annotations (id, user_id, domain, finding_key, text, accepted, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, domain, finding_key) DO UPDATE SET
+                text=excluded.text, accepted=excluded.accepted, updated_at=excluded.updated_at
+            """,
+            (uuid.uuid4().hex, user_id, domain, finding_key, text, 1 if accepted else 0, now, now),
+        )
+        row = conn.execute(
+            "SELECT text, accepted, created_at, updated_at FROM annotations "
+            "WHERE user_id=? AND domain=? AND finding_key=?",
+            (user_id, domain, finding_key),
+        ).fetchone()
+    return {"text": row[0], "accepted": bool(row[1]), "created_at": row[2], "updated_at": row[3]}
+
+
+def get_annotations(user_id: str, domain: str) -> dict[str, dict]:
+    """Toutes les annotations d'un (user, domaine), indexées par `finding_key` (pour greffe O(1))."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT finding_key, text, accepted, created_at, updated_at FROM annotations "
+            "WHERE user_id=? AND domain=?",
+            (user_id, domain),
+        ).fetchall()
+    return {
+        r[0]: {"text": r[1], "accepted": bool(r[2]), "created_at": r[3], "updated_at": r[4]}
+        for r in rows
+    }
+
+
+def delete_annotation(user_id: str, domain: str, finding_key: str) -> bool:
+    """Supprime une annotation ; retourne True si une ligne a bien été supprimée."""
+    with connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM annotations WHERE user_id=? AND domain=? AND finding_key=?",
+            (user_id, domain, finding_key),
+        )
+    return cur.rowcount > 0
 
 
 def save_scan(target: str, summary: dict, findings: list[dict], user_id: str | None = None) -> str:

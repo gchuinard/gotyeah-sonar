@@ -288,6 +288,27 @@
   .finding code { font-family: var(--mono); font-size: 12px; background: var(--bg-3); padding: 1px 5px; border-radius: 4px; color: var(--text); }
   .finding .ev { margin-top: 8px; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; word-break: break-all; }
 
+  /* ---- annotation perso d'un finding (note + statut « accepté »), reportée de scan en scan ---- */
+  .finding .note-add { margin-top: 9px; font-family: var(--mono); font-size: 11.5px; color: var(--text-dim);
+    background: none; border: 1px dashed var(--line-2); border-radius: 6px; padding: 4px 9px; cursor: pointer; }
+  .finding .note-add:hover { color: var(--accent); border-color: var(--accent); }
+  .f-note { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .f-note textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 13px;
+    color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
+  .f-note .note-acc { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); display: flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+  .f-note .note-row { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .f-note .note-acc-badge { align-self: center; font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--sev-pass); border: 1px solid var(--sev-pass); border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
+  .f-note .note-text { color: var(--text-dim); font-size: 13px; white-space: pre-wrap; }
+  .f-note .note-actions { display: flex; gap: 12px; }
+  .f-note .note-actions button { font-family: var(--mono); font-size: 11.5px; cursor: pointer; background: none; border: none; padding: 0; }
+  .f-note .note-save { color: var(--accent); }
+  .f-note .note-edit { color: var(--text-dim); }
+  .f-note .note-edit:hover, .f-note .note-save:hover { color: var(--accent); filter: brightness(1.1); }
+  .f-note .note-del, .f-note .note-cancel { color: var(--text-faint); }
+  .f-note .note-del:hover { color: var(--sev-critical); }
+  .f-note .note-err { font-size: 12px; color: var(--sev-critical); }
+
   /* ---- carte de remédiation (dépliable, façon GTmetrix) ---- */
   .remed { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 13px; display: flex; flex-direction: column; gap: 14px; }
   .remed .reco { margin-top: 0; }
@@ -737,6 +758,33 @@
               <span v-if="rem(f).a_verifier" class="flag warn">⚑ {{ T('remediation.to_review', 'à vérifier') }}</span>
             </div>
           </div>
+
+          <!-- Annotation perso (note + statut « risque accepté ») — se reporte de scan en scan -->
+          <div class="f-note" v-if="noteEditing === fkey(f)">
+            <textarea v-model="noteDraft.text" rows="2"
+                      :placeholder="T('annotations.placeholder', 'Pourquoi on laisse ça en l\'état…')"
+                      :aria-label="T('annotations.label', 'Note')"></textarea>
+            <label class="note-acc"><input type="checkbox" class="switch" v-model="noteDraft.accepted"/>
+              {{ T('annotations.accept', 'marquer « risque accepté »') }}</label>
+            <div class="note-actions">
+              <button class="note-save" :disabled="noteBusy" @click.stop="saveNote(f)">{{ T('annotations.save', 'Enregistrer') }}</button>
+              <button class="note-cancel" @click.stop="cancelNote()">{{ T('annotations.cancel', 'Annuler') }}</button>
+            </div>
+            <div class="note-err" v-if="noteError">{{ noteError }}</div>
+          </div>
+          <div class="f-note" v-else-if="f.annotation">
+            <div class="note-row">
+              <span class="note-acc-badge" v-if="f.annotation.accepted">✓ {{ T('annotations.accepted', 'risque accepté') }}</span>
+              <span class="note-text" v-if="f.annotation.text">{{ f.annotation.text }}</span>
+            </div>
+            <div class="note-actions" v-if="scanId">
+              <button class="note-edit" @click.stop="startNote(f)">{{ T('annotations.edit', 'Modifier') }}</button>
+              <button class="note-del" @click.stop="removeNote(f)">{{ T('annotations.delete', 'Supprimer') }}</button>
+            </div>
+          </div>
+          <button class="note-add" v-else-if="scanId && f.severity !== 'pass'" @click.stop="startNote(f)">
+            + {{ T('annotations.add', 'Ajouter une note') }}
+          </button>
         </div>
       </transition-group>
 
@@ -913,6 +961,9 @@ createApp({
       totalChecks: 0, done: 0,
       findings: [], categories: {}, history: [],
       isHistorical: false, historical: null,
+      scanId: null,   // id du rapport courant (sauvegardé/archivé) → requis pour annoter
+      // annotation en cours d'édition (fkey du finding) + brouillon + erreur d'enregistrement
+      noteEditing: null, noteDraft: { text: '', accepted: false }, noteBusy: false, noteError: '',
       hidePass: false, hideInfo: true, es: null, me: null,
       showScrollTop: false,   // bouton « remonter » (visible une fois défilé vers le bas)
       // onglets : 'report' (scan courant / dernier rapport) ou 'history'
@@ -1115,7 +1166,8 @@ createApp({
       }
       this.activeTab = 'report';
       this.closeEs();
-      this.isHistorical = false; this.historical = null; this.errorMsg = '';
+      this.isHistorical = false; this.historical = null; this.scanId = null; this.errorMsg = '';
+      this.noteEditing = null;
       this.findings = []; this.categories = {}; this.done = 0; this.totalChecks = 0;
       this.finished = false; this.scanning = true;
 
@@ -1135,7 +1187,10 @@ createApp({
         if (this.categories[d.category]) this.categories[d.category].done++;
       });
       es.addEventListener('done', () => { this.finished = true; });
-      es.addEventListener('saved', () => { this.finishScan(); this.loadHistory(); });
+      es.addEventListener('saved', e => {
+        try { this.scanId = (JSON.parse(e.data) || {}).id || null; } catch (_) {}
+        this.finishScan(); this.loadHistory();
+      });
       es.addEventListener('scan_error', e => {
         const d = JSON.parse(e.data);
         this.errorMsg = d.message || this.T('banners.scan_error', 'Erreur pendant le scan.');
@@ -1411,13 +1466,64 @@ createApp({
         this.closeEs(); this.scanning = false; this.finished = true; this.errorMsg = '';
         this.findings = d.findings || []; this.categories = {}; this.totalChecks = 0; this.done = 0;
         this.target = d.target; this.isHistorical = true; this.historical = { date: d.created_at, id: d.id };
+        this.scanId = d.id; this.noteEditing = null;
         this.activeTab = 'report';   // ouvrir un scan archivé bascule sur l'onglet Rapport
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (e) {}
     },
     newScan() {
-      this.isHistorical = false; this.historical = null; this.findings = []; this.errorMsg = '';
+      this.isHistorical = false; this.historical = null; this.scanId = null;
+      this.noteEditing = null; this.findings = []; this.errorMsg = '';
       this.$nextTick(() => { if (this.$refs.input) this.$refs.input.focus(); });
+    },
+    // ---- annotations de findings (note + statut « accepté »), reportées de scan en scan ----
+    startNote(f) {
+      this.noteEditing = this.fkey(f);
+      this.noteError = '';
+      this.noteDraft = {
+        text: (f.annotation && f.annotation.text) || '',
+        accepted: !!(f.annotation && f.annotation.accepted),
+      };
+    },
+    cancelNote() { this.noteEditing = null; this.noteError = ''; },
+    async _postNote(f, text, accepted) {
+      if (!this.scanId) return undefined;
+      const r = await fetch('/api/annotations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scan_id: this.scanId, check_id: f.check_id, code: f.code || '',
+          params: f.params || {}, text, accepted,
+        }),
+      });
+      if (r.status === 401) { window.location.href = '/login'; return undefined; }
+      if (!r.ok) return undefined;
+      return (await r.json().catch(() => ({}))).annotation || null;
+    },
+    async saveNote(f) {
+      if (!this.scanId || this.noteBusy) return;
+      const text = (this.noteDraft.text || '').trim();
+      const accepted = !!this.noteDraft.accepted;
+      if (!text && !accepted) return this.removeNote(f);
+      this.noteBusy = true; this.noteError = '';
+      try {
+        const annot = await this._postNote(f, text, accepted);
+        if (annot === undefined) {              // erreur réseau/HTTP : on garde l'éditeur + le brouillon
+          this.noteError = this.T('annotations.save_error', "Échec de l'enregistrement.");
+          return;
+        }
+        f.annotation = annot;
+        this.noteEditing = null;
+      } catch (e) {
+        this.noteError = this.T('annotations.save_error', "Échec de l'enregistrement.");
+      } finally { this.noteBusy = false; }
+    },
+    async removeNote(f) {
+      try {
+        const annot = await this._postNote(f, '', false);
+        if (annot === undefined) return;
+        f.annotation = null;
+        this.noteEditing = null;
+      } catch (e) {}
     },
     fmtDate(iso) {
       try { return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }

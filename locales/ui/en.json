@@ -164,6 +164,19 @@
     "filter_hint": "Click a severity to filter the feed"
   },
 
+  "annotations": {
+    "label": "Note",
+    "add": "Add a note",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "accept": "mark as \"accepted risk\"",
+    "accepted": "accepted risk",
+    "placeholder": "Why we're leaving this as-is…",
+    "save_error": "Save failed."
+  },
+
   "remediation": {
     "expand": "How to fix",
     "collapse": "Collapse",

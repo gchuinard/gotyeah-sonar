@@ -96,6 +96,21 @@ def _render(data: dict, chosen: str) -> dict:
     return data
 
 
+def _attach_annotations(data: dict, user_id: str) -> dict:
+    """Greffe les annotations perso (note + statut « accepté ») sur les findings du rapport.
+    Même rattachement que l'API web (domaine + identité du finding) → cohérent et reporté
+    de scan en scan. Lecture seule : n'affecte jamais le score."""
+    import db
+    import scan_compare
+    annots = db.get_annotations(user_id, scan_compare.target_domain(data.get("target")))
+    if annots:
+        for f in data.get("findings", []):
+            a = annots.get(scan_compare.finding_key(f))
+            if a:
+                f["annotation"] = a
+    return data
+
+
 # --------------------------------------------------------------------------- #
 # Outils — lectures
 # --------------------------------------------------------------------------- #
@@ -123,6 +138,7 @@ async def get_report_logic(user, scan_id: str, lang: str | None = None) -> dict:
         raise ValueError("Scan introuvable (ou n'appartient pas à ce compte).")
     chosen = _pick_lang(user, lang)
     _render(data, chosen)
+    _attach_annotations(data, user["id"])
     data["lang"] = chosen
     return data
 

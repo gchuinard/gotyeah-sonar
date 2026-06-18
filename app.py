@@ -26,6 +26,7 @@ from starlette.datastructures import MutableHeaders
 import auth
 import db
 import mailer
+import scan_compare
 from scanner import i18n
 from scanner.runner import normalize_target, run_scan
 
@@ -679,6 +680,21 @@ async def tokens_delete(request: Request, token_id: str):
 # --------------------------------------------------------------------------- #
 # Scan + historique (protégés par la session)
 # --------------------------------------------------------------------------- #
+def _attach_annotations(findings: list[dict], user_id: str, domain: str) -> list[dict]:
+    """Greffe sur chaque finding l'annotation perso de l'utilisateur (note + statut « accepté »).
+
+    Rattachement par identité de finding (cf. `scan_compare.finding_key`) → une annotation se
+    reporte automatiquement de scan en scan du même domaine. N'affecte jamais le score."""
+    annots = db.get_annotations(user_id, domain)
+    if not annots:
+        return findings
+    for f in findings:
+        a = annots.get(scan_compare.finding_key(f))
+        if a:
+            f["annotation"] = a
+    return findings
+
+
 @app.get("/api/scan/stream")
 async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
     user = _current_user(request)
@@ -705,6 +721,11 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
     async def gen():
         summary = None
         findings = None
+        # Annotations du domaine, chargées au 'started' depuis l'hôte FINAL (post-redirection,
+        # = ctx.url) — MÊME domaine que le scan sauvegardé et que scan_detail/MCP. On les rejoue
+        # sur les findings du NOUVEAU scan → « ça en fait mention » dès la relance, y compris
+        # quand l'apex redirige vers www (l'hôte saisi ≠ l'hôte final).
+        annots: dict = {}
         agen = run_scan(target)
         # On attend le prochain event SANS l'annuler au timeout : on émet juste un
         # heartbeat et on continue d'attendre la même tâche (sinon on casserait le scan).
@@ -721,10 +742,18 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
                     break
                 nxt = asyncio.ensure_future(agen.__anext__())
                 data = ev["data"]
-                if ev["event"] == "finding":
+                if ev["event"] == "started":
+                    # Hôte FINAL (après redirections) : aligne le domaine de greffe sur celui du
+                    # scan sauvegardé (sinon une note posée sur www.x n'apparaîtrait pas au relancement de x).
+                    annots = db.get_annotations(user["id"], scan_compare.target_domain(data.get("target")))
+                elif ev["event"] == "finding":
                     # Rendu dans la langue active pour l'affichage live ; la forme
                     # structurée (`_findings`) reste celle persistée.
                     data = {**data, **i18n.render_finding(data, lang)}
+                    if annots:
+                        a = annots.get(scan_compare.finding_key(data))
+                        if a:
+                            data["annotation"] = a
                 elif ev["event"] == "done":
                     summary = ev["data"]
                     findings = ev.get("_findings", [])
@@ -775,6 +804,8 @@ async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
     # relit dans n'importe quelle langue ; un finding legacy retombe en passthrough).
     chosen = _pick_lang(lang, request, user)
     data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
+    # Greffe les annotations perso du lecteur courant (note + statut « accepté »).
+    _attach_annotations(data["findings"], user["id"], scan_compare.target_domain(data.get("target")))
     data["lang"] = chosen
     return JSONResponse(data)
 
@@ -791,6 +822,48 @@ async def scan_delete(request: Request, scan_id: str):
     if not db.delete_scan(scan_id, user_id=scope):
         return JSONResponse({"error": "not found"}, status_code=404)
     return JSONResponse({"ok": True})
+
+
+@app.post("/api/annotations")
+async def annotation_set(request: Request):
+    """Crée / met à jour / supprime l'annotation perso d'un finding. Écriture → SESSION
+    uniquement (jamais via un PAT lecture seule). L'annotation est rattachée au domaine +
+    identité du finding → elle se reporte automatiquement de scan en scan du même domaine.
+    Corps JSON : {scan_id, check_id, code?, params?, text?, accepted?}. Texte vide ET non
+    « accepté » = suppression. N'affecte jamais le score (purement documentaire)."""
+    user = _current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json"}, status_code=400)
+    body = body if isinstance(body, dict) else {}
+    scan_id = body.get("scan_id")
+    check_id = body.get("check_id")
+    if not scan_id or not check_id:
+        return JSONResponse({"error": "missing fields"}, status_code=400)
+    # On dérive le domaine d'un scan POSSÉDÉ (valide l'accès au passage ; admin = tout).
+    scope = None if user["is_admin"] else user["id"]
+    scan = db.get_scan(scan_id, user_id=scope)
+    if not scan:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    domain = scan_compare.target_domain(scan.get("target"))
+    fkey = scan_compare.finding_key(
+        {"check_id": check_id, "code": body.get("code") or "", "params": body.get("params") or {}}
+    )
+    # On n'annote QUE des findings réellement présents dans le scan référencé : empêche de forger
+    # des clés arbitraires (sinon un compte pourrait gonfler la table sans limite = DoS de stockage)
+    # et écarte les annotations orphelines. La croissance reste bornée aux vrais findings.
+    if fkey not in {scan_compare.finding_key(f) for f in scan.get("findings", [])}:
+        return JSONResponse({"error": "unknown finding"}, status_code=400)
+    text = (body.get("text") or "").strip()[:2000]
+    accepted = bool(body.get("accepted"))
+    if not text and not accepted:
+        db.delete_annotation(user["id"], domain, fkey)
+        return JSONResponse({"ok": True, "annotation": None})
+    annot = db.upsert_annotation(user["id"], domain, fkey, text, accepted)
+    return JSONResponse({"ok": True, "annotation": annot})
 
 
 # --------------------------------------------------------------------------- #

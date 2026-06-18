@@ -50,6 +50,12 @@ structurée → un scan se **re-rend dans n'importe quelle langue**.
   réinitialiser cet état en début de scan.
 - **Auth** : routes d'écriture/admin = **cookie de session uniquement** ; les PAT (Bearer) sont
   **lecture seule** (default-deny par construction). Cloisonnement par `user_id` (admin = tout).
+  Toute **nouvelle table rattachée à `user_id`** (ex. `annotations`) DOIT être purgée dans
+  `auth.delete_user` **et** `delete_user_guarded` (cascade) — dépôt public, pas de données orphelines.
+- **Annotations de findings** : note perso + statut « risque accepté », rattachées au
+  `(user_id, domaine, scan_compare.finding_key)` → reportées de scan en scan (même identité que
+  `diff_scans`, evidence exclue). N'affectent **jamais** le score (« la note ne ment pas »). La
+  greffe live (SSE) et archivée doit utiliser l'**hôte final** (post-redirection), pas l'hôte saisi.
 - **Front zéro build** : Vue est servi en local (`/static/vendor/`), pas de CDN ; pas de
   transpilation — du JS/HTML directement éditable.
 

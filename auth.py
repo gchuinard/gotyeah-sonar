@@ -317,6 +317,7 @@ def delete_user(user_id: str) -> bool:
         conn.execute("DELETE FROM verified_domains WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM personal_tokens WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM annotations WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM magic_tokens WHERE email = ?", (user["email"],))
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     return True
@@ -357,7 +358,8 @@ def delete_user_guarded(user_id: str) -> str:
         for sql in ("DELETE FROM scans WHERE user_id = ?",
                     "DELETE FROM verified_domains WHERE user_id = ?",
                     "DELETE FROM personal_tokens WHERE user_id = ?",
-                    "DELETE FROM sessions WHERE user_id = ?"):
+                    "DELETE FROM sessions WHERE user_id = ?",
+                    "DELETE FROM annotations WHERE user_id = ?"):
             conn.execute(sql, (user_id,))
         conn.execute("DELETE FROM magic_tokens WHERE email = ?", (row["email"],))
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))

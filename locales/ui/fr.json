@@ -164,6 +164,19 @@
     "filter_hint": "Clique une sévérité pour filtrer le feed"
   },
 
+  "annotations": {
+    "label": "Note",
+    "add": "Ajouter une note",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "accept": "marquer « risque accepté »",
+    "accepted": "risque accepté",
+    "placeholder": "Pourquoi on laisse ça en l'état…",
+    "save_error": "Échec de l'enregistrement."
+  },
+
   "remediation": {
     "expand": "Comment corriger",
     "collapse": "Réduire",

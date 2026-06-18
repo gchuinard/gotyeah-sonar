@@ -38,6 +38,19 @@ def _key(f: dict):
     return (f.get("check_id"), f.get("code") or "", sig)
 
 
+def finding_key(f: dict) -> str:
+    """Clé STABLE et sérialisable (string) d'un finding — MÊME identité que le diff (`_key`).
+
+    Sert à rattacher une annotation qui se reporte de scan en scan : l'evidence (volatile) est
+    exclue, donc l'annotation suit le finding même si sa preuve change d'un scan à l'autre."""
+    return json.dumps(list(_key(f)), ensure_ascii=False)
+
+
+def target_domain(target: str | None) -> str:
+    """Hôte normalisé (minuscules) d'une cible de scan — clé de domaine des annotations."""
+    return (urlparse(target or "").hostname or (target or "")).strip().lower()
+
+
 def _sev_key(d: dict):
     return (_SEV_ORDER.get((d.get("severity") or "").lower(), 9), d.get("check_id") or "")
 
