@@ -19,6 +19,9 @@ services:
       - SONAR_OIDC_CLIENT_ID=${SONAR_OIDC_CLIENT_ID:-}          # client confidentiel pré-enregistré côté IdP
       - SONAR_OIDC_CLIENT_SECRET=${SONAR_OIDC_CLIENT_SECRET:-}  # son secret (jamais committé)
       - SONAR_MCP_SCAN_WAIT=${SONAR_MCP_SCAN_WAIT:-}            # délai d'attente synchrone de run_scan (s) — défaut 25
+      # Outils notes_* (gotyeah-notes) greffés sur /mcp — opt-in (les DEUX requis).
+      - NOTES_API_BASE_URL=${NOTES_API_BASE_URL:-}             # ex. http://gotyeah_notes:3000 (réseau npm partagé)
+      - NOTES_MCP_SECRET=${NOTES_MCP_SECRET:-}                 # == MCP_SHARED_SECRET côté gotyeah-notes
       - SONAR_SCAN_RATE=${SONAR_SCAN_RATE:-}                    # anti-abus run_scan : nb max de scans / fenêtre — défaut 10
       - SONAR_SCAN_RATE_WINDOW_MIN=${SONAR_SCAN_RATE_WINDOW_MIN:-}  # fenêtre du quota run_scan (min) — défaut 15
       - SONAR_OPEN_REGISTRATION=${SONAR_OPEN_REGISTRATION:-false}

@@ -227,7 +227,11 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             "(ou un sous-domaine). profile='full' (défaut) = scan complet asynchrone : s'il renvoie "
             "status='running', suis-le avec get_scan_status puis get_report. profile='fast' = scan "
             "rapide (en-têtes/TLS/DNS, sans nuclei/ZAP/ports), résultat direct. Boucle type : "
-            "run_scan → get_fix pour corriger → run_scan → diff_scans pour vérifier le gain."
+            "run_scan → get_fix pour corriger → run_scan → diff_scans pour vérifier le gain. "
+            "Si présents, les outils notes_* gèrent l'app de notes gotyeah-notes (même IdP) : "
+            "notes_list_workspaces, notes_list_pages, notes_get_page, notes_create_page, "
+            "notes_update_page, notes_delete_page, notes_search, notes_list_sections, "
+            "notes_create_section."
         ),
         auth=auth_provider,
     )
@@ -307,6 +311,80 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         get_scan_status(scan_id), puis récupère le rapport via get_report(scan_id).
         """
         return await tools.run_scan_logic(_resolve_user(userinfo_endpoint), domain, profile)
+
+    # ── gotyeah-notes : outils notes_* (pont de confiance vers l'API Next) ──────────
+    # Réutilise l'auth IdP de CE MCP : on extrait l'email vérifié du token OAuth et on le
+    # transmet à l'API gotyeah-notes (X-MCP-Secret + X-Act-As-Email). Aucune nouvelle
+    # plomberie OAuth. Exposé uniquement si NOTES_API_BASE_URL et NOTES_MCP_SECRET sont
+    # définis (sinon ce MCP reste strictement Sonar).
+    from mcp_remote import notes_tools
+
+    if notes_tools.enabled():
+
+        def _notes_email():
+            from fastmcp.server.dependencies import get_access_token
+
+            return notes_tools.resolve_email(get_access_token(), userinfo_endpoint)
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_list_workspaces() -> list[dict]:
+            """Espaces de travail (workspaces) gotyeah-notes de l'utilisateur (id, name)."""
+            return await notes_tools.list_workspaces(_notes_email())
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_list_pages(workspace_id: str) -> list[dict]:
+            """Pages d'un workspace (liste plate : id, title, icon, parentId, sectionId…).
+
+            workspace_id : id renvoyé par notes_list_workspaces. parentId/sectionId
+            permettent de reconstruire l'arborescence côté client.
+            """
+            return await notes_tools.list_pages(_notes_email(), workspace_id)
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_get_page(page_id: str) -> dict:
+            """Page complète, dont `content` (document BlockNote sérialisé en JSON)."""
+            return await notes_tools.get_page(_notes_email(), page_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_page(workspace_id: str, title: str = "Sans titre",
+                                    parent_id: str | None = None,
+                                    section_id: str | None = None) -> dict:
+            """Crée une page. parent_id → sous-page ; section_id → la range dans une section
+            (sinon racine). Renvoie la page créée (avec son id)."""
+            return await notes_tools.create_page(
+                _notes_email(), workspace_id, title, parent_id, section_id
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_update_page(page_id: str, title: str | None = None,
+                                    content: str | None = None,
+                                    icon: str | None = None) -> dict:
+            """Met à jour une page (titre, icône emoji, ou `content` BlockNote JSON).
+            Seuls les champs fournis sont modifiés."""
+            return await notes_tools.update_page(
+                _notes_email(), page_id, title, content, icon
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_delete_page(page_id: str) -> dict:
+            """Supprime une page ET ses sous-pages. Irréversible."""
+            return await notes_tools.delete_page(_notes_email(), page_id)
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_search(query: str, workspace_id: str | None = None) -> list[dict]:
+            """Recherche plein-texte dans les titres/contenus de pages (max 12 résultats)."""
+            return await notes_tools.search(_notes_email(), query, workspace_id)
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_list_sections(workspace_id: str) -> list[dict]:
+            """Sections (conteneurs de la sidebar : 'team'/'private') d'un workspace."""
+            return await notes_tools.list_sections(_notes_email(), workspace_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_section(workspace_id: str, name: str,
+                                       type: str = "team") -> dict:
+            """Crée une section. type = 'team' (partagée) ou 'private'."""
+            return await notes_tools.create_section(_notes_email(), workspace_id, name, type)
 
     http_app = mcp.http_app()  # Streamable HTTP ; expose aussi son lifespan (sessions)
     return mcp, http_app
