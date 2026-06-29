@@ -237,7 +237,9 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             "notes_delete_property, notes_list_records, notes_get_record, notes_create_record, "
             "notes_update_record, notes_delete_record, notes_create_view, notes_update_view, "
             "notes_delete_view. Les records se manipulent PAR NOM de propriété "
-            "(traduits en ids via le schéma de la database)."
+            "(traduits en ids via le schéma de la database). Modèles : "
+            "notes_create_ticket_database (database de tickets façon Jira prête à l'emploi), "
+            "notes_set_record_template (modèle de corps des nouveaux records)."
         ),
         auth=auth_provider,
     )
@@ -509,6 +511,24 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         async def notes_delete_view(view_id: str) -> dict:
             """Supprime une vue (impossible si c'est la dernière de la database)."""
             return await notes_tools.delete_view(_notes_email(), view_id)
+
+        # ── Modèles (tickets façon Jira) ───────────────────────────────────────
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_ticket_database(page_id: str) -> dict:
+            """Transforme une page en database de TICKETS (façon Jira) : colonnes
+            Statut / Priorité / Type / Assigné / Échéance + vue kanban par statut +
+            modèle de corps (Problème fonctionnel / Résolution technique / Tests à
+            faire) appliqué à chaque nouveau ticket. Renvoie la database créée."""
+            return await notes_tools.create_ticket_database(_notes_email(), page_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_set_record_template(database_id: str,
+                                            content: list | str | None = None) -> dict:
+            """Définit le modèle de corps pré-rempli sur les NOUVEAUX records de la
+            database (None pour l'effacer). `content` = structure BlockNote (liste de
+            blocs) ou string JSON. N'affecte pas les records existants."""
+            return await notes_tools.set_record_template(_notes_email(), database_id, content)
 
     http_app = mcp.http_app()  # Streamable HTTP ; expose aussi son lifespan (sessions)
     return mcp, http_app

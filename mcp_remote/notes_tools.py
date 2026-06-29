@@ -13,6 +13,7 @@ Découplé de Sonar : aucun compte Sonar requis, on n'importe jamais `fastmcp` i
 """
 from __future__ import annotations
 
+import json
 import os
 import uuid
 
@@ -388,3 +389,25 @@ async def update_view(email: str | None, view_id: str, name: str | None = None,
 
 async def delete_view(email: str | None, view_id: str) -> dict:
     return await NotesClient()._req("DELETE", f"/api/views/{view_id}", email)
+
+
+# ── Modèles (tickets façon Jira) ─────────────────────────────────────────────
+async def create_ticket_database(email: str | None, page_id: str) -> dict:
+    """Transforme une page en database de tickets (colonnes standard + kanban +
+    modèle de corps à 3 zones). Le serveur gère le scaffolding (cf. lib/templates.ts)."""
+    return await NotesClient()._req(
+        "POST", "/api/databases", email, json={"pageId": page_id, "template": "ticket"}
+    )
+
+
+async def set_record_template(email: str | None, database_id: str, content) -> dict:
+    """Définit (ou efface si None) le modèle de corps des nouveaux records.
+
+    `content` peut être la structure BlockNote (liste de blocs) ou une string JSON
+    déjà sérialisée. Stocké tel quel dans Database.recordTemplate côté API.
+    """
+    if content is not None and not isinstance(content, str):
+        content = json.dumps(content)
+    return await NotesClient()._req(
+        "PATCH", f"/api/databases/{database_id}", email, json={"recordTemplate": content}
+    )
