@@ -392,12 +392,24 @@ async def delete_view(email: str | None, view_id: str) -> dict:
 
 
 # ── Modèles (tickets façon Jira) ─────────────────────────────────────────────
-async def create_ticket_database(email: str | None, page_id: str) -> dict:
-    """Transforme une page en database de tickets (colonnes standard + kanban +
-    modèle de corps à 3 zones). Le serveur gère le scaffolding (cf. lib/templates.ts)."""
+async def create_templated_database(email: str | None, page_id: str, template: str) -> dict:
+    """Transforme une page en database scaffoldée depuis un modèle (colonnes + kanban
+    + modèle de corps). Le serveur gère le scaffolding (cf. lib/templates.ts)."""
     return await NotesClient()._req(
-        "POST", "/api/databases", email, json={"pageId": page_id, "template": "ticket"}
+        "POST", "/api/databases", email, json={"pageId": page_id, "template": template}
     )
+
+
+async def create_ticket_database(email: str | None, page_id: str) -> dict:
+    """Database de tickets (Statut/Priorité/Type/Assigné/Échéance + corps Problème
+    fonctionnel / Résolution technique / Tests à faire)."""
+    return await create_templated_database(email, page_id, "ticket")
+
+
+async def create_bug_database(email: str | None, page_id: str) -> dict:
+    """Database de bugs (Statut/Sévérité/Assigné/Échéance + corps Comment reproduire /
+    Résultat attendu / Résultat obtenu / Environnement)."""
+    return await create_templated_database(email, page_id, "bug")
 
 
 async def set_record_template(email: str | None, database_id: str, content) -> dict:
