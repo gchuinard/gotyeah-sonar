@@ -228,10 +228,16 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             "status='running', suis-le avec get_scan_status puis get_report. profile='fast' = scan "
             "rapide (en-têtes/TLS/DNS, sans nuclei/ZAP/ports), résultat direct. Boucle type : "
             "run_scan → get_fix pour corriger → run_scan → diff_scans pour vérifier le gain. "
-            "Si présents, les outils notes_* gèrent l'app de notes gotyeah-notes (même IdP) : "
-            "notes_list_workspaces, notes_list_pages, notes_get_page, notes_create_page, "
-            "notes_update_page, notes_delete_page, notes_search, notes_list_sections, "
-            "notes_create_section."
+            "Si présents, les outils notes_* gèrent l'app de notes gotyeah-notes (même IdP). "
+            "Pages/sections : notes_list_workspaces, notes_list_pages, notes_get_page, "
+            "notes_create_page, notes_update_page, notes_delete_page, notes_search, "
+            "notes_list_sections, notes_create_section. Databases (une database EST une page ; "
+            "notes_get_page renvoie database.id) : notes_get_database, notes_create_database, "
+            "notes_delete_database, notes_create_property, notes_update_property, "
+            "notes_delete_property, notes_list_records, notes_get_record, notes_create_record, "
+            "notes_update_record, notes_delete_record, notes_create_view, notes_update_view, "
+            "notes_delete_view. Les records se manipulent PAR NOM de propriété "
+            "(traduits en ids via le schéma de la database)."
         ),
         auth=auth_provider,
     )
@@ -385,6 +391,124 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
                                        type: str = "team") -> dict:
             """Crée une section. type = 'team' (partagée) ou 'private'."""
             return await notes_tools.create_section(_notes_email(), workspace_id, name, type)
+
+        # ── Databases / properties / records / views (MCP v2) ──────────────────
+        # Une database EST une page (relation 1-1). `notes_get_page` renvoie
+        # `database: {id}` si la page en est une. À partir de cet id : schéma
+        # (properties + views) via notes_get_database, puis CRUD records.
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_get_database(database_id: str) -> dict:
+            """Schéma d'une database : `properties` (colonnes : id, name, type, config)
+            et `views`. Indispensable avant d'écrire des records : donne le mapping
+            nom→id des propriétés et des options select."""
+            return await notes_tools.get_database(_notes_email(), database_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_database(page_id: str) -> dict:
+            """Transforme une page existante en database (ajoute une propriété titre +
+            une vue table par défaut). Renvoie la database créée (avec son id)."""
+            return await notes_tools.create_database(_notes_email(), page_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_delete_database(database_id: str) -> dict:
+            """Supprime une database (properties, records, views). La page hôte reste.
+            Irréversible."""
+            return await notes_tools.delete_database(_notes_email(), database_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_property(database_id: str, name: str, type: str,
+                                        options: list[str] | None = None,
+                                        number_format: str | None = None,
+                                        date_include_time: bool = False) -> dict:
+            """Ajoute une colonne. type ∈ text|number|select|multiselect|date|checkbox|url|email
+            (pas 'title' : déjà créée). Pour select/multiselect, `options` = liste de NOMS
+            (les ids d'option sont générés). number_format ∈ integer|decimal|currency|percent."""
+            return await notes_tools.create_property(
+                _notes_email(), database_id, name, type,
+                options, number_format, date_include_time
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_update_property(property_id: str, name: str | None = None,
+                                        position: float | None = None) -> dict:
+            """Renomme/réordonne une colonne. (Changer le type ou éditer les options
+            d'un select n'est pas supporté ici — passer par l'UI pour préserver les
+            valeurs des records existants.)"""
+            return await notes_tools.update_property(
+                _notes_email(), property_id, name, position
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_delete_property(property_id: str) -> dict:
+            """Supprime une colonne et sa valeur dans tous les records. La colonne titre
+            ne peut pas être supprimée. Irréversible."""
+            return await notes_tools.delete_property(_notes_email(), property_id)
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_list_records(database_id: str) -> list[dict]:
+            """Lignes (records) d'une database : title, icon, et `properties` indexées
+            par id de propriété (résoudre les noms via notes_get_database)."""
+            return await notes_tools.list_records(_notes_email(), database_id)
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_get_record(record_id: str) -> dict:
+            """Un record complet (title, properties par id, content BlockNote, databaseId)."""
+            return await notes_tools.get_record(_notes_email(), record_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_record(database_id: str, title: str | None = None,
+                                      icon: str | None = None,
+                                      properties: dict | None = None) -> dict:
+            """Crée une ligne. `properties` est désignée PAR NOM, ex.
+            {"Statut": "En cours", "Tags": ["Urgent"]} : l'outil traduit noms→ids et
+            options select→ids via le schéma. Le titre passe par `title` (ou la
+            propriété "Titre" dans properties)."""
+            return await notes_tools.create_record(
+                _notes_email(), database_id, title, icon, properties
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_update_record(record_id: str, title: str | None = None,
+                                      icon: str | None = None, content: str | None = None,
+                                      properties: dict | None = None,
+                                      position: float | None = None) -> dict:
+            """Met à jour une ligne (champs fournis seulement). `properties` PAR NOM,
+            fusionnée (une valeur null efface la cellule). content = document BlockNote JSON."""
+            return await notes_tools.update_record(
+                _notes_email(), record_id, title, icon, content, properties, position
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_delete_record(record_id: str) -> dict:
+            """Supprime une ligne. Irréversible."""
+            return await notes_tools.delete_record(_notes_email(), record_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_view(database_id: str, type: str,
+                                    name: str | None = None,
+                                    config: dict | None = None) -> dict:
+            """Crée une vue. type ∈ table|kanban|calendar|gallery. `config` (optionnel)
+            référence les propriétés par id : visiblePropertyIds, sorts, filters,
+            groupByPropertyId (kanban), calendarPropertyId."""
+            return await notes_tools.create_view(
+                _notes_email(), database_id, type, name, config
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_update_view(view_id: str, name: str | None = None,
+                                    config: dict | None = None,
+                                    position: float | None = None) -> dict:
+            """Met à jour une vue. ⚠️ `config` REMPLACE entièrement l'ancien (pas de
+            merge) : renvoyer le config complet voulu."""
+            return await notes_tools.update_view(
+                _notes_email(), view_id, name, config, position
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_delete_view(view_id: str) -> dict:
+            """Supprime une vue (impossible si c'est la dernière de la database)."""
+            return await notes_tools.delete_view(_notes_email(), view_id)
 
     http_app = mcp.http_app()  # Streamable HTTP ; expose aussi son lifespan (sessions)
     return mcp, http_app
