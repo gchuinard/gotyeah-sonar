@@ -238,9 +238,10 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             "notes_update_record, notes_delete_record, notes_create_view, notes_update_view, "
             "notes_delete_view. Les records se manipulent PAR NOM de propriété "
             "(traduits en ids via le schéma de la database). Modèles : "
-            "notes_create_ticket_database / notes_create_bug_database (databases prêtes "
-            "à l'emploi : tickets façon Jira, ou bugs reproduire/attendu/obtenu), "
-            "notes_set_record_template (modèle de corps des nouveaux records)."
+            "notes_list_templates (modèles dispo : fournis + workspace), "
+            "notes_create_database_from_template (database depuis n'importe quel template), "
+            "notes_create_ticket_database / notes_create_bug_database (raccourcis tickets/bugs), "
+            "notes_set_record_template (modèle de corps LIBRE des nouveaux records)."
         ),
         auth=auth_provider,
     )
@@ -530,6 +531,22 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             reproduire / Résultat attendu / Résultat obtenu / Environnement) appliqué
             à chaque nouveau bug. Renvoie la database créée."""
             return await notes_tools.create_bug_database(_notes_email(), page_id)
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_list_templates(workspace_id: str) -> list[dict]:
+            """Templates disponibles d'un workspace : fournis (id « builtin-* », ex.
+            tickets/bugs) + ceux créés par l'utilisateur. Chacun a id, name, builtin,
+            columns, kanbanGroupProperty, sections (libellés de corps à libellés fixes)."""
+            return await notes_tools.list_templates(_notes_email(), workspace_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_database_from_template(page_id: str, template_id: str) -> dict:
+            """Transforme une page en database scaffoldée depuis n'importe quel template
+            (colonnes + kanban + sections de corps). template_id vient de
+            notes_list_templates (« builtin-… » ou id de template du workspace)."""
+            return await notes_tools.create_database_from_template(
+                _notes_email(), page_id, template_id
+            )
 
         @mcp.tool(annotations=ACTION_ANN)
         async def notes_set_record_template(database_id: str,

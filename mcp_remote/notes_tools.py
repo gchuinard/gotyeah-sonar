@@ -392,24 +392,33 @@ async def delete_view(email: str | None, view_id: str) -> dict:
 
 
 # ── Modèles (tickets façon Jira) ─────────────────────────────────────────────
-async def create_templated_database(email: str | None, page_id: str, template: str) -> dict:
-    """Transforme une page en database scaffoldée depuis un modèle (colonnes + kanban
-    + modèle de corps). Le serveur gère le scaffolding (cf. lib/templates.ts)."""
+async def list_templates(email: str | None, workspace_id: str) -> list[dict]:
+    """Templates disponibles (fournis « builtin-* » + ceux du workspace) : chacun
+    a id, name, builtin, columns, kanbanGroupProperty, sections."""
     return await NotesClient()._req(
-        "POST", "/api/databases", email, json={"pageId": page_id, "template": template}
+        "GET", "/api/templates", email, params={"workspaceId": workspace_id}
+    )
+
+
+async def create_database_from_template(email: str | None, page_id: str, template_id: str) -> dict:
+    """Transforme une page en database scaffoldée depuis un template (colonnes +
+    kanban + sections de corps). template_id = id fourni ("builtin-…") ou d'un
+    Template du workspace. Le serveur gère le scaffolding."""
+    return await NotesClient()._req(
+        "POST", "/api/databases", email, json={"pageId": page_id, "templateId": template_id}
     )
 
 
 async def create_ticket_database(email: str | None, page_id: str) -> dict:
-    """Database de tickets (Statut/Priorité/Type/Assigné/Échéance + corps Problème
-    fonctionnel / Résolution technique / Tests à faire)."""
-    return await create_templated_database(email, page_id, "ticket")
+    """Database de tickets (template fourni : Statut/Priorité/Type/Assigné/Échéance +
+    sections Problème fonctionnel / Résolution technique / Tests à faire)."""
+    return await create_database_from_template(email, page_id, "builtin-ticket")
 
 
 async def create_bug_database(email: str | None, page_id: str) -> dict:
-    """Database de bugs (Statut/Sévérité/Assigné/Échéance + corps Comment reproduire /
-    Résultat attendu / Résultat obtenu / Environnement)."""
-    return await create_templated_database(email, page_id, "bug")
+    """Database de bugs (template fourni : Statut/Sévérité/Assigné/Échéance +
+    sections Comment reproduire / Résultat attendu / Résultat obtenu / Environnement)."""
+    return await create_database_from_template(email, page_id, "builtin-bug")
 
 
 async def set_record_template(email: str | None, database_id: str, content) -> dict:
