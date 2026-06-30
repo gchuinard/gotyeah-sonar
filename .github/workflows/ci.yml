@@ -41,4 +41,14 @@ jobs:
         run: pip-audit
 
       - name: Tests + couverture
-        run: pytest --cov=. --cov-report=term-missing
+        run: pytest --cov=. --cov-report=term-missing --alluredir=allure-results
+
+      - name: Publier les résultats Allure (dashboard central)
+        if: ${{ always() && github.ref == 'refs/heads/main' }}
+        uses: gchuinard/gotyeah-allure/actions/push-allure-results@main
+        with:
+          site: gotyeah-sonar
+          results-dir: allure-results
+          ssh-host: ${{ secrets.SSH_HOST }}
+          ssh-user: ${{ secrets.SSH_USER }}
+          ssh-key: ${{ secrets.SSH_KEY }}
