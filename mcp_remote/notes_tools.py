@@ -312,7 +312,8 @@ async def get_record(email: str | None, record_id: str) -> dict:
 
 
 async def create_record(email: str | None, database_id: str, title: str | None = None,
-                        icon: str | None = None, properties: dict | None = None) -> dict:
+                        icon: str | None = None, properties: dict | None = None,
+                        sprint: str | None = None) -> dict:
     body: dict = {}
     if properties:
         schema = await get_database(email, database_id)
@@ -323,6 +324,8 @@ async def create_record(email: str | None, database_id: str, title: str | None =
             body["properties"] = props_by_id
         if title is None:
             title = title_from_props
+    if sprint is not None:
+        body["sprintId"] = await _resolve_sprint_id(email, database_id, sprint)
     if title is not None:
         body["title"] = title
     if icon is not None:
@@ -335,11 +338,15 @@ async def create_record(email: str | None, database_id: str, title: str | None =
 async def update_record(email: str | None, record_id: str, title: str | None = None,
                         icon: str | None = None, content: str | None = None,
                         properties: dict | None = None,
-                        position: float | None = None) -> dict:
+                        position: float | None = None,
+                        sprint: str | None = None) -> dict:
     body: dict = {}
-    if properties:
+    database_id: str | None = None
+    if properties or sprint is not None:
         record = await get_record(email, record_id)
-        schema = await get_database(email, record.get("databaseId"))
+        database_id = record.get("databaseId")
+    if properties:
+        schema = await get_database(email, database_id)
         title_from_props, props_by_id = resolve_record_properties(
             schema.get("properties") or [], properties
         )
@@ -347,6 +354,8 @@ async def update_record(email: str | None, record_id: str, title: str | None = N
             body["properties"] = props_by_id
         if title is None:
             title = title_from_props
+    if sprint is not None:
+        body["sprintId"] = await _resolve_sprint_id(email, database_id, sprint)
     if title is not None:
         body["title"] = title
     if icon is not None:
@@ -432,3 +441,94 @@ async def set_record_template(email: str | None, database_id: str, content) -> d
     return await NotesClient()._req(
         "PATCH", f"/api/databases/{database_id}", email, json={"recordTemplate": content}
     )
+
+
+# ── Sprints (backlog façon Jira) ──────────────────────────────────────────────
+# Un sprint appartient à une database ; un record y est rattaché via son champ
+# `sprintId` (null = backlog). Les outils ci-dessous exposent le cycle de vie
+# (planifier → démarrer → terminer) et l'affectation d'issues PAR NOM de sprint.
+
+def resolve_backlog_status_config(views: list[dict]) -> tuple[str | None, str | None]:
+    """(statusPropertyId, doneStatusOptionId) depuis la config de la vue backlog.
+
+    Nécessaires pour clôturer un sprint EN renvoyant les issues non terminées au
+    backlog : ces ids vivent dans le `View.config` de la vue backlog (posés par le
+    template scrum). Retourne (None, None) si aucune vue backlog câblée.
+    """
+    for v in views or []:
+        if v.get("type") == "backlog":
+            cfg = v.get("config") or {}
+            return cfg.get("statusPropertyId"), cfg.get("doneStatusOptionId")
+    return None, None
+
+
+async def _resolve_sprint_id(email: str | None, database_id: str | None,
+                             sprint: str) -> str | None:
+    """Traduit un NOM de sprint en id. "" / "backlog" / "aucun" / "none" → None (backlog)."""
+    key = (sprint or "").strip().lower()
+    if key in ("", "backlog", "aucun", "none"):
+        return None
+    if not database_id:
+        raise ValueError("Database introuvable pour résoudre le sprint.")
+    sprints = await list_sprints(email, database_id)
+    return _match_by_name(sprints, sprint, "Sprint")["id"]
+
+
+async def list_sprints(email: str | None, database_id: str) -> list[dict]:
+    return await NotesClient()._req("GET", f"/api/databases/{database_id}/sprints", email)
+
+
+async def create_sprint(email: str | None, database_id: str, name: str | None = None,
+                        goal: str | None = None, start_date: str | None = None,
+                        end_date: str | None = None, state: str | None = None) -> dict:
+    body: dict = {}
+    if name is not None:
+        body["name"] = name
+    if goal is not None:
+        body["goal"] = goal
+    if start_date is not None:
+        body["startDate"] = start_date
+    if end_date is not None:
+        body["endDate"] = end_date
+    if state is not None:
+        body["state"] = state
+    return await NotesClient()._req(
+        "POST", f"/api/databases/{database_id}/sprints", email, json=body
+    )
+
+
+async def update_sprint(email: str | None, sprint_id: str, name: str | None = None,
+                        goal: str | None = None, start_date: str | None = None,
+                        end_date: str | None = None, state: str | None = None,
+                        position: float | None = None, database_id: str | None = None,
+                        move_incomplete_to_backlog: bool = True) -> dict:
+    """state='active' = démarrer (refus 409 si un autre sprint est déjà actif),
+    'completed' = terminer. Si state='completed' + database_id fourni, renvoie les
+    issues non terminées au backlog (lit statut + option « terminé » dans la vue
+    backlog ; déplacement atomique côté serveur)."""
+    body: dict = {}
+    if name is not None:
+        body["name"] = name
+    if goal is not None:
+        body["goal"] = goal
+    if start_date is not None:
+        body["startDate"] = start_date
+    if end_date is not None:
+        body["endDate"] = end_date
+    if state is not None:
+        body["state"] = state
+    if position is not None:
+        body["position"] = position
+    if state == "completed" and move_incomplete_to_backlog and database_id:
+        schema = await get_database(email, database_id)
+        status_id, done_id = resolve_backlog_status_config(schema.get("views") or [])
+        if status_id and done_id:
+            body["moveIncompleteToBacklog"] = True
+            body["statusPropertyId"] = status_id
+            body["doneStatusOptionId"] = done_id
+    return await NotesClient()._req("PATCH", f"/api/sprints/{sprint_id}", email, json=body)
+
+
+async def delete_sprint(email: str | None, sprint_id: str) -> dict:
+    """Supprime un sprint. Ses issues retournent au backlog (sprintId=null, SetNull)."""
+    return await NotesClient()._req("DELETE", f"/api/sprints/{sprint_id}", email)

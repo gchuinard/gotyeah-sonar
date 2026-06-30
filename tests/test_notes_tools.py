@@ -112,3 +112,33 @@ def test_build_config_number_and_date_and_plain():
         "type": "date", "includeTime": True
     }
     assert nt._build_property_config("text") == {"type": "text"}
+
+
+# ── Sprints (backlog façon Jira) ──────────────────────────────────────────────
+
+def test_resolve_backlog_status_config_from_views():
+    views = [
+        {"type": "table", "config": {}},
+        {"type": "backlog", "config": {
+            "statusPropertyId": "p_status", "doneStatusOptionId": "o_done"}},
+    ]
+    assert nt.resolve_backlog_status_config(views) == ("p_status", "o_done")
+
+
+def test_resolve_backlog_status_config_absent_returns_nones():
+    assert nt.resolve_backlog_status_config([{"type": "kanban", "config": {}}]) == (None, None)
+    assert nt.resolve_backlog_status_config([]) == (None, None)
+    # vue backlog présente mais non câblée → (None, None)
+    assert nt.resolve_backlog_status_config([{"type": "backlog", "config": {}}]) == (None, None)
+
+
+def test_resolve_sprint_id_backlog_sentinels_return_none():
+    import asyncio
+    for sentinel in ("", "backlog", "Backlog", "  AUCUN ", "none"):
+        assert asyncio.run(nt._resolve_sprint_id(None, None, sentinel)) is None
+
+
+def test_resolve_sprint_id_named_without_database_raises():
+    import asyncio
+    with pytest.raises(ValueError):
+        asyncio.run(nt._resolve_sprint_id(None, None, "Sprint 1"))

@@ -241,7 +241,12 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             "notes_list_templates (modèles dispo : fournis + workspace), "
             "notes_create_database_from_template (database depuis n'importe quel template), "
             "notes_create_ticket_database / notes_create_bug_database (raccourcis tickets/bugs), "
-            "notes_set_record_template (modèle de corps LIBRE des nouveaux records)."
+            "notes_set_record_template (modèle de corps LIBRE des nouveaux records). "
+            "Sprints (backlog façon Jira) : notes_list_sprints, notes_create_sprint, "
+            "notes_update_sprint (state='active' démarrer / 'completed' terminer ; +database_id "
+            "pour renvoyer les issues non terminées au backlog), notes_delete_sprint. Affecter une "
+            "issue à un sprint : param `sprint` (par NOM, ou 'backlog') de notes_create_record / "
+            "notes_update_record."
         ),
         auth=auth_provider,
     )
@@ -463,24 +468,29 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         @mcp.tool(annotations=ACTION_ANN)
         async def notes_create_record(database_id: str, title: str | None = None,
                                       icon: str | None = None,
-                                      properties: dict | None = None) -> dict:
+                                      properties: dict | None = None,
+                                      sprint: str | None = None) -> dict:
             """Crée une ligne. `properties` est désignée PAR NOM, ex.
             {"Statut": "En cours", "Tags": ["Urgent"]} : l'outil traduit noms→ids et
             options select→ids via le schéma. Le titre passe par `title` (ou la
-            propriété "Titre" dans properties)."""
+            propriété "Titre" dans properties). `sprint` = NOM d'un sprint pour y
+            rattacher l'issue (vue backlog ; omettre = backlog)."""
             return await notes_tools.create_record(
-                _notes_email(), database_id, title, icon, properties
+                _notes_email(), database_id, title, icon, properties, sprint
             )
 
         @mcp.tool(annotations=ACTION_ANN)
         async def notes_update_record(record_id: str, title: str | None = None,
                                       icon: str | None = None, content: str | None = None,
                                       properties: dict | None = None,
-                                      position: float | None = None) -> dict:
+                                      position: float | None = None,
+                                      sprint: str | None = None) -> dict:
             """Met à jour une ligne (champs fournis seulement). `properties` PAR NOM,
-            fusionnée (une valeur null efface la cellule). content = document BlockNote JSON."""
+            fusionnée (une valeur null efface la cellule). content = document BlockNote JSON.
+            `sprint` = NOM d'un sprint pour (ré)affecter l'issue, ou "backlog" pour la
+            renvoyer au backlog."""
             return await notes_tools.update_record(
-                _notes_email(), record_id, title, icon, content, properties, position
+                _notes_email(), record_id, title, icon, content, properties, position, sprint
             )
 
         @mcp.tool(annotations=ACTION_ANN)
@@ -492,9 +502,11 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
         async def notes_create_view(database_id: str, type: str,
                                     name: str | None = None,
                                     config: dict | None = None) -> dict:
-            """Crée une vue. type ∈ table|kanban|calendar|gallery. `config` (optionnel)
-            référence les propriétés par id : visiblePropertyIds, sorts, filters,
-            groupByPropertyId (kanban), calendarPropertyId."""
+            """Crée une vue. type ∈ table|kanban|calendar|gallery|backlog. `config`
+            (optionnel) référence les propriétés par id : visiblePropertyIds, sorts,
+            filters, groupByPropertyId (kanban), calendarPropertyId, et pour le
+            backlog/board scrum pointsPropertyId/statusPropertyId/epicPropertyId/
+            doneStatusOptionId + sprintScope (kanban : "active"|"all"|<sprintId>)."""
             return await notes_tools.create_view(
                 _notes_email(), database_id, type, name, config
             )
@@ -555,6 +567,51 @@ def build_remote(base_url: str, *, scope: str = DEFAULT_SCOPE):
             database (None pour l'effacer). `content` = structure BlockNote (liste de
             blocs) ou string JSON. N'affecte pas les records existants."""
             return await notes_tools.set_record_template(_notes_email(), database_id, content)
+
+        # ── Sprints (backlog façon Jira) ───────────────────────────────────────
+
+        @mcp.tool(annotations=READ_ANN)
+        async def notes_list_sprints(database_id: str) -> list[dict]:
+            """Sprints d'une database (backlog façon Jira) : id, name, goal, startDate,
+            endDate, state (future|active|completed), position. Les issues y sont
+            rattachées via leur champ sprintId (null = backlog)."""
+            return await notes_tools.list_sprints(_notes_email(), database_id)
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_create_sprint(database_id: str, name: str | None = None,
+                                      goal: str | None = None,
+                                      start_date: str | None = None,
+                                      end_date: str | None = None,
+                                      state: str | None = None) -> dict:
+            """Crée un sprint dans une database. state par défaut 'future' (planifié).
+            start_date/end_date au format ISO (ex. '2026-07-01')."""
+            return await notes_tools.create_sprint(
+                _notes_email(), database_id, name, goal, start_date, end_date, state
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_update_sprint(sprint_id: str, name: str | None = None,
+                                      goal: str | None = None,
+                                      start_date: str | None = None,
+                                      end_date: str | None = None,
+                                      state: str | None = None,
+                                      position: float | None = None,
+                                      database_id: str | None = None,
+                                      move_incomplete_to_backlog: bool = True) -> dict:
+            """Met à jour un sprint. state='active' = DÉMARRER (refus 409 si un autre
+            sprint est déjà actif), state='completed' = TERMINER. Pour terminer en
+            renvoyant les issues non terminées au backlog, passe aussi `database_id`
+            (l'outil lit la config de la vue backlog — statut + option « terminé » —
+            et demande le déplacement atomique côté serveur)."""
+            return await notes_tools.update_sprint(
+                _notes_email(), sprint_id, name, goal, start_date, end_date,
+                state, position, database_id, move_incomplete_to_backlog
+            )
+
+        @mcp.tool(annotations=ACTION_ANN)
+        async def notes_delete_sprint(sprint_id: str) -> dict:
+            """Supprime un sprint. Ses issues retournent au backlog (sprintId=null)."""
+            return await notes_tools.delete_sprint(_notes_email(), sprint_id)
 
     http_app = mcp.http_app()  # Streamable HTTP ; expose aussi son lifespan (sessions)
     return mcp, http_app
