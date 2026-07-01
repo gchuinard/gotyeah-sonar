@@ -10,17 +10,18 @@ cloisonnement anti-IDOR restent INCHANGÉS et vivent dans Sonar.
 Default-deny : sans `SONAR_MCP_SHARED_SECRET` (ou avec un mauvais secret), toute route renvoie
 401. Le secret DOIT être identique à `SONAR_MCP_SECRET` côté gotyeah-mcp. Symétrique du pont
 `X-MCP-Secret`/`X-Act-As-Email` déjà utilisé par gotyeah-notes.
+
+Les routes sont montées via `register(app)` (add_api_route → APIRoute normales avec `.path`),
+et non un APIRouter/include_router, pour rester robuste à toutes les versions FastAPI.
 """
 from __future__ import annotations
 
 import hmac
 import os
 
-from fastapi import APIRouter, Body, Header, HTTPException, Query
+from fastapi import Body, Header, HTTPException, Query
 
 from mcp_remote import tools
-
-router = APIRouter(prefix="/api/mcp")
 
 
 def bridge_enabled() -> bool:
@@ -59,16 +60,14 @@ async def _run(coro):
 
 
 # --------------------------------------------------------------------------- #
-# Lectures
+# Endpoints (lectures + une action). Miroir de mcp_remote/sonar_tools.py côté hub.
 # --------------------------------------------------------------------------- #
-@router.get("/list_domains")
 async def _list_domains(x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
                         x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.list_domains_logic(user))
 
 
-@router.get("/list_scans")
 async def _list_scans(domain: str | None = Query(None),
                       x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
                       x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
@@ -76,7 +75,6 @@ async def _list_scans(domain: str | None = Query(None),
     return await _run(tools.list_scans_logic(user, domain))
 
 
-@router.get("/get_report")
 async def _get_report(scan_id: str = Query(...), lang: str | None = Query(None),
                       x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
                       x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
@@ -84,7 +82,6 @@ async def _get_report(scan_id: str = Query(...), lang: str | None = Query(None),
     return await _run(tools.get_report_logic(user, scan_id, lang))
 
 
-@router.get("/diff_scans")
 async def _diff_scans(scan_a: str = Query(...), scan_b: str = Query(...),
                       lang: str | None = Query(None),
                       x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
@@ -93,7 +90,6 @@ async def _diff_scans(scan_a: str = Query(...), scan_b: str = Query(...),
     return await _run(tools.diff_scans_logic(user, scan_a, scan_b, lang))
 
 
-@router.get("/get_fix")
 async def _get_fix(scan_id: str = Query(...), check_id: str | None = Query(None),
                    code: str | None = Query(None), lang: str | None = Query(None),
                    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
@@ -102,7 +98,6 @@ async def _get_fix(scan_id: str = Query(...), check_id: str | None = Query(None)
     return await _run(tools.get_fix_logic(user, scan_id, check_id, code, lang))
 
 
-@router.get("/get_scan_status")
 async def _get_scan_status(scan_id: str = Query(...),
                            x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
                            x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
@@ -110,13 +105,21 @@ async def _get_scan_status(scan_id: str = Query(...),
     return await _run(tools.get_scan_status_logic(user, scan_id))
 
 
-# --------------------------------------------------------------------------- #
-# Action
-# --------------------------------------------------------------------------- #
-@router.post("/run_scan")
 async def _run_scan(domain: str = Body(..., embed=True),
                     profile: str = Body("full", embed=True),
                     x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
                     x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.run_scan_logic(user, domain, profile))
+
+
+def register(app) -> None:
+    """Monte /api/mcp/* sur l'app. `add_api_route` produit des APIRoute normales (avec `.path`)
+    — robuste à toutes les versions FastAPI, contrairement à include_router."""
+    app.add_api_route("/api/mcp/list_domains", _list_domains, methods=["GET"])
+    app.add_api_route("/api/mcp/list_scans", _list_scans, methods=["GET"])
+    app.add_api_route("/api/mcp/get_report", _get_report, methods=["GET"])
+    app.add_api_route("/api/mcp/diff_scans", _diff_scans, methods=["GET"])
+    app.add_api_route("/api/mcp/get_fix", _get_fix, methods=["GET"])
+    app.add_api_route("/api/mcp/get_scan_status", _get_scan_status, methods=["GET"])
+    app.add_api_route("/api/mcp/run_scan", _run_scan, methods=["POST"])

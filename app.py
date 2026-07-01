@@ -295,7 +295,7 @@ else:
 # secret partagé + X-Act-As-Email), en réutilisant la logique de scan de Sonar. Toujours monté
 # (default-deny sans SONAR_MCP_SHARED_SECRET) et AVANT le mount catch-all « / » du MCP distant.
 import mcp_bridge  # noqa: E402
-app.include_router(mcp_bridge.router)
+mcp_bridge.register(app)
 
 
 def _sse(event: str, data: dict) -> str:
