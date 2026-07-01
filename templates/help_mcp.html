@@ -94,14 +94,15 @@
   <p class="lead">
     Sonar parle le <b>MCP</b> (Model Context Protocol) : une app IA peut lire tes scans (lecture seule).
     Le MCP se branche au niveau de l'<b>application</b>, pas du modèle. Deux façons selon ton app :
+    le <b>hub MCP central</b> (connecteur distant — un seul pour tous tes projets) ou un <b>serveur local</b> (jeton PAT).
   </p>
 
   <div class="panel">
     <div class="two">
       <div>
-        <h3>A · Connecteur distant <span class="badge oauth">OAuth</span></h3>
-        <div class="kv">Zéro installation. Tu ajoutes une URL : <b>{{ mcpUrl }}</b>, et tu te connectes via l'identité.
-        ⚠️ Réservé aux <b>comptes autorisés</b> à accéder au service (sinon « accès refusé »).</div>
+        <h3>A · Hub MCP central <span class="badge oauth">OAuth</span></h3>
+        <div class="kv">Zéro installation. L'accès distant/web passe par le <b>hub central</b> — UN connecteur pour tous tes projets (Sonar inclus). Tu ajoutes son URL : <b>{{ mcpUrl }}</b> et tu te connectes via l'identité.
+        ⚠️ Réservé aux <b>comptes autorisés</b> (sinon « accès refusé »).</div>
       </div>
       <div>
         <h3>B · Serveur local <span class="badge pat">jeton</span></h3>
@@ -158,6 +159,9 @@
 const { createApp } = Vue;
 
 const BASE = (function () { try { return __SONAR_HELP_BASE__; } catch (e) { return 'https://ton-instance-sonar'; } })();
+// URL du connecteur du HUB MCP central (voie distante/web). Injectée par le serveur ; vide
+// si SONAR_HUB_MCP_URL n'est pas configurée → un placeholder lisible est affiché.
+const HUB = (function () { try { return __SONAR_HUB_MCP__; } catch (e) { return ''; } })();
 const PYBIN = '/chemin/vers/gotyeah_sonar/.mcpvenv/bin/python';
 const REPO  = '/chemin/vers/gotyeah_sonar';
 
@@ -195,20 +199,20 @@ const CLIENTS = [
       steps: [
         'Dans claude.ai : <b>Réglages → Connecteurs</b>.',
         'Clique <b>« Ajouter un connecteur personnalisé »</b>.',
-        'Colle l\'URL : <code>{BASE}/mcp</code> puis connecte-toi via ton fournisseur d\'identité.',
+        'Colle l\'URL : <code>{HUB}</code> puis connecte-toi via ton fournisseur d\'identité.',
       ] }] },
   { id: 'claude-desktop', group: 'Claude', name: 'Claude Desktop', sub: 'Appli de bureau — connecteur distant OU serveur local.',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', steps: [
         '<b>Réglages → Connecteurs → Ajouter un connecteur personnalisé</b>.',
-        'URL : <code>{BASE}/mcp</code>, puis login via l\'identité (compte autorisé).' ] },
+        'URL : <code>{HUB}</code>, puis login via l\'identité (compte autorisé).' ] },
       { label: 'Serveur local (jeton)', badge: 'pat', file: 'claude_desktop_config.json',
         note: 'Réglages → Développeur → Modifier la config, colle ce bloc :', code: localJson('mcpServers') },
     ] },
   { id: 'claude-code', group: 'Claude', name: 'Claude Code', sub: 'CLI — une commande suffit.',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: 'terminal',
-        note: 'OAuth 2.1 natif : la commande ouvre le navigateur pour te connecter.', code: `claude mcp add --transport http sonar {BASE}/mcp` },
+        note: 'OAuth 2.1 natif : la commande ouvre le navigateur pour te connecter.', code: `claude mcp add --transport http sonar {HUB}` },
       { label: 'Serveur local (jeton)', badge: 'pat', file: 'terminal', code: LOCAL_CODE_CLI },
     ] },
 
@@ -219,39 +223,39 @@ const CLIENTS = [
       steps: [
         'Active le mode dev : <b>Réglages → Apps → Paramètres avancés → Developer mode</b>.',
         '<b>Réglages → Connecteurs (Apps) → Créer</b>.',
-        'Nom + description, URL du serveur : <code>{BASE}/mcp</code>, auth = OAuth.',
+        'Nom + description, URL du serveur : <code>{HUB}</code>, auth = OAuth.',
       ] }] },
 
   // ---- Éditeurs & outils dev ----
   { id: 'cursor', group: 'Éditeurs & outils dev', name: 'Cursor', sub: 'Éditeur — fichier mcp.json.',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: '~/.cursor/mcp.json (ou .cursor/mcp.json)',
-        code: remoteJson('mcpServers', '{ "url": "{BASE}/mcp" }') },
+        code: remoteJson('mcpServers', '{ "url": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.cursor/mcp.json', code: localJson('mcpServers') },
     ] },
   { id: 'vscode', group: 'Éditeurs & outils dev', name: 'GitHub Copilot (VS Code)', sub: 'Mode agent — fichier .vscode/mcp.json (clé « servers »).',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: '.vscode/mcp.json',
-        code: remoteJson('servers', '{ "type": "http", "url": "{BASE}/mcp" }') },
+        code: remoteJson('servers', '{ "type": "http", "url": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: '.vscode/mcp.json', code: localJson('servers') },
     ] },
   { id: 'windsurf', group: 'Éditeurs & outils dev', name: 'Windsurf', sub: 'Codeium — fichier mcp_config.json (clé « serverUrl »).',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: '~/.codeium/windsurf/mcp_config.json',
-        code: remoteJson('mcpServers', '{ "serverUrl": "{BASE}/mcp" }') },
+        code: remoteJson('mcpServers', '{ "serverUrl": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.codeium/windsurf/mcp_config.json', code: localJson('mcpServers') },
     ] },
   { id: 'cline', group: 'Éditeurs & outils dev', name: 'Cline', sub: 'Extension — panneau Cline → MCP Servers → Configure.',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: 'cline_mcp_settings.json',
         note: 'Le type DOIT être « streamableHttp » (camelCase) sinon Cline retombe en SSE.',
-        code: remoteJson('mcpServers', '{ "type": "streamableHttp", "url": "{BASE}/mcp" }') },
+        code: remoteJson('mcpServers', '{ "type": "streamableHttp", "url": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: 'cline_mcp_settings.json', code: localJson('mcpServers') },
     ] },
   { id: 'gemini-cli', group: 'CLI, terminaux & agents', name: 'Gemini CLI', sub: 'Google — fichier settings.json (clé « httpUrl » pour le distant).',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: '~/.gemini/settings.json',
-        code: remoteJson('mcpServers', '{ "httpUrl": "{BASE}/mcp" }') },
+        code: remoteJson('mcpServers', '{ "httpUrl": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.gemini/settings.json', code: localJson('mcpServers') },
     ] },
   { id: 'zed', group: 'Éditeurs & outils dev', name: 'Zed', sub: 'Éditeur — clé « context_servers » (command est un objet).',
@@ -273,7 +277,7 @@ const CLIENTS = [
         code: `{
   "context_servers": {
     "sonar": {
-      "command": { "path": "npx", "args": ["-y", "mcp-remote", "{BASE}/mcp"] }
+      "command": { "path": "npx", "args": ["-y", "mcp-remote", "{HUB}"] }
     }
   }
 }` },
@@ -281,7 +285,7 @@ const CLIENTS = [
   { id: 'jetbrains', group: 'Éditeurs & outils dev', name: 'JetBrains AI Assistant / Junie', sub: 'IntelliJ & co — Réglages → Tools → AI Assistant → MCP (colle un JSON).',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: 'Settings → Tools → AI Assistant → MCP → New (JSON)',
-        code: remoteJson('mcpServers', '{ "url": "{BASE}/mcp" }') },
+        code: remoteJson('mcpServers', '{ "url": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: 'même dialogue MCP (JSON)', code: localJson('mcpServers') },
     ] },
   { id: 'continue', group: 'Éditeurs & outils dev', name: 'Continue.dev', sub: 'Extension — un fichier YAML par serveur.',
@@ -305,7 +309,7 @@ mcpServers:
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', steps: [
         '<b>Réglages → MCP Servers → « Add server »</b>.',
-        'Type = <b>Streamable HTTP</b> (ou SSE), URL = <code>{BASE}/mcp</code>, puis <b>Save</b>.' ] },
+        'Type = <b>Streamable HTTP</b> (ou SSE), URL = <code>{HUB}</code>, puis <b>Save</b>.' ] },
       { label: 'Serveur local (jeton)', badge: 'pat', steps: [
         'Type = <b>stdio</b>, Command = <code>' + PYBIN + '</code>, Args = <code>-m sonar_mcp</code>.',
         'Env : <code>SONAR_TOKEN={PAT}</code>, <code>SONAR_BASE_URL={BASE}</code>, <code>PYTHONPATH=' + REPO + '</code>.' ] },
@@ -313,7 +317,7 @@ mcpServers:
   { id: 'lm-studio', group: 'Assistants', name: 'LM Studio', sub: 'Modèles locaux — onglet Program → Edit mcp.json (notation Cursor).',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: 'mcp.json (Program → Edit mcp.json)',
-        code: remoteJson('mcpServers', '{ "url": "{BASE}/mcp" }') },
+        code: remoteJson('mcpServers', '{ "url": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: 'mcp.json', code: localJson('mcpServers') },
     ] },
 
@@ -321,7 +325,7 @@ mcpServers:
   { id: 'roo-code', group: 'Éditeurs & outils dev', name: 'Roo Code', sub: 'Extension VS Code — panneau Roo → MCP → Edit MCP.',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: 'mcp_settings.json (Roo → MCP)',
-        code: remoteJson('mcpServers', '{ "type": "streamableHttp", "url": "{BASE}/mcp" }') },
+        code: remoteJson('mcpServers', '{ "type": "streamableHttp", "url": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: 'mcp_settings.json', code: localJson('mcpServers') },
     ] },
 
@@ -329,14 +333,14 @@ mcpServers:
   { id: 'amazon-q', group: 'CLI, terminaux & agents', name: 'Amazon Q Developer', sub: 'AWS (CLI & IDE) — fichier mcp.json.',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: '~/.aws/amazonq/mcp.json (ou .amazonq/mcp.json)',
-        code: remoteJson('mcpServers', '{ "type": "http", "url": "{BASE}/mcp" }') },
+        code: remoteJson('mcpServers', '{ "type": "http", "url": "{HUB}" }') },
       { label: 'Serveur local (jeton)', badge: 'pat', file: '~/.aws/amazonq/mcp.json', code: localJson('mcpServers') },
     ] },
   { id: 'goose', group: 'CLI, terminaux & agents', name: 'Goose', sub: 'Agent open source (Block) — extensions MCP.',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: 'terminal',
         note: 'Ou : `goose configure` → Add Extension → « Remote Extension (Streaming HTTP) » → colle l\'URL.',
-        code: `goose session --with-streamable-http-extension "{BASE}/mcp"` },
+        code: `goose session --with-streamable-http-extension "{HUB}"` },
       { label: 'Serveur local (jeton)', badge: 'pat', steps: [
         'Lance <code>goose configure</code> → <b>Add Extension</b> → <b>Command-line Extension</b>.',
         'Commande : <code>' + PYBIN + ' -m sonar_mcp</code> ; ajoute les variables d\'env <code>SONAR_TOKEN</code> / <code>SONAR_BASE_URL</code> / <code>PYTHONPATH</code>.' ] },
@@ -344,7 +348,7 @@ mcpServers:
   { id: 'warp', group: 'CLI, terminaux & agents', name: 'Warp', sub: 'Terminal IA — Settings → Agents → MCP servers (colle un JSON).',
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', file: 'Settings → Agents → MCP servers → Add (URL-based)',
-        code: `{ "sonar": { "type": "http", "url": "{BASE}/mcp" } }` },
+        code: `{ "sonar": { "type": "http", "url": "{HUB}" } }` },
       { label: 'Serveur local (jeton)', badge: 'pat', file: 'Settings → Agents → MCP servers → Add (CLI-based)',
         code: `{
   "sonar": {
@@ -358,7 +362,7 @@ mcpServers:
     methods: [
       { label: 'Connecteur distant', badge: 'oauth', steps: [
         'Commande <b>« Manage MCP Servers »</b> → <b>Install New Server</b>.',
-        'Transport = <b>HTTP</b>, URL = <code>{BASE}/mcp</code>, puis <b>Install</b>.' ] },
+        'Transport = <b>HTTP</b>, URL = <code>{HUB}</code>, puis <b>Install</b>.' ] },
       { label: 'Serveur local (jeton)', badge: 'pat', steps: [
         'Même écran → Transport = <b>stdio</b>.',
         'Command = <code>' + PYBIN + '</code>, Args = <code>-m sonar_mcp</code>, + env <code>SONAR_TOKEN</code> / <code>SONAR_BASE_URL</code> / <code>PYTHONPATH</code>.' ] },
@@ -369,7 +373,7 @@ mcpServers:
         note: 'Ton instance n8n doit pouvoir joindre Sonar par le réseau. Compte autorisé requis.',
         steps: [
           '<b>Credentials → New → « MCP Client »</b>.',
-          'Endpoint URL = <code>{BASE}/mcp</code> (transport <b>HTTP Streamable</b>).',
+          'Endpoint URL = <code>{HUB}</code> (transport <b>HTTP Streamable</b>).',
           'Ajoute le node <b>« MCP Client Tool »</b> dans ton workflow avec ce credential.' ] },
     ] },
 
@@ -380,41 +384,42 @@ mcpServers:
       steps: [
         'Dans Le Chat : <b>Connecteurs</b> (Réglages → Connecteurs).',
         'Ajoute un <b>connecteur MCP personnalisé</b>.',
-        'URL : <code>{BASE}/mcp</code>, puis connecte-toi via l\'identité.' ] }] },
+        'URL : <code>{HUB}</code>, puis connecte-toi via l\'identité.' ] }] },
   { id: 'perplexity', group: 'Assistants', name: 'Perplexity', sub: 'Pro / Max / Enterprise — connecteurs personnalisés.',
     methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
       note: 'Réservé aux abonnements Pro / Max / Enterprise. URL en HTTPS, compte autorisé.',
       steps: [
         '<b>Réglages → Connecteurs</b>.',
         'Clique <b>« + Custom connector »</b>.',
-        'URL du serveur MCP : <code>{BASE}/mcp</code>, auth = OAuth.' ] }] },
+        'URL du serveur MCP : <code>{HUB}</code>, auth = OAuth.' ] }] },
   { id: 'grok', group: 'Assistants', name: 'Grok (xAI)', sub: '« Bring Your Own MCP » — Web, iOS, Android.',
     methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
       note: 'Compte autorisé requis.',
       steps: [
         'Dans Grok : <b>Réglages → Connecteurs</b>.',
         'Choisis <b>« Bring Your Own MCP »</b> (connecteur personnalisé).',
-        'URL : <code>{BASE}/mcp</code>.' ] }] },
+        'URL : <code>{HUB}</code>.' ] }] },
   { id: 'copilot-studio', group: 'CLI, terminaux & agents', name: 'Microsoft Copilot Studio', sub: 'Entreprise — ajoute un serveur MCP comme outil d\'agent.',
     methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
       note: 'Outil entreprise (maker). Compte autorisé requis ; URL en HTTPS.',
       steps: [
         'Page <b>Tools</b> de ton agent → <b>Add a tool → New tool</b>.',
         'Choisis <b>Model Context Protocol</b>.',
-        'Server name + description, <b>Server URL</b> = <code>{BASE}/mcp</code>, puis <b>Add to agent</b>.' ] }] },
+        'Server name + description, <b>Server URL</b> = <code>{HUB}</code>, puis <b>Add to agent</b>.' ] }] },
   { id: 'gemini-enterprise', group: 'CLI, terminaux & agents', name: 'Gemini Enterprise', sub: 'Google Cloud — serveur MCP perso en « Data Store » (admin).',
     methods: [{ label: 'Connecteur distant', badge: 'oauth', warn: true,
       note: 'Entreprise / admin GCP. Prérequis : autoriser les Data Stores MCP (org policy) + rôle Discovery Engine Editor, et enregistrer Gemini Enterprise comme client OAuth de ton IdP.',
       steps: [
         'Console Google Cloud → <b>Gemini Enterprise → Data stores → Create data store</b>.',
         'Cherche <b>« Custom MCP Server »</b>.',
-        'Server URL = <code>{BASE}/mcp</code> + détails d\'authentification (OAuth).' ] }] },
+        'Server URL = <code>{HUB}</code> + détails d\'authentification (OAuth).' ] }] },
 ];
 
 createApp({
   data() {
     return {
       base: BASE,
+      hub: HUB,
       pat: '',
       sel: 'claude-web',
       copied: '',
@@ -423,20 +428,26 @@ createApp({
     };
   },
   computed: {
-    mcpUrl() { return this.base + '/mcp'; },
+    mcpUrl() { return this.hub || 'https://TON-HUB-MCP/mcp'; },
     groups() { return [...new Set(this.clients.map(c => c.group))]; },
     cur() { return this.clients.find(c => c.id === this.sel); },
   },
   methods: {
     clientsIn(g) { return this.clients.filter(c => c.group === g); },
-    fill(text) { return String(text).split('{BASE}').join(this.base).split('{PAT}').join(this.pat.trim() || 'sonar_pat_TON_JETON'); },
+    fill(text) {
+      const hub = this.hub || 'https://TON-HUB-MCP/mcp';
+      return String(text).split('{BASE}').join(this.base).split('{HUB}').join(hub)
+        .split('{PAT}').join(this.pat.trim() || 'sonar_pat_TON_JETON');
+    },
     fillHtml(text) {
       // Les `steps` contiennent du HTML STATIQUE sûr, mais on les rend en v-html : il faut
-      // ÉCHAPPER les valeurs dynamiques (jeton collé par l'utilisateur, URL) avant injection,
+      // ÉCHAPPER les valeurs dynamiques (jeton collé par l'utilisateur, URLs) avant injection,
       // sinon un jeton contenant `<…>` exécuterait du HTML (self-XSS).
       const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const hub = this.hub || 'https://TON-HUB-MCP/mcp';
       return String(text).split('{BASE}').join(esc(this.base))
+        .split('{HUB}').join(esc(hub))
         .split('{PAT}').join(esc(this.pat.trim() || 'sonar_pat_TON_JETON'));
     },
     copy(text, key) {

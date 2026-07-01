@@ -576,15 +576,15 @@
           <a href="/help/mcp" class="mcp-guide-link">{{ T('tokens.full_guide', 'Guide complet — toutes les apps IA →') }}</a>
         </div>
 
-        <!-- Option A — claude.ai (web) : connecteur distant, zéro installation (si activé). -->
-        <div v-if="mcpRemote" class="mcp-opt">
-          <div class="mcp-opt-h">{{ T('tokens.remote_title', 'A · claude.ai (web) — connecteur, sans rien installer') }}</div>
-          <div class="mcp-opt-d">{{ T('tokens.remote_desc', 'Dans claude.ai : Réglages → Connecteurs → « Ajouter un connecteur personnalisé », colle cette URL :') }}</div>
-          <div class="mcp-snippet">
-            <code>{{ mcpUrl }}</code>
-            <button class="btn-sm" @click="copyText(mcpUrl, 'url')">{{ copiedWhat === 'url' ? T('tokens.copied', 'Copié !') : T('tokens.copy', 'Copier') }}</button>
+        <!-- Option A — claude.ai (web) : via le HUB MCP central (un seul connecteur, tous projets). -->
+        <div class="mcp-opt">
+          <div class="mcp-opt-h">{{ T('tokens.remote_title', 'A · claude.ai (web) — via le hub central') }}</div>
+          <div class="mcp-opt-d">{{ T('tokens.remote_desc', "L'accès web passe par le hub MCP central : UN connecteur regroupe tous tes projets (Sonar inclus). Dans claude.ai : Réglages → Connecteurs → « Ajouter un connecteur personnalisé » :") }}</div>
+          <div v-if="hubMcpUrl" class="mcp-snippet">
+            <code>{{ hubMcpUrl }}</code>
+            <button class="btn-sm" @click="copyText(hubMcpUrl, 'url')">{{ copiedWhat === 'url' ? T('tokens.copied', 'Copié !') : T('tokens.copy', 'Copier') }}</button>
           </div>
-          <div class="tok-meta">{{ T('tokens.remote_hint', "Tu te connecteras via le fournisseur d'identité, avec un compte autorisé à accéder au service. Connecte-toi bien avec le BON compte (sinon accès refusé).") }}</div>
+          <div class="tok-meta">{{ T('tokens.remote_hint', "Connecte-toi via le fournisseur d'identité avec un compte autorisé. Détails + toutes les apps IA dans le guide.") }}</div>
         </div>
 
         <!-- Option B — Claude Code / Desktop : jeton local + commande prête à coller. -->
@@ -977,7 +977,7 @@ createApp({
       // jetons d'accès (MCP) — le secret brut (newToken) n'est affiché qu'une fois
       tokens: [], newTokenName: '', tokenBusy: false, tokenMsg: '', newToken: '', tokenCopied: false,
       // guide de connexion MCP : URL publique + si le connecteur distant est monté
-      mcpBase: SONAR_BOOT.base_url || '', mcpRemote: !!SONAR_BOOT.mcp_remote, copiedWhat: '',
+      mcpBase: SONAR_BOOT.base_url || '', hubMcpUrl: SONAR_BOOT.hub_mcp_url || '', copiedWhat: '',
       // administration des comptes (panneau visible aux admins uniquement)
       adminUsers: [], adminMsg: '',
       // édition inline de l'email d'un compte
@@ -1010,9 +1010,8 @@ createApp({
   },
   computed: {
     hasResult() { return this.findings.length > 0; },
-    // Guide MCP : URL du connecteur distant + commande locale prête (jeton injecté s'il vient
-    // d'être généré, sinon placeholder). Les chemins locaux restent à adapter par l'utilisateur.
-    mcpUrl() { return (this.mcpBase || '') + '/mcp'; },
+    // Guide MCP : commande locale prête (jeton injecté s'il vient d'être généré, sinon
+    // placeholder ; chemins locaux à adapter). Le connecteur WEB passe par le hub (hubMcpUrl).
     mcpAddCommand() {
       const tok = this.newToken || 'sonar_pat_TON_JETON';
       const base = this.mcpBase || 'https://ton-instance-sonar';

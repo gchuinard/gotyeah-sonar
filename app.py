@@ -92,6 +92,12 @@ def _base_url(request: Request) -> str:
     return base or str(request.base_url).rstrip("/")
 
 
+def _hub_mcp_url() -> str:
+    """URL du connecteur MCP du hub central (gotyeah-mcp) — l'accès claude.ai/web à Sonar y
+    passe désormais. Optionnelle (repo public) : vide → les pages renvoient vers /help/mcp."""
+    return (os.environ.get("SONAR_HUB_MCP_URL") or "").strip().rstrip("/")
+
+
 def _safe_next(raw: str | None) -> str | None:
     """Chemin de redirection post-login SÛR (anti open-redirect) : uniquement un
     chemin relatif same-origin (commence par un seul '/', sans schéma ni hôte).
@@ -164,9 +170,9 @@ def _render_index(request: Request, user) -> str:
     lang = _lang(request, user)
     boot = json.dumps(
         {"lang": lang, "available": i18n.available_langs(), "ui": i18n.render_ui(lang),
-         # URL publique pour guider la connexion MCP locale (le connecteur MCP DISTANT de
-         # Sonar est décommissionné : l'accès claude.ai passe par le hub central gotyeah-mcp).
-         "base_url": _base_url(request)},
+         # URL publique (voie locale/PAT) + URL du connecteur du hub central (voie web) : le
+         # MCP DISTANT propre à Sonar est décommissionné, l'accès claude.ai passe par le hub.
+         "base_url": _base_url(request), "hub_mcp_url": _hub_mcp_url()},
         ensure_ascii=False,
     )
     return PAGE.replace("__SONAR_BOOTSTRAP__", boot)
@@ -305,7 +311,9 @@ async def help_mcp(request: Request):
     user = _current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
-    page = HELP_MCP_PAGE.replace("__SONAR_HELP_BASE__", json.dumps(_base_url(request)))
+    page = (HELP_MCP_PAGE
+            .replace("__SONAR_HELP_BASE__", json.dumps(_base_url(request)))
+            .replace("__SONAR_HUB_MCP__", json.dumps(_hub_mcp_url())))
     return HTMLResponse(page)
 
 

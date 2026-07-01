@@ -16,6 +16,7 @@ services:
       # --- Pont de confiance pour le hub MCP central (gotyeah-mcp) : /api/mcp/* ---
       - SONAR_MCP_SHARED_SECRET=${SONAR_MCP_SHARED_SECRET:-}     # secret partagé (== SONAR_MCP_SECRET côté gotyeah-mcp). Vide = pont fermé (401).
       - SONAR_MCP_INTERNAL_HOSTS=${SONAR_MCP_INTERNAL_HOSTS:-}   # hôtes internes autorisés par TrustedHost, ex. "sonar" (nom du conteneur joint par le hub)
+      - SONAR_HUB_MCP_URL=${SONAR_HUB_MCP_URL:-}                 # URL du connecteur du hub central affichée dans le dashboard + /help/mcp (voie web). Vide = renvoie au guide.
       - SONAR_MCP_SCAN_WAIT=${SONAR_MCP_SCAN_WAIT:-}            # délai d'attente synchrone de run_scan (s) — défaut 25
       - SONAR_SCAN_RATE=${SONAR_SCAN_RATE:-}                    # anti-abus run_scan : nb max de scans / fenêtre — défaut 10
       - SONAR_SCAN_RATE_WINDOW_MIN=${SONAR_SCAN_RATE_WINDOW_MIN:-}  # fenêtre du quota run_scan (min) — défaut 15
