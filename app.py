@@ -164,38 +164,17 @@ def _render_index(request: Request, user) -> str:
     lang = _lang(request, user)
     boot = json.dumps(
         {"lang": lang, "available": i18n.available_langs(), "ui": i18n.render_ui(lang),
-         # Pour guider la connexion MCP côté dashboard : URL publique + si le connecteur
-         # distant (claude.ai web) est réellement monté.
-         "base_url": _base_url(request), "mcp_remote": _REMOTE_APP is not None},
+         # URL publique pour guider la connexion MCP locale (le connecteur MCP DISTANT de
+         # Sonar est décommissionné : l'accès claude.ai passe par le hub central gotyeah-mcp).
+         "base_url": _base_url(request)},
         ensure_ascii=False,
     )
     return PAGE.replace("__SONAR_BOOTSTRAP__", boot)
 
 
-# --------------------------------------------------------------------------- #
-# MCP distant (claude.ai web) — surface OAuth PUBLIQUE, DÉSACTIVÉE par défaut.
-# On ne construit (et n'importe le SDK `mcp`) que si SONAR_MCP_REMOTE=on ET qu'une
-# SONAR_BASE_URL HTTPS absolue est fournie (OAuth l'exige). Fail-soft : toute erreur
-# d'init désactive le MCP distant sans empêcher le reste du site de démarrer.
-# Le transport est monté en DERNIER (voir bas de fichier) et son session manager
-# tourne dans le lifespan ci-dessous.
-# --------------------------------------------------------------------------- #
-_REMOTE_MCP = None
-_REMOTE_APP = None
-if _env_bool("SONAR_MCP_REMOTE"):
-    _remote_base = (os.environ.get("SONAR_BASE_URL") or "").strip().rstrip("/")
-    if not _remote_base.startswith("https://"):
-        print("[mcp-remote] SONAR_MCP_REMOTE=on mais SONAR_BASE_URL HTTPS absente "
-              "→ MCP distant désactivé (OAuth exige une URL HTTPS publique).")
-    else:
-        try:
-            from mcp_remote.remote import build_remote
-
-            _REMOTE_MCP, _REMOTE_APP = build_remote(_remote_base)
-            print(f"[mcp-remote] activé sur {_remote_base}/mcp (auth fédérée OIDC)")
-        except Exception as exc:  # dépendance absente, IdP injoignable, conflit de version…
-            _REMOTE_MCP = _REMOTE_APP = None
-            print(f"[mcp-remote] échec d'init ({exc!r}) → MCP distant désactivé.")
+# Le MCP DISTANT propre à Sonar (Streamable HTTP + OAuth, claude.ai web) a été décommissionné :
+# l'accès MCP passe désormais par le hub central gotyeah-mcp, qui appelle Sonar via le pont de
+# confiance /api/mcp/* (cf. mcp_bridge). Restent ici : le site web + le pont + le MCP stdio local.
 
 
 @asynccontextmanager
@@ -203,14 +182,7 @@ async def lifespan(app: FastAPI):
     db.init_db()
     auth.init_auth()
     auth.bootstrap_admin()  # imprime un lien admin one-time dans les logs si configuré
-    if _REMOTE_APP is not None:
-        # Le transport Streamable HTTP a son propre lifespan (gestionnaire de sessions) ;
-        # sans lui, /mcp plante. On le compose avec le nôtre. Plus de tables OAuth maison :
-        # l'auth est déléguée à l'IdP (tokens JWT validés via la discovery OIDC).
-        async with _REMOTE_APP.lifespan(app):
-            yield
-    else:
-        yield
+    yield
 
 
 # `/docs`, `/redoc`, `/openapi.json` DÉSACTIVÉS : surface publique non authentifiée qui
@@ -892,16 +864,4 @@ async def annotation_set(request: Request):
     return JSONResponse({"ok": True, "annotation": annot})
 
 
-# --------------------------------------------------------------------------- #
-# MCP distant : monté EN DERNIER pour servir de fallback. Starlette évalue les
-# routes dans l'ordre → les routes Sonar ci-dessus matchent d'abord, et ce mount
-# « / » ne récupère que ce qu'elles laissent passer : /mcp et /.well-known/oauth-*.
-# (Aucun effet si SONAR_MCP_REMOTE est éteint : _REMOTE_APP reste None.)
-# --------------------------------------------------------------------------- #
-if _REMOTE_APP is not None:
-    # L'app FastMCP (OIDCProxy) sert elle-même /mcp, la metadata OAuth (Protected Resource
-    # Metadata RFC 9728 + serveur d'autorisation RFC 8414, issuer correct + CORS), la DCR
-    # (/register) et le callback IdP (/auth/callback). Montée en DERNIER : Starlette évalue
-    # les routes dans l'ordre, donc les routes Sonar ci-dessus priment et ce mount ne
-    # récupère que /mcp + /.well-known/oauth-* + /authorize|/token|/register|/auth/callback.
-    app.mount("/", _REMOTE_APP)
+# (Le mount catch-all « / » du MCP distant a été retiré avec son décommissionnement.)

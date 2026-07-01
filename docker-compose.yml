@@ -13,14 +13,9 @@ services:
       # chaque variable optionnelle : l'app démarre même sans .env (valeurs par défaut).
       # --- Auth & emails (P0) ---
       - SONAR_BASE_URL=${SONAR_BASE_URL:-}                       # ex. https://sonar.gautierchuinard.com (liens magiques)
-      - SONAR_MCP_REMOTE=${SONAR_MCP_REMOTE:-}                   # opt-in MCP distant (claude.ai web) — vide/off = désactivé
       # --- Pont de confiance pour le hub MCP central (gotyeah-mcp) : /api/mcp/* ---
       - SONAR_MCP_SHARED_SECRET=${SONAR_MCP_SHARED_SECRET:-}     # secret partagé (== SONAR_MCP_SECRET côté gotyeah-mcp). Vide = pont fermé (401).
       - SONAR_MCP_INTERNAL_HOSTS=${SONAR_MCP_INTERNAL_HOSTS:-}   # hôtes internes autorisés par TrustedHost, ex. "sonar" (nom du conteneur joint par le hub)
-      # OIDC : auth du MCP distant déléguée à l'IdP (Pocket ID) via l'OIDCProxy FastMCP.
-      - SONAR_OIDC_CONFIG_URL=${SONAR_OIDC_CONFIG_URL:-}        # ex. https://idp.gautierchuinard.com/.well-known/openid-configuration
-      - SONAR_OIDC_CLIENT_ID=${SONAR_OIDC_CLIENT_ID:-}          # client confidentiel pré-enregistré côté IdP
-      - SONAR_OIDC_CLIENT_SECRET=${SONAR_OIDC_CLIENT_SECRET:-}  # son secret (jamais committé)
       - SONAR_MCP_SCAN_WAIT=${SONAR_MCP_SCAN_WAIT:-}            # délai d'attente synchrone de run_scan (s) — défaut 25
       - SONAR_SCAN_RATE=${SONAR_SCAN_RATE:-}                    # anti-abus run_scan : nb max de scans / fenêtre — défaut 10
       - SONAR_SCAN_RATE_WINDOW_MIN=${SONAR_SCAN_RATE_WINDOW_MIN:-}  # fenêtre du quota run_scan (min) — défaut 15
