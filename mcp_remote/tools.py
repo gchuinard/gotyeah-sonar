@@ -71,6 +71,26 @@ def resolve_user_from_token(tok, userinfo_endpoint: str | None = None, *, http_g
     return sonar_auth.get_user_by_email(norm)
 
 
+def resolve_user_from_trusted_email(email: str | None):
+    """Mappe un email DÉJÀ VÉRIFIÉ (transmis par le hub MCP de confiance via l'en-tête
+    `X-Act-As-Email`) vers un compte Sonar, ou None.
+
+    Utilisé par le pont `mcp_bridge` : le hub gotyeah-mcp a fait la vérif OIDC
+    (`email_verified`) EN AMONT et le secret partagé authentifie l'appelant → on traite ici
+    l'email comme vérifié. Même mapping que `resolve_user_from_token` : en inscription OUVERTE
+    on crée le compte à la volée, sinon lookup strict (identités gérées par l'admin).
+    """
+    import auth as sonar_auth
+
+    email = (email or "").strip()
+    if not email:
+        return None
+    norm = sonar_auth.normalize_email(email)
+    if sonar_auth.open_registration():
+        return sonar_auth.get_or_create_user(norm)
+    return sonar_auth.get_user_by_email(norm)
+
+
 # --------------------------------------------------------------------------- #
 # Helpers communs
 # --------------------------------------------------------------------------- #

@@ -280,11 +280,22 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 _BASE_HOST = urlparse((os.environ.get("SONAR_BASE_URL") or "").strip()).hostname
 if _BASE_HOST:
     from starlette.middleware.trustedhost import TrustedHostMiddleware
+    # Hôtes INTERNES autorisés en plus du host public (+ loopback) : appels service-à-service
+    # sur le réseau Docker — ex. le hub MCP gotyeah-mcp qui joint « sonar » via /api/mcp/*.
+    # Sans ça, TrustedHost rejetterait (400) le Host interne « sonar ». (cf. SONAR_MCP_INTERNAL_HOSTS)
+    _internal_hosts = [h.strip() for h in (os.environ.get("SONAR_MCP_INTERNAL_HOSTS") or "").split(",")
+                       if h.strip()]
     app.add_middleware(TrustedHostMiddleware,
-                       allowed_hosts=[_BASE_HOST, "localhost", "127.0.0.1"])
+                       allowed_hosts=[_BASE_HOST, "localhost", "127.0.0.1", *_internal_hosts])
 else:
     print("[app] SONAR_BASE_URL non défini : les liens magiques utilisent le header Host "
           "(potentiellement forgeable). Définis SONAR_BASE_URL en production.")
+
+# Pont de confiance pour le hub MCP central (gotyeah-mcp) : expose /api/mcp/* (protégé par
+# secret partagé + X-Act-As-Email), en réutilisant la logique de scan de Sonar. Toujours monté
+# (default-deny sans SONAR_MCP_SHARED_SECRET) et AVANT le mount catch-all « / » du MCP distant.
+import mcp_bridge  # noqa: E402
+app.include_router(mcp_bridge.router)
 
 
 def _sse(event: str, data: dict) -> str:
