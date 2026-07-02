@@ -26,7 +26,7 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
-from fastapi import APIRouter, Request
+from fastapi import Request
 from fastapi.responses import RedirectResponse
 from jwt import PyJWKSet, PyJWTError
 
@@ -44,8 +44,6 @@ _STATE_COOKIE = "oidc_tx"
 _STATE_PATH = "/auth/oidc"
 _STATE_TTL = 600
 _SAFE_ALGS = {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512"}
-
-router = APIRouter(prefix="/auth/oidc", tags=["oidc"])
 
 _discovery: dict | None = None
 _jwks_set: PyJWKSet | None = None
@@ -120,7 +118,6 @@ def _pkce() -> tuple[str, str]:
     return verifier, challenge
 
 
-@router.get("/status")
 async def oidc_status() -> dict:
     """Lu par la page de login : afficher le bouton + garder ou non le lien magique."""
     return {
@@ -130,7 +127,6 @@ async def oidc_status() -> dict:
     }
 
 
-@router.get("/login")
 async def oidc_login() -> RedirectResponse:
     if not oidc_enabled():
         return RedirectResponse("/login?sso_error=disabled", status_code=303)
@@ -166,7 +162,6 @@ async def oidc_login() -> RedirectResponse:
     return resp
 
 
-@router.get("/callback")
 async def oidc_callback(request: Request) -> RedirectResponse:
     def _fail(code: str) -> RedirectResponse:
         r = RedirectResponse(f"/login?sso_error={code}", status_code=303)
@@ -254,3 +249,12 @@ async def oidc_callback(request: Request) -> RedirectResponse:
     )
     resp.delete_cookie(_STATE_COOKIE, path=_STATE_PATH)
     return resp
+
+
+def register(app) -> None:
+    """Enregistre les routes OIDC sur l'app. On utilise `add_api_route` (routes plates,
+    style du reste de Sonar) plutôt qu'`include_router` : ce dernier insère dans
+    `app.routes` un objet sans `.path` (FastAPI 0.139) que le smoke test n'attend pas."""
+    app.add_api_route("/auth/oidc/status", oidc_status, methods=["GET"])
+    app.add_api_route("/auth/oidc/login", oidc_login, methods=["GET"])
+    app.add_api_route("/auth/oidc/callback", oidc_callback, methods=["GET"])

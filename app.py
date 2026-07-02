@@ -257,7 +257,7 @@ app.add_middleware(_SecurityHeadersMiddleware)
 # Assets statiques auto-hébergés (Vue épinglé) — plus de dépendance CDN (supply-chain) ni de
 # page blanche hors-ligne. Servis sous /static.
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
-app.include_router(oidc.router)  # /auth/oidc/{status,login,callback}
+oidc.register(app)  # /auth/oidc/{status,login,callback}
 
 # Anti Host-header forgé : si SONAR_BASE_URL est défini (prod), on n'accepte que ce host
 # (+ loopback pour les healthchecks). Sans lui, `_base_url` retombe sur le header Host → un
