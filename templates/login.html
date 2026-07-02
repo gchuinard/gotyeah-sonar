@@ -49,6 +49,9 @@
   .msg.ok { background:rgba(46,230,166,.1); border:1px solid var(--line-2); color:var(--text-dim); }
   .msg.err { background:rgba(255,59,107,.08); border:1px solid rgba(255,59,107,.35); color:#ffb3c4; }
   .foot { margin-top:18px; font-size:12px; color:var(--text-faint); line-height:1.5; }
+  .or { display:none; text-align:center; color:var(--text-faint); font-family:var(--mono); font-size:11px; margin:16px 0 4px; }
+  a.btnlink { display:none; text-decoration:none; text-align:center; font-family:var(--display); font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:12px; color:var(--text); background:var(--bg-3); border:1px solid var(--line-2); border-radius:9px; padding:13px; margin-top:6px; cursor:pointer; transition:filter .15s,border-color .15s; }
+  a.btnlink:hover { filter:brightness(1.12); border-color:var(--accent); }
 </style>
 </head>
 <body>
@@ -69,6 +72,9 @@
       <input id="email" type="email" autocomplete="email" placeholder="toi@exemple.com" required autofocus />
       <button id="btn" type="submit">Recevoir un lien</button>
     </form>
+
+    <div id="or" class="or">— ou —</div>
+    <a id="gotyeah" class="btnlink" href="/auth/oidc/login">Se connecter avec GotYeah</a>
 
     <div id="msg" class="msg"></div>
     <p class="foot">On t'envoie un lien à usage unique, valable ~15 minutes. Clique dessus
@@ -112,6 +118,36 @@
       btn.disabled = false;
     }
   });
+
+  // Erreur éventuelle renvoyée par le callback OIDC.
+  const ssoErr = new URLSearchParams(location.search).get('sso_error');
+  if (ssoErr) {
+    const map = {
+      provider: "Connexion GotYeah refusée ou annulée.",
+      nosignup: "Aucun compte n'est associé à cet identifiant.",
+      unverified: "Adresse email non vérifiée côté fournisseur d'identité.",
+      noemail: "Le fournisseur d'identité n'a pas transmis d'adresse email.",
+      disabled: "La connexion GotYeah est désactivée.",
+    };
+    show(map[ssoErr] || "Échec de la connexion GotYeah. Réessaie.", 'err');
+  }
+
+  // État de l'auth : révèle le bouton GotYeah ; masque le lien magique en « GotYeah only »
+  // (fail-safe : on ne masque QUE si l'OIDC est bien actif).
+  fetch('/auth/oidc/status').then(r => r.json()).then(cfg => {
+    if (!cfg || !cfg.enabled) return;
+    const g = document.getElementById('gotyeah');
+    g.textContent = cfg.label || 'Se connecter avec GotYeah';
+    g.style.display = 'block';
+    document.getElementById('or').style.display = cfg.legacy_login ? 'block' : 'none';
+    if (cfg.legacy_login === false) {
+      form.style.display = 'none';
+      const sub = document.querySelector('.sub');
+      if (sub) sub.textContent = 'connexion par compte GotYeah';
+      const foot = document.querySelector('.foot');
+      if (foot) foot.style.display = 'none';
+    }
+  }).catch(() => {});
 </script>
 </body>
 </html>

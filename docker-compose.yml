@@ -22,6 +22,14 @@ services:
       - SONAR_SCAN_RATE_WINDOW_MIN=${SONAR_SCAN_RATE_WINDOW_MIN:-}  # fenêtre du quota run_scan (min) — défaut 15
       - SONAR_OPEN_REGISTRATION=${SONAR_OPEN_REGISTRATION:-false}
       - SONAR_ADMIN_EMAIL=${SONAR_ADMIN_EMAIL:-}
+      # --- Connexion OIDC « GotYeah » (Keycloak) ---
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_REDIRECT_URI=${OIDC_REDIRECT_URI:-}
+      - OIDC_ALLOW_SIGNUP=${OIDC_ALLOW_SIGNUP:-true}
+      - OIDC_BUTTON_LABEL=${OIDC_BUTTON_LABEL:-Se connecter avec GotYeah}
+      - LEGACY_LOGIN=${LEGACY_LOGIN:-on}      # "off" = comptes GotYeah uniquement
       - BREVO_API_KEY=${BREVO_API_KEY:-}
       - SONAR_MAIL_FROM=${SONAR_MAIL_FROM:-}
       - SONAR_MAIL_FROM_NAME=${SONAR_MAIL_FROM_NAME:-Sonar}

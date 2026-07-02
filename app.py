@@ -4,6 +4,7 @@ Volontairement mince : l'auth (liens, sessions, gate) vit dans `auth.py`, l'envo
 d'email dans `mailer.py`, le moteur dans `scanner/`. Ici on câble les routes et on
 protège le scan + l'historique derrière la session.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,6 +27,7 @@ from starlette.datastructures import MutableHeaders
 import auth
 import db
 import mailer
+import oidc
 import scan_compare
 from scanner import i18n
 from scanner.runner import normalize_target, run_scan
@@ -61,8 +63,9 @@ def _env_int(name: str, default: int) -> int:
 def _cookie_kwargs() -> dict:
     # secure=True en prod (derrière NPM en HTTPS) ; passe SONAR_COOKIE_SECURE=false
     # pour tester en local sur http://.
-    return dict(httponly=True, secure=_env_bool("SONAR_COOKIE_SECURE", True),
-                samesite="lax", path="/")
+    return dict(
+        httponly=True, secure=_env_bool("SONAR_COOKIE_SECURE", True), samesite="lax", path="/"
+    )
 
 
 def _client_ip(request: Request) -> str:
@@ -130,10 +133,10 @@ def _pat_or_session_user(request: Request, scope: str = "scans:read"):
     seul, donc un PAT ne peut JAMAIS les atteindre (default-deny par construction).
     Le jeton n'est jamais journalisé.
     """
-    user = _current_user(request)            # session (cookie) d'abord
+    user = _current_user(request)  # session (cookie) d'abord
     if user:
         return user
-    token = _bearer_token(request)           # sinon PAT, scope imposé
+    token = _bearer_token(request)  # sinon PAT, scope imposé
     if token:
         return auth.resolve_pat(token, required_scope=scope)
     return None
@@ -169,10 +172,15 @@ def _render_index(request: Request, user) -> str:
     """Injecte le bootstrap i18n (langue + dict UI) dans la page (no-op si absent)."""
     lang = _lang(request, user)
     boot = json.dumps(
-        {"lang": lang, "available": i18n.available_langs(), "ui": i18n.render_ui(lang),
-         # URL publique (voie locale/PAT) + URL du connecteur du hub central (voie web) : le
-         # MCP DISTANT propre à Sonar est décommissionné, l'accès claude.ai passe par le hub.
-         "base_url": _base_url(request), "hub_mcp_url": _hub_mcp_url()},
+        {
+            "lang": lang,
+            "available": i18n.available_langs(),
+            "ui": i18n.render_ui(lang),
+            # URL publique (voie locale/PAT) + URL du connecteur du hub central (voie web) : le
+            # MCP DISTANT propre à Sonar est décommissionné, l'accès claude.ai passe par le hub.
+            "base_url": _base_url(request),
+            "hub_mcp_url": _hub_mcp_url(),
+        },
         ensure_ascii=False,
     )
     return PAGE.replace("__SONAR_BOOTSTRAP__", boot)
@@ -193,8 +201,7 @@ async def lifespan(app: FastAPI):
 
 # `/docs`, `/redoc`, `/openapi.json` DÉSACTIVÉS : surface publique non authentifiée qui
 # divulgue toute l'API à un anonyme. L'API est petite et documentée dans le README/code.
-app = FastAPI(title="Sonar", lifespan=lifespan,
-              docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Sonar", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # En-têtes de sécurité sur TOUTES les réponses — l'app défensive doit suivre ses propres
@@ -204,10 +211,10 @@ app = FastAPI(title="Sonar", lifespan=lifespan,
 _CSP = (
     "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; "
     "img-src 'self' data:; "
-    "style-src 'self' 'unsafe-inline'; "                       # polices auto-hébergées (/static/fonts.css) — plus de CDN Google
-    "font-src 'self'; "                                        # woff2 servis depuis /static/fonts/
-    "form-action 'self'; "                                     # n'a PAS de fallback sur default-src (ZAP 10055)
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "        # Vue auto-hébergé (/static) ; 'unsafe-eval' = compilateur de templates (zéro build)
+    "style-src 'self' 'unsafe-inline'; "  # polices auto-hébergées (/static/fonts.css) — plus de CDN Google
+    "font-src 'self'; "  # woff2 servis depuis /static/fonts/
+    "form-action 'self'; "  # n'a PAS de fallback sur default-src (ZAP 10055)
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # Vue auto-hébergé (/static) ; 'unsafe-eval' = compilateur de templates (zéro build)
     "connect-src 'self'"
 )
 
@@ -219,7 +226,7 @@ class _SecurityHeadersMiddleware:
 
     def __init__(self, app):
         self.app = app
-        self._hsts = _env_bool("SONAR_COOKIE_SECURE", True)   # HSTS seulement en prod (HTTPS)
+        self._hsts = _env_bool("SONAR_COOKIE_SECURE", True)  # HSTS seulement en prod (HTTPS)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -239,8 +246,7 @@ class _SecurityHeadersMiddleware:
                 h.setdefault("Cross-Origin-Resource-Policy", "same-origin")
                 h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
                 if self._hsts:
-                    h.setdefault("Strict-Transport-Security",
-                                 "max-age=63072000; includeSubDomains")
+                    h.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
@@ -251,6 +257,7 @@ app.add_middleware(_SecurityHeadersMiddleware)
 # Assets statiques auto-hébergés (Vue épinglé) — plus de dépendance CDN (supply-chain) ni de
 # page blanche hors-ligne. Servis sous /static.
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
+app.include_router(oidc.router)  # /auth/oidc/{status,login,callback}
 
 # Anti Host-header forgé : si SONAR_BASE_URL est défini (prod), on n'accepte que ce host
 # (+ loopback pour les healthchecks). Sans lui, `_base_url` retombe sur le header Host → un
@@ -258,21 +265,30 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 _BASE_HOST = urlparse((os.environ.get("SONAR_BASE_URL") or "").strip()).hostname
 if _BASE_HOST:
     from starlette.middleware.trustedhost import TrustedHostMiddleware
+
     # Hôtes INTERNES autorisés en plus du host public (+ loopback) : appels service-à-service
     # sur le réseau Docker — ex. le hub MCP gotyeah-mcp qui joint « sonar » via /api/mcp/*.
     # Sans ça, TrustedHost rejetterait (400) le Host interne « sonar ». (cf. SONAR_MCP_INTERNAL_HOSTS)
-    _internal_hosts = [h.strip() for h in (os.environ.get("SONAR_MCP_INTERNAL_HOSTS") or "").split(",")
-                       if h.strip()]
-    app.add_middleware(TrustedHostMiddleware,
-                       allowed_hosts=[_BASE_HOST, "localhost", "127.0.0.1", *_internal_hosts])
+    _internal_hosts = [
+        h.strip()
+        for h in (os.environ.get("SONAR_MCP_INTERNAL_HOSTS") or "").split(",")
+        if h.strip()
+    ]
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=[_BASE_HOST, "localhost", "127.0.0.1", *_internal_hosts],
+    )
 else:
-    print("[app] SONAR_BASE_URL non défini : les liens magiques utilisent le header Host "
-          "(potentiellement forgeable). Définis SONAR_BASE_URL en production.")
+    print(
+        "[app] SONAR_BASE_URL non défini : les liens magiques utilisent le header Host "
+        "(potentiellement forgeable). Définis SONAR_BASE_URL en production."
+    )
 
 # Pont de confiance pour le hub MCP central (gotyeah-mcp) : expose /api/mcp/* (protégé par
 # secret partagé + X-Act-As-Email), en réutilisant la logique de scan de Sonar. Toujours monté
 # (default-deny sans SONAR_MCP_SHARED_SECRET) et AVANT le mount catch-all « / » du MCP distant.
 import mcp_bridge  # noqa: E402
+
 mcp_bridge.register(app)
 
 
@@ -311,9 +327,9 @@ async def help_mcp(request: Request):
     user = _current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
-    page = (HELP_MCP_PAGE
-            .replace("__SONAR_HELP_BASE__", json.dumps(_base_url(request)))
-            .replace("__SONAR_HUB_MCP__", json.dumps(_hub_mcp_url())))
+    page = HELP_MCP_PAGE.replace("__SONAR_HELP_BASE__", json.dumps(_base_url(request))).replace(
+        "__SONAR_HUB_MCP__", json.dumps(_hub_mcp_url())
+    )
     return HTMLResponse(page)
 
 
@@ -322,6 +338,14 @@ async def help_mcp(request: Request):
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth/request")
 async def auth_request(request: Request):
+    if not oidc.legacy_login_enabled():
+        return JSONResponse(
+            {
+                "ok": False,
+                "message": "Connexion par lien magique désactivée. Utilise « Se connecter avec GotYeah ».",
+            },
+            status_code=403,
+        )
     try:
         body = await request.json()
     except Exception:
@@ -443,10 +467,13 @@ async def admin_set_admin(request: Request, user_id: str):
         return JSONResponse({"error": "not found"}, status_code=404)
     if make_admin:
         auth.set_admin(user_id, True)
-    elif target["is_admin"] and not auth.demote_admin(user_id):   # atomique : refuse le dernier admin
+    elif target["is_admin"] and not auth.demote_admin(
+        user_id
+    ):  # atomique : refuse le dernier admin
         return JSONResponse(
             {"error": "Impossible de retirer le dernier admin.", "code": "last_admin"},
-            status_code=409)
+            status_code=409,
+        )
     return JSONResponse({"ok": True})
 
 
@@ -459,7 +486,8 @@ async def admin_delete_user(request: Request, user_id: str):
     if user_id == user["id"]:
         return JSONResponse(
             {"error": "Tu ne peux pas supprimer ton propre compte ici.", "code": "self"},
-            status_code=409)
+            status_code=409,
+        )
     # Vérif dernier-admin + suppression ATOMIQUES (anti-course → jamais zéro admin).
     result = auth.delete_user_guarded(user_id)
     if result == "not_found":
@@ -467,7 +495,8 @@ async def admin_delete_user(request: Request, user_id: str):
     if result == "last_admin":
         return JSONResponse(
             {"error": "Impossible de supprimer le dernier admin.", "code": "last_admin"},
-            status_code=409)
+            status_code=409,
+        )
     return JSONResponse({"ok": True})
 
 
@@ -487,11 +516,13 @@ async def admin_update_user_email(request: Request, user_id: str):
         return JSONResponse({"error": "not found"}, status_code=404)
     if result == "invalid":
         return JSONResponse(
-            {"error": "Adresse email invalide.", "code": "invalid"}, status_code=400)
+            {"error": "Adresse email invalide.", "code": "invalid"}, status_code=400
+        )
     if result == "conflict":
         return JSONResponse(
             {"error": "Un autre compte utilise déjà cette adresse.", "code": "conflict"},
-            status_code=409)
+            status_code=409,
+        )
     return JSONResponse({"ok": True, "user": result})
 
 
@@ -520,11 +551,13 @@ async def admin_update_domain(request: Request, user_id: str, domain_id: str):
     res = auth.update_domain(domain_id, user_id, new_domain)
     if res is None:
         return JSONResponse(
-            {"error": "Domaine invalide ou introuvable.", "code": "invalid"}, status_code=400)
+            {"error": "Domaine invalide ou introuvable.", "code": "invalid"}, status_code=400
+        )
     if res == "conflict":
         return JSONResponse(
             {"error": "Cet utilisateur a déjà un domaine portant ce nom.", "code": "conflict"},
-            status_code=409)
+            status_code=409,
+        )
     return JSONResponse({"domain": res})
 
 
@@ -545,11 +578,13 @@ async def admin_delete_domain(request: Request, user_id: str, domain_id: str):
 async def i18n_ui(request: Request, lang: str = Query(None)):
     user = _current_user(request)
     chosen = _pick_lang(lang, request, user)
-    return JSONResponse({
-        "lang": chosen,
-        "available": i18n.available_langs(),
-        "ui": i18n.render_ui(chosen),
-    })
+    return JSONResponse(
+        {
+            "lang": chosen,
+            "available": i18n.available_langs(),
+            "ui": i18n.render_ui(chosen),
+        }
+    )
 
 
 @app.post("/api/lang")
@@ -566,8 +601,14 @@ async def set_lang(request: Request):
         auth.set_user_lang(user["id"], lang)
     resp = JSONResponse({"ok": True, "lang": lang})
     # Cookie non-httponly : non sensible, et permet au front de connaître la langue.
-    resp.set_cookie(LANG_COOKIE, lang, max_age=365 * 86400,
-                    secure=_env_bool("SONAR_COOKIE_SECURE", True), samesite="lax", path="/")
+    resp.set_cookie(
+        LANG_COOKIE,
+        lang,
+        max_age=365 * 86400,
+        secure=_env_bool("SONAR_COOKIE_SECURE", True),
+        samesite="lax",
+        path="/",
+    )
     return resp
 
 
@@ -576,7 +617,7 @@ async def set_lang(request: Request):
 # --------------------------------------------------------------------------- #
 @app.get("/api/domains")
 async def domains_list(request: Request):
-    user = _pat_or_session_user(request)   # lecture : session OU PAT scans:read
+    user = _pat_or_session_user(request)  # lecture : session OU PAT scans:read
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
     return JSONResponse({"domains": auth.list_domains(user["id"])})
@@ -606,11 +647,13 @@ async def domains_verify(request: Request, domain_id: str):
     if auth.get_domain(domain_id, user["id"]) is None:
         return JSONResponse({"error": "not found"}, status_code=404)
     ok, message = await auth.verify_domain(domain_id, user["id"])
-    return JSONResponse({
-        "verified": ok,
-        "message": message,
-        "domain": auth.get_domain(domain_id, user["id"]),
-    })
+    return JSONResponse(
+        {
+            "verified": ok,
+            "message": message,
+            "domain": auth.get_domain(domain_id, user["id"]),
+        }
+    )
 
 
 @app.delete("/api/domains/{domain_id}")
@@ -626,6 +669,7 @@ async def domains_delete(request: Request, domain_id: str):
 # Jetons d'accès personnels (PAT) — gestion RÉSERVÉE À LA SESSION (cookie).
 # Un PAT donne un accès LECTURE SEULE à l'API (pour le MCP). Volontairement
 # inaccessible via un PAT : on ne crée/révoque pas de jeton avec un jeton.
+
 
 @app.get("/api/tokens")
 async def tokens_list(request: Request):
@@ -679,7 +723,8 @@ async def tokens_delete(request: Request, token_id: str):
     if not auth.delete_pat(token_id, user["id"]):
         return JSONResponse(
             {"error": "Révoque le jeton avant de le supprimer.", "code": "not_revoked"},
-            status_code=409)
+            status_code=409,
+        )
     return JSONResponse({"ok": True})
 
 
@@ -708,19 +753,28 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
         return JSONResponse({"error": "auth required"}, status_code=401)
     if not auth.user_can_scan(user):
         return JSONResponse(
-            {"error": "Scan verrouillé : vérifie d'abord un domaine.", "code": "no_verified_domain"},
-            status_code=403)
+            {
+                "error": "Scan verrouillé : vérifie d'abord un domaine.",
+                "code": "no_verified_domain",
+            },
+            status_code=403,
+        )
     host = urlparse(normalize_target(target)).hostname or ""
     if not auth.user_can_scan_target(user, host):
         return JSONResponse(
             {"error": "Tu ne peux scanner que tes domaines vérifiés.", "code": "domain_not_owned"},
-            status_code=403)
+            status_code=403,
+        )
     # Rate-limit (même garde-fou que le MCP) : empêche un compte d'enchaîner des scans `full`
     # à l'infini (nuclei/ZAP/sockets) → anti-DoS. La concurrence globale est bornée dans le moteur.
     if not auth.scan_rate_ok(user["id"]):
         return JSONResponse(
-            {"error": "Trop de scans lancés récemment. Réessaie dans quelques minutes.",
-             "code": "rate_limited"}, status_code=429)
+            {
+                "error": "Trop de scans lancés récemment. Réessaie dans quelques minutes.",
+                "code": "rate_limited",
+            },
+            status_code=429,
+        )
 
     lang = _lang(request, user)
 
@@ -740,7 +794,7 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
             while True:
                 done, _ = await asyncio.wait({nxt}, timeout=SSE_HEARTBEAT_SECS)
                 if not done:
-                    yield ": keepalive\n\n"          # commentaire SSE (ignoré par EventSource)
+                    yield ": keepalive\n\n"  # commentaire SSE (ignoré par EventSource)
                     continue
                 try:
                     ev = nxt.result()
@@ -751,7 +805,9 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
                 if ev["event"] == "started":
                     # Hôte FINAL (après redirections) : aligne le domaine de greffe sur celui du
                     # scan sauvegardé (sinon une note posée sur www.x n'apparaîtrait pas au relancement de x).
-                    annots = db.get_annotations(user["id"], scan_compare.target_domain(data.get("target")))
+                    annots = db.get_annotations(
+                        user["id"], scan_compare.target_domain(data.get("target"))
+                    )
                 elif ev["event"] == "finding":
                     # Rendu dans la langue active pour l'affichage live ; la forme
                     # structurée (`_findings`) reste celle persistée.
@@ -765,8 +821,9 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
                     findings = ev.get("_findings", [])
                 yield _sse(ev["event"], data)
             if summary is not None:
-                scan_id = db.save_scan(summary.get("target", target), summary, findings or [],
-                                       user_id=user["id"])
+                scan_id = db.save_scan(
+                    summary.get("target", target), summary, findings or [], user_id=user["id"]
+                )
                 yield _sse("saved", {"id": scan_id})
         finally:
             if not nxt.done():
@@ -790,7 +847,7 @@ async def scan_stream(request: Request, target: str = Query(..., min_length=3)):
 
 @app.get("/api/history")
 async def history(request: Request):
-    user = _pat_or_session_user(request)   # lecture : session OU PAT scans:read
+    user = _pat_or_session_user(request)  # lecture : session OU PAT scans:read
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
     scope = None if user["is_admin"] else user["id"]
@@ -799,7 +856,7 @@ async def history(request: Request):
 
 @app.get("/api/scan/{scan_id}")
 async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
-    user = _pat_or_session_user(request)   # lecture : session OU PAT scans:read
+    user = _pat_or_session_user(request)  # lecture : session OU PAT scans:read
     if not user:
         return JSONResponse({"error": "auth required"}, status_code=401)
     scope = None if user["is_admin"] else user["id"]
@@ -811,7 +868,9 @@ async def scan_detail(request: Request, scan_id: str, lang: str = Query(None)):
     chosen = _pick_lang(lang, request, user)
     data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
     # Greffe les annotations perso du lecteur courant (note + statut « accepté »).
-    _attach_annotations(data["findings"], user["id"], scan_compare.target_domain(data.get("target")))
+    _attach_annotations(
+        data["findings"], user["id"], scan_compare.target_domain(data.get("target"))
+    )
     data["lang"] = chosen
     return JSONResponse(data)
 

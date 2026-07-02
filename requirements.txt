@@ -6,6 +6,7 @@ PyYAML>=6.0
 # Analyse du certificat TLS (check `tls-key` : taille de clé, algo de signature). Souvent
 # déjà présent en transitif ; on l'épingle pour garantir le check dans l'image.
 cryptography>=41.0
+PyJWT>=2.9          # validation OIDC id_token (RS256 via cryptography ci-dessus)
 # MCP DISTANT (claude.ai web) — OIDCProxy (auth OAuth 2.1 fédérée vers un IdP OIDC) +
 # transport Streamable HTTP, monté dans l'app. Contrairement au MCP stdio local
 # (requirements-mcp.txt), il tourne SUR le serveur Sonar (Pi/Docker) : sa dépendance va
