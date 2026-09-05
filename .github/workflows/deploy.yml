@@ -71,3 +71,33 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 -p 22 -o StrictHostKeyChecking=yes \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "set -e; cd ${REMOTE_DIR}; docker rm -f sonar 2>/dev/null || true; docker compose up -d --build; docker image prune -f"
+
+      # Le déploiement n'est réussi que si l'application RÉPOND. Sans cette étape, un
+      # conteneur qui démarre puis meurt aussitôt passe pour un succès : `docker compose
+      # up -d` rend 0 dès que le conteneur est CRÉÉ, il ne dit rien de ce qui tourne
+      # dedans. C'est ce qui manquait ici, alors que le déploiement de radar le fait
+      # depuis le premier jour.
+      #
+      # La sonde tourne DANS le conteneur : pas de réseau Docker à connaître, et un
+      # imbriquement de guillemets en moins. Elle vérifie le CHAMP `status` plutôt que la
+      # présence du mot « ok » quelque part dans le corps, pour qu'une page d'erreur qui
+      # contiendrait ce mot ne passe pas pour une application saine.
+      #
+      # Six tentatives espacées de 5 s plutôt qu'un `sleep` fixe : sur le Pi, une image
+      # fraîchement reconstruite met un temps variable à servir sa première requête, et un
+      # délai fixe se règle toujours soit trop court, soit inutilement long. En cas
+      # d'échec on imprime les dernières lignes de journal, sinon il faut ouvrir une
+      # session SSH pour savoir de quoi le conteneur est mort.
+      - name: Vérifier que le service répond
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p 22 -o StrictHostKeyChecking=yes \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "set -e
+             for tentative in 1 2 3 4 5 6; do
+               if docker exec sonar python -c 'import json, urllib.request; d = json.load(urllib.request.urlopen(\"http://127.0.0.1:8000/healthz\", timeout=5)); print(d); assert d[\"status\"] == \"ok\"'; then exit 0; fi
+               echo \"tentative \$tentative sans reponse, nouvel essai dans 5 s\"
+               sleep 5
+             done
+             echo 'sonar ne repond pas sur /healthz apres 30 s'
+             docker logs --tail 40 sonar
+             exit 1"
