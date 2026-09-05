@@ -49,6 +49,42 @@ _discovery: dict | None = None
 _jwks_set: PyJWKSet | None = None
 
 
+def _equal(received: object, expected: object) -> bool:
+    """Comparaison à temps constant qui rend False au lieu de lever sur du non-ASCII.
+
+    **Le seul comparateur de secrets de ce module**, et il doit le rester.
+    `secrets.compare_digest`, alias de `hmac.compare_digest`, **lève `TypeError`** quand
+    l'une des deux chaînes n'est pas ASCII, au lieu de rendre False. Les deux valeurs
+    comparées ici viennent du dehors, le `state` du retour de l'IdP et le `nonce` du cookie
+    de transaction : un seul octet non ASCII faisait rendre **500** là où le code voulait
+    rendre la page de connexion avec son `sso_error`.
+
+    Ça échouait du bon côté, personne n'ouvrait de session Sonar. Mais une exception non
+    rattrapée dans le chemin qui décide qui entre est un défaut. Ces valeurs sont du
+    base64url : rien de non-ASCII ne peut leur être égal, donc refuser est exact et pas
+    seulement prudent.
+
+    **Le paramètre est typé `object` et pas `str | None`, exprès.** `state` et `nonce`
+    sortent d'un `json.loads` du cookie `oidc_tx`, qui n'est pas signé : un cookie portant
+    `{"state": 5}` rend un `int`, et `.isascii()` lèverait `AttributeError` à la place.
+    `isinstance(..., str)` absorbe `None`, les entiers et les listes d'un coup.
+
+    Pourquoi cette forme plutôt que celle de `mcp_bridge.py`, qui descend en bytes : là-bas
+    les deux valeurs sont des `str` garanties, ici elles peuvent n'être pas des chaînes du
+    tout et `.encode()` lèverait `AttributeError`. `mcp_bridge.py` est correct, il ne faut
+    pas l'aligner sur celui-ci.
+
+    `mcp_bridge.py` connaissait déjà ce piège et l'évitait en comparant des bytes, mais la
+    leçon n'avait pas été propagée ici. Trouvé le 05/09/2026 par une relecture adverse du
+    portail de cap-ia, puis retrouvé ici et dans `radar-prospects/auth.py`.
+    """
+    if not isinstance(received, str) or not isinstance(expected, str):
+        return False
+    if not received.isascii() or not expected.isascii():
+        return False
+    return secrets.compare_digest(received, expected)
+
+
 def oidc_enabled() -> bool:
     return bool(OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_CLIENT_SECRET and OIDC_REDIRECT_URI)
 
@@ -181,7 +217,12 @@ async def oidc_callback(request: Request) -> RedirectResponse:
         st = json.loads(base64.urlsafe_b64decode(tx.encode()).decode())
     except Exception:
         return _fail("state")
-    if not secrets.compare_digest(st.get("state", ""), state):
+    # `json.loads` rend n'importe quel JSON valide, pas forcément un objet : un cookie
+    # portant `[]` ou `42` passe le décodage puis fait lever `AttributeError` sur `.get`.
+    # Cette garde protège les trois lectures de `st` qui suivent, `state`, `cv` et `nonce`.
+    if not isinstance(st, dict):
+        return _fail("state")
+    if not _equal(st.get("state", ""), state):
         return _fail("state")
 
     disc = await _get_discovery()
@@ -225,7 +266,7 @@ async def oidc_callback(request: Request) -> RedirectResponse:
         )
     except (PyJWTError, httpx.HTTPError):
         return _fail("idtoken")
-    if not secrets.compare_digest(claims.get("nonce", ""), st.get("nonce", "")):
+    if not _equal(claims.get("nonce", ""), st.get("nonce", "")):
         return _fail("nonce")
 
     email = auth.normalize_email(claims.get("email") or "")
