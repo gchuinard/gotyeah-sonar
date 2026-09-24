@@ -15,8 +15,11 @@ un historique par domaine. Pensé pour tourner sur le Pi à côté du reste du h
 docker compose up -d --build
 ```
 
-Puis : `http://<ip-du-pi>:8000`. Tape une URL, clique **Lancer**, regarde les findings
-tomber en live et la jauge se stabiliser.
+Puis : l'adresse publique derrière Nginx Proxy Manager, ou `http://127.0.0.1:8000` depuis
+le Pi lui-même. Tape une URL, clique **Lancer**, regarde les findings tomber en live et la
+jauge se stabiliser. Le port 8000 n'est publié que sur la boucle locale du Pi depuis le
+24/09/2026 : `http://<ip-du-pi>:8000`, écrit ici auparavant, ne répond plus depuis le
+réseau local, et c'est voulu (le proxy joint le conteneur par son nom, pas par ce port).
 
 L'historique est persisté dans `./data/scans.db` (volume Docker).
 
