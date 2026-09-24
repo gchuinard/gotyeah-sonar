@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, Query, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -23,6 +24,8 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
 
 import auth
 import db
@@ -36,6 +39,7 @@ BASE = Path(__file__).parent
 PAGE = (BASE / "templates" / "index.html").read_text(encoding="utf-8")
 LOGIN_PAGE = (BASE / "templates" / "login.html").read_text(encoding="utf-8")
 HELP_MCP_PAGE = (BASE / "templates" / "help_mcp.html").read_text(encoding="utf-8")
+NOT_FOUND_PAGE = (BASE / "templates" / "404.html").read_text(encoding="utf-8")
 
 SESSION_COOKIE = "sonar_session"
 LANG_COOKIE = "sonar_lang"
@@ -294,6 +298,30 @@ mcp_bridge.register(app)
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# --------------------------------------------------------------------------- #
+# Page 404
+# --------------------------------------------------------------------------- #
+# Préfixes qui gardent la 404 JSON de FastAPI ({"detail": "Not Found"}) : l'API (dont le flux
+# SSE /api/scan/stream et le pont /api/mcp/*), les fichiers statiques, la sonde et l'OIDC.
+_JSON_PREFIXES = ("/api/", "/static/", "/healthz", "/auth/oidc/")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exc(request: Request, exc: StarletteHTTPException) -> Response:
+    """Adresse inconnue demandée par un NAVIGATEUR (Accept: text/html, GET/HEAD) → page 404
+    aux couleurs de Sonar, code 404 conservé. Tout le reste (clients d'API, curl en */*,
+    autres méthodes, autres codes) garde la réponse JSON standard de FastAPI. Les 404 posées
+    à la main par les routes (JSONResponse) ne passent pas par ici."""
+    if (
+        exc.status_code == 404
+        and request.method in ("GET", "HEAD")
+        and not request.url.path.startswith(_JSON_PREFIXES)
+        and "text/html" in request.headers.get("accept", "")
+    ):
+        return HTMLResponse(NOT_FOUND_PAGE, status_code=404)
+    return await http_exception_handler(request, exc)
 
 
 # --------------------------------------------------------------------------- #
