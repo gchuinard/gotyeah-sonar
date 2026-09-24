@@ -45,10 +45,13 @@ jobs:
 
       - name: Publier les résultats Allure (dashboard central)
         if: ${{ always() && github.ref == 'refs/heads/main' }}
-        uses: gchuinard/gotyeah-allure/actions/push-allure-results@main
+        # Action figée sur un commit précis et clés d'hôte du Pi passées par secret (24/09) :
+        # cette version refuse de pousser sans elles, au lieu de croire la première clé vue.
+        uses: gchuinard/gotyeah-allure/actions/push-allure-results@8df4d1f7f8dbc77ccc585c58b00b8cb7733c20fc
         with:
           site: gotyeah-sonar
           results-dir: allure-results
           ssh-host: ${{ secrets.SSH_HOST }}
           ssh-user: ${{ secrets.SSH_USER }}
           ssh-key: ${{ secrets.SSH_KEY }}
+          ssh-known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
