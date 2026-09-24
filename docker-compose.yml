@@ -8,6 +8,11 @@ services:
       # Persiste l'historique des scans (la base SQLite vit dans /app/data)
       - ./data:/app/data
     restart: unless-stopped
+    # Limite posée à 128m à la main sur le Pi le 28/08/2026, relevée à 256m : le pic
+    # mesuré le 24/09/2026 (88 Mio depuis la recréation du jour) dépassait 60 % de 128m.
+    # Écrite ici parce que le déploiement (rsync puis recréation du conteneur) a effacé
+    # la limite posée à la main.
+    mem_limit: 256m
     environment:
       # Toute la config vient du .env (voir .env.example). Les `:-` rendent
       # chaque variable optionnelle : l'app démarre même sans .env (valeurs par défaut).
