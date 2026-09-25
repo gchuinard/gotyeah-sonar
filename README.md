@@ -449,7 +449,8 @@ uvicorn app:app --reload                    # l'app en local sur http://127.0.0.
 - **Lint / format / typage** : `ruff check . && ruff format --check . && mypy .` (config dans `pyproject.toml`).
   La CI (`.github/workflows/ci.yml`) les lance sur chaque push/PR, bloquants depuis le 25/09/2026
   (seul `pip-audit` reste informatif), + `pytest --cov`. Le déploiement (`deploy.yml`, sur
-  `main`) est gaté par les tests.
+  `main`) attend que cette CI soit verte sur le même commit. Jusqu'au 25/09/2026, cette ligne
+  disait « gaté par les tests » : il ne l'était que par ses propres tests, en parallèle de la CI.
 - **Ajouter un check** ou **une langue** : voir [Architecture](#architecture) ci-dessus. Valide le
   catalogue avec `python3 tools/gen_content.py validate --lang fr` (et `--lang en`).
 - **Conventions, pièges (YAML i18n, anti-SSRF, scoring…)** : voir [`CLAUDE.md`](CLAUDE.md).

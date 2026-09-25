@@ -1,7 +1,9 @@
 name: Deploy to Pi
 
-# CI : à chaque push sur main, on lance d'abord les tests (job "test"), puis on
-# déploie sur le Raspberry Pi (job "deploy") UNIQUEMENT si les tests passent.
+# Le déploiement attend la CI : il ne part qu'après un run réussi de ci.yml (lint, format,
+# typage et tests, tous bloquants) sur un push de main, et installe le commit que ce run a
+# testé. Jusqu'au 25/09/2026, il partait au push, en parallèle de la CI, derrière ses seuls
+# tests (job "test") : un commit au lint, au format ou au typage rouges partait sur le Pi.
 # Principe du deploy : le runner GitHub récupère le code, le synchronise sur le Pi via
 # rsync/SSH, puis (re)construit et relance le conteneur. Le Pi n'a jamais besoin
 # d'accéder lui-même à GitHub — il accepte juste la connexion SSH du runner.
@@ -14,7 +16,9 @@ name: Deploy to Pi
 # La clé PUBLIQUE correspondante doit être dans ~/.ssh/authorized_keys du SSH_USER.
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:        # bouton « Run workflow » pour déclencher à la main
 
@@ -26,32 +30,74 @@ concurrency:
   group: deploy-pi
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  # Lecture des runs de CI : un lancement manuel vérifie que le commit est vert.
+  actions: read
+
 env:
   REMOTE_DIR: /home/pi/sites/gotyeah-sonar   # dossier cible sur le Pi (chemin absolu)
+  # Le commit testé par la CI, et non la pointe de main au moment où ce workflow démarre.
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
-  test:
-    # Image figée : ce job installe ses dépendances dans le Python DU SYSTÈME
-    # (--break-system-packages), 3.12 sur Ubuntu 24.04 comme l'image Docker. ubuntu-latest
-    # passe à Ubuntu 26 le 19/10/2026 et changerait ce Python sans prévenir.
-    runs-on: ubuntu-24.04
+  # Le job "test" qui précédait le déploiement a disparu (25/09/2026) : il rejouait pytest,
+  # que ci.yml passe déjà sur ce même commit, en 3.12 comme l'image Docker.
+  verifier:
+    # Seul un push sur main compte : le run CI d'une pull request (même venue d'un fork
+    # dont la branche s'appelle main) ne déploie jamais.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      deployer: ${{ steps.pointe.outputs.deployer }}
     steps:
-      - name: Récupérer le code
-        uses: actions/checkout@v5
-      - name: Lancer la suite de tests (pytest)
+      # Lancement manuel : pas de run CI en amont, on vérifie donc qu'il en existe un
+      # réussi sur ce commit, et qu'il s'agit bien de main.
+      - name: Vérifier que la CI est verte sur ce commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python3 -m pip install --break-system-packages --upgrade pip
-          python3 -m pip install --break-system-packages -r requirements-dev.txt
-          python3 -m pytest
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Le déploiement manuel ne part que de main."
+            exit 1
+          fi
+          verts=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$DEPLOY_SHA" --status success --json databaseId --jq length)
+          if [ "$verts" = "0" ]; then
+            echo "::error::Aucun run CI réussi sur $DEPLOY_SHA : pas de déploiement."
+            exit 1
+          fi
+
+      # Deux CI peuvent finir dans le désordre : on ne déploie le commit testé que s'il est
+      # encore la pointe de main. Sinon, le commit suivant sera déployé après sa propre CI,
+      # et le Pi ne recule jamais. Le job reste vert : rien n'a échoué.
+      - name: Vérifier que ce commit est encore la pointe de main
+        id: pointe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pointe=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$pointe" = "$DEPLOY_SHA" ]; then
+            echo "deployer=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "main a avancé depuis $DEPLOY_SHA : rien à déployer ici."
+            echo "deployer=false" >> "$GITHUB_OUTPUT"
+          fi
 
   deploy:
-    needs: test          # le déploiement n'a lieu que si le job "test" est vert
+    needs: verifier      # le déploiement n'a lieu que sur un commit vert, pointe de main
+    if: needs.verifier.outputs.deployer == 'true'
     runs-on: ubuntu-latest
     # Les secrets passent par env: et ne sont jamais interpolés dans les scripts (24/09) :
     # une valeur interpolée devient du code shell, une variable reste une donnée.
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       # Clés d'hôte du Pi lues dans le secret SSH_KNOWN_HOSTS (alias pi-gotyeah), plus de
       # scan de clés au déploiement (24/09) : un scan croit la première clé venue, et

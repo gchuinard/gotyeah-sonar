@@ -63,7 +63,11 @@ structurée → un scan se **re-rend dans n'importe quelle langue**.
 - En-têtes de sécurité posés par un middleware ASGI (`app.py`) — l'app suit ses propres règles.
 - Dépôt **PUBLIC** : ne jamais committer de secrets ni de notes de failles
   (`.env`, `TODO-securite-sites.md`, `AMELIORATIONS.md` sont gitignorés).
-- Déploiement : `deploy.yml` (push main → tests → rsync Pi → `docker compose build` puis
+- Déploiement : `deploy.yml` (CI verte sur push main → rsync du commit testé → `docker compose build` puis
   `docker compose up -d` : l'image est construite avant de recréer le conteneur, le site ne
   coupe pas pendant le build ; un déploiement en cours n'est jamais annulé par un nouveau push).
   Le Pi reçoit les fichiers par rsync (pas de `git pull`) → son HEAD git ne bouge pas.
+  Jusqu'au 25/09/2026, la formule était « push main → tests » : il partait au push, en parallèle
+  de `ci.yml`, derrière ses seuls tests, et un lint, un format ou un typage rouges ne le
+  retenaient pas. Il attend désormais la CI (`workflow_run`) et saute un commit qui n'est plus
+  la pointe de main.
