@@ -4,16 +4,27 @@ name: Deploy to Pi
 # typage et tests, tous bloquants) sur un push de main, et installe le commit que ce run a
 # testé. Jusqu'au 25/09/2026, il partait au push, en parallèle de la CI, derrière ses seuls
 # tests (job "test") : un commit au lint, au format ou au typage rouges partait sur le Pi.
-# Principe du deploy : le runner GitHub récupère le code, le synchronise sur le Pi via
-# rsync/SSH, puis (re)construit et relance le conteneur. Le Pi n'a jamais besoin
-# d'accéder lui-même à GitHub — il accepte juste la connexion SSH du runner.
+#
+# Principe du deploy, depuis le 25/09/2026 : le runner ouvre une session SSH avec SSH_KEY,
+# clé dédiée à ce dépôt. Sur le Pi, authorized_keys la force sur
+# « /usr/local/sbin/gotyeah-deploy sonar » : le Pi met à jour sa copie de ce dépôt public
+# (/home/pi/deploiement/gotyeah-sonar, git fetch sans clé), puis lance deploy/pi-deploy.sh,
+# qui recopie le code dans le dossier du service, reconstruit, relance le conteneur et
+# vérifie que le service répond. La commande envoyée ici ne choisit que le commit.
+# Jusqu'au 25/09/2026, ce commentaire disait : le runner récupère le code, le synchronise
+# sur le Pi par rsync/SSH, et le Pi n'a jamais besoin d'accéder lui-même à GitHub. C'était
+# exact, mais il fallait pour cela une clé sans restriction sur un compte qui a sudo sans
+# mot de passe, donc root sur le Pi. C'est désormais le Pi qui lit ce dépôt.
 #
 # Secrets requis (Settings > Secrets and variables > Actions) :
 #   SSH_HOST  hôte/IP du Pi (doit être joignable en SSH depuis Internet)
 #   SSH_USER  utilisateur Linux sur le Pi
-#   SSH_KEY   clé PRIVÉE (id_ed25519, contenu complet avec les lignes BEGIN/END)
+#   SSH_KEY   clé PRIVÉE dédiée à ce dépôt (contenu complet avec les lignes BEGIN/END).
+#             Elle sert aussi à l'étape Allure de ci.yml, que le Pi accepte avec la même
+#             commande forcée (dépôt des résultats de tests seulement).
 #   SSH_KNOWN_HOSTS  clés d'hôte du Pi au format known_hosts, sous l'alias pi-gotyeah
-# La clé PUBLIQUE correspondante doit être dans ~/.ssh/authorized_keys du SSH_USER.
+# La clé PUBLIQUE correspondante est dans ~/.ssh/authorized_keys du SSH_USER, précédée de
+# restrict,command="/usr/local/sbin/gotyeah-deploy sonar".
 
 on:
   workflow_run:
@@ -36,7 +47,8 @@ permissions:
   actions: read
 
 env:
-  REMOTE_DIR: /home/pi/sites/gotyeah-sonar   # dossier cible sur le Pi (chemin absolu)
+  # Le dossier du service sur le Pi (/home/pi/sites/gotyeah-sonar, ex REMOTE_DIR de ce
+  # workflow) est désormais écrit dans deploy/pi-deploy.sh.
   # Le commit testé par la CI, et non la pointe de main au moment où ce workflow démarre.
   DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
@@ -94,98 +106,35 @@ jobs:
     # Les secrets passent par env: et ne sont jamais interpolés dans les scripts (24/09) :
     # une valeur interpolée devient du code shell, une variable reste une donnée.
     steps:
-      - name: Récupérer le code
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ env.DEPLOY_SHA }}
-
       # Clés d'hôte du Pi lues dans le secret SSH_KNOWN_HOSTS (alias pi-gotyeah), plus de
       # scan de clés au déploiement (24/09) : un scan croit la première clé venue, et
       # des clés écrites en clair dans ce dépôt public mèneraient à l'IP du Pi via Censys
       # ou Shodan. Sans le secret, on s'arrête plutôt que de se connecter à l'aveugle.
+      # Plus de checkout ici depuis le 25/09/2026 : le Pi lit le commit dans sa copie du dépôt.
       - name: Préparer la clé SSH
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           if [ -z "$SSH_KNOWN_HOSTS" ]; then echo "::error::Secret SSH_KNOWN_HOSTS absent : sans lui, le déploiement accepterait n'importe quel hôte."; exit 1; fi
+          if [ -z "$SSH_KEY" ]; then echo "::error::Secret SSH_KEY absent."; exit 1; fi
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts_pi
 
-      - name: Synchroniser le code sur le Pi
+      # Une seule session depuis le 25/09/2026, au lieu de trois (rsync du code, construction
+      # et relance, sonde /healthz) : ces étapes, inchangées, vivent dans deploy/pi-deploy.sh,
+      # que le Pi lit dans le commit envoyé, et leur sortie remonte ici. La commande forcée
+      # n'accepte que « deploy <sha> » : elle déploie ce commit s'il est encore la pointe de
+      # main, sinon elle répond « main a avancé… » et le job reste vert, comme l'étape
+      # « pointe » du job verifier. Aucune variable d'environnement ne passe au Pi.
+      - name: Déployer sur le Pi
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
-          rsync -az --delete \
-            --exclude='.git' \
-            --exclude='data' \
-            --exclude='__pycache__' \
-            --exclude='*.db' \
-            --exclude='.env' \
-            --rsync-path="mkdir -p ${REMOTE_DIR} && rsync" \
-            -e "ssh -i ~/.ssh/id_ed25519 -p 22 -o HostKeyAlias=pi-gotyeah -o UserKnownHostsFile=~/.ssh/known_hosts_pi -o StrictHostKeyChecking=yes" \
-            ./ "$SSH_USER@$SSH_HOST:${REMOTE_DIR}/"
-
-      - name: Construire et relancer le conteneur
-        env:
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-        run: |
-          # On construit l'image AVANT de toucher au conteneur (25/09) : l'ancienne version
-          # supprimait d'abord le conteneur (docker rm -f) puis construisait, si bien que le
-          # site restait coupé pendant tout le build, et pour de bon si le build échouait.
-          # Désormais l'ancien conteneur sert jusqu'à ce que la nouvelle image soit prête, et
-          # `up -d` ne fait plus que le recréer sur cette image (quelques secondes).
-          #
-          # Un conteneur "sonar" né ailleurs (ex. ancien déploiement depuis un autre dossier)
-          # bloquerait le nom ET le port 8000, container_name étant fixe : on ne le retire
-          # que si compose ne le reconnaît pas comme le sien, juste avant de recréer.
-          ssh -i ~/.ssh/id_ed25519 -p 22 \
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ]; then echo "::error::Secret SSH_HOST ou SSH_USER absent."; exit 1; fi
+          ssh -i ~/.ssh/id_ed25519 -p 22 -o IdentitiesOnly=yes \
             -o HostKeyAlias=pi-gotyeah -o UserKnownHostsFile=~/.ssh/known_hosts_pi -o StrictHostKeyChecking=yes \
-            "$SSH_USER@$SSH_HOST" \
-            "set -e
-             cd ${REMOTE_DIR}
-             docker compose build
-             if [ -n \"\$(docker ps -aq -f name=^sonar\$)\" ] && [ -z \"\$(docker compose ps -aq sonar)\" ]; then
-               echo 'conteneur sonar orphelin (hors de ce projet compose) : suppression'
-               docker rm -f sonar
-             fi
-             docker compose up -d
-             docker image prune -f"
-
-      # Le déploiement n'est réussi que si l'application RÉPOND. Sans cette étape, un
-      # conteneur qui démarre puis meurt aussitôt passe pour un succès : `docker compose
-      # up -d` rend 0 dès que le conteneur est CRÉÉ, il ne dit rien de ce qui tourne
-      # dedans. C'est ce qui manquait ici, alors que le déploiement de radar le fait
-      # depuis le premier jour.
-      #
-      # La sonde tourne DANS le conteneur : pas de réseau Docker à connaître, et un
-      # imbriquement de guillemets en moins. Elle vérifie le CHAMP `status` plutôt que la
-      # présence du mot « ok » quelque part dans le corps, pour qu'une page d'erreur qui
-      # contiendrait ce mot ne passe pas pour une application saine.
-      #
-      # Six tentatives espacées de 5 s plutôt qu'un `sleep` fixe : sur le Pi, une image
-      # fraîchement reconstruite met un temps variable à servir sa première requête, et un
-      # délai fixe se règle toujours soit trop court, soit inutilement long. En cas
-      # d'échec on imprime les dernières lignes de journal, sinon il faut ouvrir une
-      # session SSH pour savoir de quoi le conteneur est mort.
-      - name: Vérifier que le service répond
-        env:
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-        run: |
-          ssh -i ~/.ssh/id_ed25519 -p 22 \
-            -o HostKeyAlias=pi-gotyeah -o UserKnownHostsFile=~/.ssh/known_hosts_pi -o StrictHostKeyChecking=yes \
-            "$SSH_USER@$SSH_HOST" \
-            "set -e
-             for tentative in 1 2 3 4 5 6; do
-               if docker exec sonar python -c 'import json, urllib.request; d = json.load(urllib.request.urlopen(\"http://127.0.0.1:8000/healthz\", timeout=5)); print(d); assert d[\"status\"] == \"ok\"'; then exit 0; fi
-               echo \"tentative \$tentative sans reponse, nouvel essai dans 5 s\"
-               sleep 5
-             done
-             echo 'sonar ne repond pas sur /healthz apres 30 s'
-             docker logs --tail 40 sonar
-             exit 1"
+            "$SSH_USER@$SSH_HOST" "deploy $DEPLOY_SHA"

@@ -63,10 +63,18 @@ structurée → un scan se **re-rend dans n'importe quelle langue**.
 - En-têtes de sécurité posés par un middleware ASGI (`app.py`) — l'app suit ses propres règles.
 - Dépôt **PUBLIC** : ne jamais committer de secrets ni de notes de failles
   (`.env`, `TODO-securite-sites.md`, `AMELIORATIONS.md` sont gitignorés).
-- Déploiement : `deploy.yml` (CI verte sur push main → rsync du commit testé → `docker compose build` puis
+- Déploiement : `deploy.yml` (CI verte sur push main → `ssh … deploy <sha testé>` avec la clé
+  dédiée `SSH_KEY`, que le Pi force sur `/usr/local/sbin/gotyeah-deploy sonar` → le Pi cale sa copie
+  du dépôt `/home/pi/deploiement/gotyeah-sonar` sur ce commit s'il est encore la pointe de main, puis
+  lance `deploy/pi-deploy.sh` : rsync vers `/home/pi/sites/gotyeah-sonar` → `docker compose build` puis
   `docker compose up -d` : l'image est construite avant de recréer le conteneur, le site ne
-  coupe pas pendant le build ; un déploiement en cours n'est jamais annulé par un nouveau push).
-  Le Pi reçoit les fichiers par rsync (pas de `git pull`) → son HEAD git ne bouge pas.
+  coupe pas pendant le build ; un déploiement en cours n'est jamais annulé par un nouveau push ;
+  puis sonde `/healthz` dans le conteneur).
+  Le dossier du service reçoit les fichiers par rsync (pas de `git pull`) → son HEAD git ne bouge pas.
+  Les étapes de déploiement vivent dans `deploy/pi-deploy.sh`, plus dans le workflow. Jusqu'au
+  25/09/2026, cette ligne disait « rsync du commit testé » depuis le runner et « le Pi reçoit les
+  fichiers par rsync » : c'était le runner GitHub qui les poussait, avec une clé sans restriction
+  (root de fait sur le Pi). Les étapes sont les mêmes, seul le transport a changé.
   Jusqu'au 25/09/2026, la formule était « push main → tests » : il partait au push, en parallèle
   de `ci.yml`, derrière ses seuls tests, et un lint, un format ou un typage rouges ne le
   retenaient pas. Il attend désormais la CI (`workflow_run`) et saute un commit qui n'est plus
