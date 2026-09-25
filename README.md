@@ -356,6 +356,7 @@ vit dans le catalogue YAML, indexé par `(check_id, code)`.
 from ..finding import Category, Finding, Severity
 from ..registry import check
 
+
 @check("hdr-coop", "Cross-Origin-Opener-Policy", Category.HEADERS)
 async def coop(ctx):
     # On juge la VALEUR, pas seulement la présence : `unsafe-none` est posé mais n'isole rien.
