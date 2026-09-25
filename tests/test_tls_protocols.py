@@ -1,4 +1,5 @@
 """TLS en profondeur : protocoles obsolètes, force clé/signature, seuil d'expiration."""
+
 import datetime
 import ssl
 import time
@@ -27,6 +28,7 @@ def _patch(monkeypatch, modern, old10, old11):
         if vmin == ssl.TLSVersion.TLSv1_1:
             return old11
         return False
+
     monkeypatch.setattr(tlsmod, "_handshake", f)
 
 
@@ -56,14 +58,19 @@ async def test_unverifiable_when_modern_fails(monkeypatch):
 
 # ---- Batch 5 : force clé / signature du certificat ----
 
+
 def _cert_der(key, hash_algo):
     nm = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "example.com")])
-    cert = (x509.CertificateBuilder()
-            .subject_name(nm).issuer_name(nm).public_key(key.public_key())
-            .serial_number(1)
-            .not_valid_before(datetime.datetime(2020, 1, 1))
-            .not_valid_after(datetime.datetime(2035, 1, 1))
-            .sign(key, hash_algo))
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(nm)
+        .issuer_name(nm)
+        .public_key(key.public_key())
+        .serial_number(1)
+        .not_valid_before(datetime.datetime(2020, 1, 1))
+        .not_valid_after(datetime.datetime(2035, 1, 1))
+        .sign(key, hash_algo)
+    )
     return cert.public_bytes(serialization.Encoding.DER)
 
 
@@ -80,8 +87,8 @@ def test_cert_strength_weak_sig():
     # vrai cert en SHA-1 ici, mais le PARSING d'une signature SHA-1 reste à détecter.
     strong = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key()
     fake_cert = SimpleNamespace(
-        public_key=lambda: strong,
-        signature_hash_algorithm=SimpleNamespace(name="sha1"))
+        public_key=lambda: strong, signature_hash_algorithm=SimpleNamespace(name="sha1")
+    )
     out = {f.code: f for f in tlsmod._strength_from_cert(fake_cert)}
     assert "weak-sig" in out and out["weak-sig"].severity == Severity.MEDIUM
     assert out["weak-sig"].params["algo"] == "sha1" and "weak-key" not in out
@@ -104,11 +111,15 @@ def test_cert_strength_unparseable():
 
 # ---- Batch 5 : seuil « bientôt expiré » relevé à 30 jours ----
 
+
 def _cert_dict(days):
     ts = time.time() + days * 86400
     not_after = time.strftime("%b %d %H:%M:%S %Y GMT", time.gmtime(ts))
-    return {"issuer": ((("organizationName", "X"),),), "subject": ((("commonName", "x"),),),
-            "notAfter": not_after}
+    return {
+        "issuer": ((("organizationName", "X"),),),
+        "subject": ((("commonName", "x"),),),
+        "notAfter": not_after,
+    }
 
 
 def test_expiry_threshold_30_days():

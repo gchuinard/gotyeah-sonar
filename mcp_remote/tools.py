@@ -9,6 +9,7 @@ Chaque fonction reçoit l'utilisateur DÉJÀ résolu (ou None) ; le garde-fou id
 (`_require_user`) et le cloisonnement par propriétaire (`_owner` : admin = tout, sinon
 ses propres scans → pas d'IDOR) sont centralisés ici.
 """
+
 from __future__ import annotations
 
 from urllib.parse import urlparse
@@ -51,10 +52,12 @@ def resolve_user_from_token(tok, userinfo_endpoint: str | None = None, *, http_g
         getter = http_get
         if getter is None:
             import httpx
+
             getter = httpx.get
         try:
-            r = getter(userinfo_endpoint,
-                       headers={"Authorization": f"Bearer {tok.token}"}, timeout=10)
+            r = getter(
+                userinfo_endpoint, headers={"Authorization": f"Bearer {tok.token}"}, timeout=10
+            )
             if r.status_code == 200:
                 info = r.json()
                 email = (info.get("email") or "").strip()
@@ -106,12 +109,14 @@ def _owner(user):
 
 def _pick_lang(user, lang):
     from scanner import i18n
+
     available = set(i18n.available_langs())
     return lang if (lang and lang in available) else (user.get("lang") or "fr")
 
 
 def _render(data: dict, chosen: str) -> dict:
     from scanner import i18n
+
     data["findings"] = [{**f, **i18n.render_finding(f, chosen)} for f in data.get("findings", [])]
     return data
 
@@ -122,6 +127,7 @@ def _attach_annotations(data: dict, user_id: str) -> dict:
     de scan en scan. Lecture seule : n'affecte jamais le score."""
     import db
     import scan_compare
+
     annots = db.get_annotations(user_id, scan_compare.target_domain(data.get("target")))
     if annots:
         for f in data.get("findings", []):
@@ -136,12 +142,14 @@ def _attach_annotations(data: dict, user_id: str) -> dict:
 # --------------------------------------------------------------------------- #
 async def list_domains_logic(user) -> list[dict]:
     import auth as sonar_auth
+
     _require_user(user)
     return sonar_auth.list_domains(user["id"])
 
 
 async def list_scans_logic(user, domain: str | None = None) -> list[dict]:
     import db
+
     _require_user(user)
     scans = db.list_scans(user_id=_owner(user))
     if domain:
@@ -152,6 +160,7 @@ async def list_scans_logic(user, domain: str | None = None) -> list[dict]:
 
 async def get_report_logic(user, scan_id: str, lang: str | None = None) -> dict:
     import db
+
     _require_user(user)
     data = db.get_scan(scan_id, user_id=_owner(user))
     if not data:
@@ -166,6 +175,7 @@ async def get_report_logic(user, scan_id: str, lang: str | None = None) -> dict:
 async def diff_scans_logic(user, scan_a: str, scan_b: str, lang: str | None = None) -> dict:
     import db
     import scan_compare
+
     _require_user(user)
     owner = _owner(user)
     before = db.get_scan(scan_a, user_id=owner)
@@ -180,10 +190,16 @@ async def diff_scans_logic(user, scan_a: str, scan_b: str, lang: str | None = No
     return out
 
 
-async def get_fix_logic(user, scan_id: str, check_id: str | None = None,
-                        code: str | None = None, lang: str | None = None) -> list[dict]:
+async def get_fix_logic(
+    user,
+    scan_id: str,
+    check_id: str | None = None,
+    code: str | None = None,
+    lang: str | None = None,
+) -> list[dict]:
     import db
     import scan_compare
+
     _require_user(user)
     data = db.get_scan(scan_id, user_id=_owner(user))
     if not data:
@@ -196,6 +212,7 @@ async def get_fix_logic(user, scan_id: str, check_id: str | None = None,
 async def get_scan_status_logic(user, scan_id: str) -> dict:
     import db
     import scan_jobs
+
     _require_user(user)
     data = db.get_scan(scan_id, user_id=_owner(user))
     if not data:
@@ -225,8 +242,7 @@ async def run_scan_logic(user, domain: str, profile: str = "full") -> dict:
     target = normalize_target(domain)
     host = urlparse(target).hostname or ""
     if not sonar_auth.user_can_scan_target(user, host):
-        raise ValueError(
-            "Tu ne peux scanner que tes domaines vérifiés (ou leurs sous-domaines).")
+        raise ValueError("Tu ne peux scanner que tes domaines vérifiés (ou leurs sous-domaines).")
     if not sonar_auth.scan_rate_ok(user["id"]):
         raise ValueError("Trop de scans lancés récemment. Réessaie dans quelques minutes.")
 
@@ -237,8 +253,10 @@ async def run_scan_logic(user, domain: str, profile: str = "full") -> dict:
         return {
             "scan_id": scan_id,
             "status": "running",
-            "message": ("Scan lancé. Suis-le avec get_scan_status('"
-                        f"{scan_id}'), puis get_report('{scan_id}') une fois terminé."),
+            "message": (
+                "Scan lancé. Suis-le avec get_scan_status('"
+                f"{scan_id}'), puis get_report('{scan_id}') une fois terminé."
+            ),
         }
     chosen = user.get("lang") or "fr"
     _render(data, chosen)

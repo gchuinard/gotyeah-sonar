@@ -1,10 +1,10 @@
 """Auth par lien magique : unités (tokens/sessions/rate-limit/gate), mailer, endpoints."""
+
 import asyncio
 import json
 import sqlite3
 
 import httpx
-import pytest
 
 import auth
 import db
@@ -13,8 +13,11 @@ import mailer
 
 # Les fixtures `authdb` et `client` sont dans conftest.py (partagées avec test_domains).
 def _count(path, where, *params):
-    return sqlite3.connect(db.DB_PATH).execute(
-        f"SELECT COUNT(*) FROM {path} WHERE {where}", params).fetchone()[0]
+    return (
+        sqlite3.connect(db.DB_PATH)
+        .execute(f"SELECT COUNT(*) FROM {path} WHERE {where}", params)
+        .fetchone()[0]
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -29,15 +32,16 @@ def test_hash_and_normalize():
 
 def test_token_stored_hashed_and_single_use(authdb):
     raw = auth.issue_magic_token("a@b.com")
-    stored = sqlite3.connect(db.DB_PATH).execute(
-        "SELECT token_hash FROM magic_tokens").fetchone()[0]
-    assert stored == auth._hash(raw) and stored != raw      # jamais en clair
-    assert auth.redeem_magic_token(raw) == "a@b.com"        # 1re fois : OK
-    assert auth.redeem_magic_token(raw) is None             # single-use
+    stored = (
+        sqlite3.connect(db.DB_PATH).execute("SELECT token_hash FROM magic_tokens").fetchone()[0]
+    )
+    assert stored == auth._hash(raw) and stored != raw  # jamais en clair
+    assert auth.redeem_magic_token(raw) == "a@b.com"  # 1re fois : OK
+    assert auth.redeem_magic_token(raw) is None  # single-use
 
 
 def test_token_expired(authdb):
-    raw = auth.issue_magic_token("a@b.com", ttl_min=-1)     # déjà expiré
+    raw = auth.issue_magic_token("a@b.com", ttl_min=-1)  # déjà expiré
     assert auth.redeem_magic_token(raw) is None
 
 
@@ -99,9 +103,9 @@ def test_open_registration_creates_on_redeem(authdb, monkeypatch):
     monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "true")
     raw = auth.request_login_link("fresh@b.com", "1.1.1.3")
     assert raw is not None
-    assert auth.get_user_by_email("fresh@b.com") is None    # pas encore créé
+    assert auth.get_user_by_email("fresh@b.com") is None  # pas encore créé
     sess, user = auth.complete_login(raw)
-    assert sess and user["email"] == "fresh@b.com"          # créé à la redemption
+    assert sess and user["email"] == "fresh@b.com"  # créé à la redemption
 
 
 def test_request_invalid_email(authdb):
@@ -119,7 +123,7 @@ def test_scan_gate(authdb):
 
 
 def test_admin_scan_any_default_on(authdb, monkeypatch):
-    monkeypatch.delenv("SONAR_ADMIN_SCAN_ANY", raising=False)   # défaut = bypass conservé
+    monkeypatch.delenv("SONAR_ADMIN_SCAN_ANY", raising=False)  # défaut = bypass conservé
     admin = auth.create_user("a@b.com", is_admin=True)
     assert auth.user_can_scan(admin) is True
     assert auth.user_can_scan_target(admin, "n-importe.com") is True
@@ -145,7 +149,7 @@ def test_bootstrap_admin(authdb, monkeypatch):
     assert raw is not None
     u = auth.get_user_by_email("boss@b.com")
     assert u and u["is_admin"] == 1
-    sess, user = auth.complete_login(raw)                   # le lien one-time marche
+    sess, user = auth.complete_login(raw)  # le lien one-time marche
     assert sess and user["id"] == u["id"]
 
 
@@ -212,8 +216,8 @@ def test_request_invite_only_no_token_but_generic(client, monkeypatch):
     c, _ = client
     monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "false")
     r = c.post("/api/auth/request", json={"email": "ghost@b.com"})
-    assert r.status_code == 200 and r.json()["ok"] is True            # réponse identique
-    assert _count("magic_tokens", "email = ?", "ghost@b.com") == 0    # mais aucun lien
+    assert r.status_code == 200 and r.json()["ok"] is True  # réponse identique
+    assert _count("magic_tokens", "email = ?", "ghost@b.com") == 0  # mais aucun lien
 
 
 def test_verify_opens_session(client):
@@ -250,9 +254,11 @@ def test_scan_admin_passes_gate(client, monkeypatch):
 
     async def fake_run(target):
         yield {"event": "started", "data": {"target": target}}
-        yield {"event": "done",
-               "data": {"score": 100, "grade": "A+", "counts": {}, "total": 0, "target": "https://x"},
-               "_findings": []}
+        yield {
+            "event": "done",
+            "data": {"score": 100, "grade": "A+", "counts": {}, "total": 0, "target": "https://x"},
+            "_findings": [],
+        }
 
     monkeypatch.setattr(appmod, "run_scan", fake_run)
     r = c.get("/api/scan/stream?target=example.com")
@@ -268,16 +274,18 @@ def test_sse_heartbeat_keeps_stream_alive(client, monkeypatch):
 
     async def slow_run(target):
         yield {"event": "started", "data": {"target": target, "total_checks": 1, "categories": {}}}
-        await asyncio.sleep(0.25)   # > heartbeat → au moins un keepalive pendant l'attente
-        yield {"event": "done",
-               "data": {"score": 100, "grade": "A+", "counts": {}, "total": 0, "target": "https://x"},
-               "_findings": []}
+        await asyncio.sleep(0.25)  # > heartbeat → au moins un keepalive pendant l'attente
+        yield {
+            "event": "done",
+            "data": {"score": 100, "grade": "A+", "counts": {}, "total": 0, "target": "https://x"},
+            "_findings": [],
+        }
 
     monkeypatch.setattr(appmod, "run_scan", slow_run)
     r = c.get("/api/scan/stream?target=example.com")
     assert r.status_code == 200
-    assert ": keepalive" in r.text                       # le flux est resté actif
-    assert "event: done" in r.text and "event: saved" in r.text   # et le scan s'est terminé
+    assert ": keepalive" in r.text  # le flux est resté actif
+    assert "event: done" in r.text and "event: saved" in r.text  # et le scan s'est terminé
 
 
 def test_logout_destroys_session(client):
@@ -312,4 +320,4 @@ def test_admin_scan_any_toggle_forbidden_for_non_admin(client):
     plain = auth.create_user("nonadmin@b.com")
     c.cookies.set("sonar_session", auth.create_session(plain["id"]))
     assert c.post("/api/admin/scan-any", json={"enabled": True}).status_code == 403
-    assert "admin_scan_any" not in c.get("/api/me").json()   # non exposé aux non-admins
+    assert "admin_scan_any" not in c.get("/api/me").json()  # non exposé aux non-admins

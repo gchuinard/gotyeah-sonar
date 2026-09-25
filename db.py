@@ -33,7 +33,7 @@ def init_db() -> None:
     """Crée le dossier de données et la table `scans` ; migre les bases existantes."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
-        conn.execute("PRAGMA journal_mode=WAL")   # persistant : tous les accès suivants en WAL
+        conn.execute("PRAGMA journal_mode=WAL")  # persistant : tous les accès suivants en WAL
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS scans (
@@ -103,7 +103,9 @@ def set_setting(key: str, value: str) -> None:
         )
 
 
-def upsert_annotation(user_id: str, domain: str, finding_key: str, text: str, accepted: bool) -> dict:
+def upsert_annotation(
+    user_id: str, domain: str, finding_key: str, text: str, accepted: bool
+) -> dict:
     """Crée ou met à jour l'annotation d'un (user, domaine, finding) ; retourne sa forme rendue."""
     now = datetime.datetime.now().isoformat(timespec="seconds")
     with connect() as conn:
@@ -218,13 +220,15 @@ def fail_scan(scan_id: str, message: str) -> None:
 
     Le message est stocké comme un finding « passthrough » (titre/détail sans `code`)
     afin que get_report le restitue tel quel, quelle que soit la langue."""
-    note = [{
-        "check_id": "scan-error",
-        "category": "info",
-        "severity": "info",
-        "title": "Scan en échec",
-        "detail": message or "Scan en échec.",
-    }]
+    note = [
+        {
+            "check_id": "scan-error",
+            "category": "info",
+            "severity": "info",
+            "title": "Scan en échec",
+            "detail": message or "Scan en échec.",
+        }
+    ]
     with connect() as conn:
         conn.execute(
             "UPDATE scans SET status='error', findings=? WHERE id=?",
@@ -255,7 +259,7 @@ def list_scans(user_id: str | None = None) -> list[dict]:
     for row in rows:
         d = dict(row)
         d["counts"] = json.loads(d["counts"]) if d["counts"] else {}
-        d["status"] = d["status"] or "done"     # legacy (NULL) = scan terminé
+        d["status"] = d["status"] or "done"  # legacy (NULL) = scan terminé
         out.append(d)
     return out
 
@@ -289,7 +293,7 @@ def get_scan(scan_id: str, user_id: str | None = None) -> dict | None:
         "total": row["total"],
         "findings": json.loads(row["findings"]) if row["findings"] else [],
         "created_at": row["created_at"],
-        "status": row["status"] or "done",       # legacy (NULL) = scan terminé
+        "status": row["status"] or "done",  # legacy (NULL) = scan terminé
     }
 
 
@@ -304,7 +308,5 @@ def delete_scan(scan_id: str, user_id: str | None = None) -> bool:
         if user_id is None:
             cur = conn.execute("DELETE FROM scans WHERE id = ?", (scan_id,))
         else:
-            cur = conn.execute(
-                "DELETE FROM scans WHERE id = ? AND user_id = ?", (scan_id, user_id)
-            )
+            cur = conn.execute("DELETE FROM scans WHERE id = ? AND user_id = ?", (scan_id, user_id))
     return cur.rowcount > 0

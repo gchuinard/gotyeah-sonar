@@ -5,6 +5,7 @@ sans toucher au code. On vérifie : la langue est découverte, le chrome et le c
 maison sont rendus en anglais, la couverture EST complète (pas de repli FR silencieux),
 et les endpoints acceptent `en`.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,8 +40,10 @@ def test_ui_locales_key_parity():
     ce test attrape l'oubli (ex. ajouter `history.delete` en FR mais pas en EN)."""
     fr = _leaf_keys(json.loads((_UI_DIR / "fr.json").read_text(encoding="utf-8")))
     en = _leaf_keys(json.loads((_UI_DIR / "en.json").read_text(encoding="utf-8")))
-    assert fr == en, (f"clés UI désynchronisées — FR seulement : {sorted(fr - en)} ; "
-                      f"EN seulement : {sorted(en - fr)}")
+    assert fr == en, (
+        f"clés UI désynchronisées — FR seulement : {sorted(fr - en)} ; "
+        f"EN seulement : {sorted(en - fr)}"
+    )
 
 
 def test_ui_chrome_in_english():
@@ -54,8 +57,8 @@ def test_finding_renders_english():
     f = Finding("hdr-csp", Category.HEADERS, Severity.MEDIUM, code="absent").as_dict()
     en = render.render_finding(f, "en")
     fr = render.render_finding(f, "fr")
-    assert en["title"] and en["title"] != fr["title"]            # bien rendu, et distinct du FR
-    assert en["remediation"]["steps"]                            # remédiation traduite présente
+    assert en["title"] and en["title"] != fr["title"]  # bien rendu, et distinct du FR
+    assert en["remediation"]["steps"]  # remédiation traduite présente
 
 
 def test_en_coverage_complete_for_house_checks():
@@ -63,7 +66,7 @@ def test_en_coverage_complete_for_house_checks():
     missing = set()
     for findings in scenarios.run_all().values():
         for f in findings:
-            if f.get("code") and not f.get("catalog"):           # maison structuré
+            if f.get("code") and not f.get("catalog"):  # maison structuré
                 if ("checks", f["check_id"], f["code"]) not in cat_en:
                     missing.add((f["check_id"], f["code"]))
     assert not missing, f"codes maison sans entrée EN (repli FR) : {sorted(missing)}"

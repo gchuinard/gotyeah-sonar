@@ -12,6 +12,7 @@ en SSE.
   - done        {score, grade, counts, total, target}   (+ clé interne _findings)
   - scan_error  {message}
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -61,6 +62,7 @@ class _SSRFGuardTransport(httpx.AsyncHTTPTransport):
             raise httpx.ConnectError(f"cible interne bloquée ({host})", request=request)
         return await super().handle_async_request(request)
 
+
 # Catégories des checks « lents » (Phase 3 pentest + scan réseau) : exclues du profil
 # rapide, qui ne garde que le passif/actif léger (quelques secondes, retour synchrone).
 _SLOW_CATEGORIES = {Category.PENTEST, Category.ZAP, Category.PORTS}
@@ -78,7 +80,8 @@ def checks_for(fast: bool = False):
 @dataclass
 class Context:
     """Tout ce qu'un check peut avoir besoin de connaître sur la cible."""
-    url: str            # URL finale, après redirections
+
+    url: str  # URL finale, après redirections
     requested_url: str  # URL demandée au départ
     host: str
     response: httpx.Response
@@ -102,7 +105,7 @@ async def _fetch_root(client: httpx.AsyncClient, url: str) -> httpx.Response:
         return await client.get(url)
     except httpx.TransportError:
         if url.startswith("https://"):
-            return await client.get("http://" + url[len("https://"):])
+            return await client.get("http://" + url[len("https://") :])
         raise
 
 
@@ -150,14 +153,21 @@ async def _build_context(target: str) -> Context:
 # de grade. NB : les codes « off »/« not-configured » (désactivation VOLONTAIRE) n'y sont
 # pas : couper nuclei/ZAP exprès n'est pas une couverture défaillante.
 _UNEXECUTED_CODES = {
-    ("nuclei", "not-installed"), ("nuclei", "unavailable"),
-    ("nuclei", "timeout"), ("nuclei", "incomplete"),
-    ("zap", "timeout"), ("zap", "unreachable"),
-    ("tls", "unreachable"), ("tls", "error"),
-    ("tls-key", "unreachable"), ("tls-key", "unavailable"),
+    ("nuclei", "not-installed"),
+    ("nuclei", "unavailable"),
+    ("nuclei", "timeout"),
+    ("nuclei", "incomplete"),
+    ("zap", "timeout"),
+    ("zap", "unreachable"),
+    ("tls", "unreachable"),
+    ("tls", "error"),
+    ("tls-key", "unreachable"),
+    ("tls-key", "unavailable"),
     # Checks ACTIFS qui n'ont pas pu sonder (erreur réseau) → couverture incomplète, pas un
     # PASS rassurant. NB : `subresources` "non-html" n'y est PAS (page non-HTML = N/A légitime).
-    ("cors", "error"), ("mixed", "error"), ("subresources", "unreachable"),
+    ("cors", "error"),
+    ("mixed", "error"),
+    ("subresources", "unreachable"),
 }
 
 
@@ -167,14 +177,16 @@ async def _safe_run(chk: Check, ctx: Context):
     try:
         findings = await chk.fn(ctx) or []
     except Exception as exc:
-        return chk, [Finding(
-            check_id=chk.id,
-            category=chk.category,
-            severity=Severity.INFO,
-            title=f"Check « {chk.title} » indisponible",
-            detail=f"{type(exc).__name__}: {exc}",
-            unexecuted=True,
-        )]
+        return chk, [
+            Finding(
+                check_id=chk.id,
+                category=chk.category,
+                severity=Severity.INFO,
+                title=f"Check « {chk.title} » indisponible",
+                detail=f"{type(exc).__name__}: {exc}",
+                unexecuted=True,
+            )
+        ]
     for f in findings:
         if (f.check_id, f.code) in _UNEXECUTED_CODES:
             f.unexecuted = True
@@ -185,7 +197,9 @@ def _deadline_finding(chk: Check, deadline: float) -> Finding:
     """Check non terminé avant la deadline globale : interrompu, marqué `unexecuted` (la note
     est plafonnée et le scan ne reste pas « en cours » indéfiniment)."""
     return Finding(
-        check_id=chk.id, category=chk.category, severity=Severity.INFO,
+        check_id=chk.id,
+        category=chk.category,
+        severity=Severity.INFO,
         title=f"Check « {chk.title} » interrompu (délai global dépassé)",
         detail=f"Le scan a dépassé {int(deadline)} s ; ce check n'a pas pu terminer.",
         unexecuted=True,
@@ -196,11 +210,14 @@ async def _stream_results(ctx: Context, checks, deadline: float):
     """Lance les checks en // et émet les events au fil de l'eau, sous une DEADLINE globale :
     les checks non terminés à temps sont annulés et signalés (jamais de scan figé)."""
     total = len(checks)
-    yield {"event": "started", "data": {
-        "target": ctx.url,
-        "total_checks": total,
-        "categories": dict(Counter(c.category for c in checks)),
-    }}
+    yield {
+        "event": "started",
+        "data": {
+            "target": ctx.url,
+            "total_checks": total,
+            "categories": dict(Counter(c.category for c in checks)),
+        },
+    }
 
     collected: list[Finding] = []
     done = 0
@@ -213,8 +230,9 @@ async def _stream_results(ctx: Context, checks, deadline: float):
             if remaining <= 0:
                 break
             finished, pending = await asyncio.wait(
-                pending, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
-            if not finished:                       # deadline atteinte sans nouveau résultat
+                pending, timeout=remaining, return_when=asyncio.FIRST_COMPLETED
+            )
+            if not finished:  # deadline atteinte sans nouveau résultat
                 break
             for fut in finished:
                 chk, findings = await fut
@@ -222,8 +240,10 @@ async def _stream_results(ctx: Context, checks, deadline: float):
                 for f in findings:
                     collected.append(f)
                     yield {"event": "finding", "data": f.as_dict()}
-                yield {"event": "progress", "data": {
-                    "done": done, "total": total, "category": chk.category}}
+                yield {
+                    "event": "progress",
+                    "data": {"done": done, "total": total, "category": chk.category},
+                }
 
         # Reste des checks non terminés (deadline) : on annule et on les signale dégradés.
         for fut in pending:
@@ -233,8 +253,10 @@ async def _stream_results(ctx: Context, checks, deadline: float):
             collected.append(f)
             done += 1
             yield {"event": "finding", "data": f.as_dict()}
-            yield {"event": "progress", "data": {
-                "done": done, "total": total, "category": chk.category}}
+            yield {
+                "event": "progress",
+                "data": {"done": done, "total": total, "category": chk.category},
+            }
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
     finally:
@@ -242,8 +264,7 @@ async def _stream_results(ctx: Context, checks, deadline: float):
 
     summary = summarize(collected)
     summary["target"] = ctx.url
-    yield {"event": "done", "data": summary,
-           "_findings": [f.as_dict() for f in collected]}
+    yield {"event": "done", "data": summary, "_findings": [f.as_dict() for f in collected]}
 
 
 async def run_scan(target: str, fast: bool = False):

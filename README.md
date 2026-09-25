@@ -291,6 +291,14 @@ son API. Lance-le en démon à côté (snippet à ajouter à ton `docker-compose
       zap.sh -daemon -host 0.0.0.0 -port 8090
       -config api.key=${ZAP_API_KEY}
       -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    # Healthcheck à garder : celui de l'image interroge le port 8080 (sa variable ZAP_PORT)
+    # alors que ZAP écoute ici sur 8090, et marque le conteneur « unhealthy » alors qu'il répond.
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--output", "/dev/null", "--fail", "http://127.0.0.1:8090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 2m
     networks: [default]
     restart: unless-stopped
 ```
@@ -438,8 +446,9 @@ uvicorn app:app --reload                    # l'app en local sur http://127.0.0.
 
 - **Tests réseau réels** (badssl.com), désactivés par défaut : `SONAR_INTEGRATION=1 pytest -m integration`.
 - **Lint / format / typage** : `ruff check . && ruff format --check . && mypy .` (config dans `pyproject.toml`).
-  La CI (`.github/workflows/ci.yml`) les lance sur chaque push/PR (informatifs pour l'instant) +
-  `pytest --cov`. Le déploiement (`deploy.yml`, sur `main`) est gaté par les tests.
+  La CI (`.github/workflows/ci.yml`) les lance sur chaque push/PR, bloquants depuis le 25/09/2026
+  (seul `pip-audit` reste informatif), + `pytest --cov`. Le déploiement (`deploy.yml`, sur
+  `main`) est gaté par les tests.
 - **Ajouter un check** ou **une langue** : voir [Architecture](#architecture) ci-dessus. Valide le
   catalogue avec `python3 tools/gen_content.py validate --lang fr` (et `--lang en`).
 - **Conventions, pièges (YAML i18n, anti-SSRF, scoring…)** : voir [`CLAUDE.md`](CLAUDE.md).

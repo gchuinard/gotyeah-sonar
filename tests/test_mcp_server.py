@@ -4,6 +4,7 @@ On teste la couche `SonarClient` (= la logique des 3 outils) sans dépendre du S
 (non requis pour la suite). Un test optionnel vérifie l'enregistrement des 3 outils si
 le SDK est installé.
 """
+
 import httpx
 import pytest
 
@@ -25,7 +26,7 @@ async def test_list_domains_sends_bearer_and_unwraps():
         return httpx.Response(200, json={"domains": [{"domain": "a.com", "verified": 1}]})
 
     out = await _client(handler).domains()
-    assert seen["auth"] == "Bearer sonar_pat_xyz"      # le PAT est bien envoyé
+    assert seen["auth"] == "Bearer sonar_pat_xyz"  # le PAT est bien envoyé
     assert seen["path"] == "/api/domains"
     assert out == [{"domain": "a.com", "verified": 1}]
 
@@ -38,8 +39,8 @@ async def test_list_scans_domain_filter():
         return httpx.Response(200, json=scans)
 
     c = _client(handler)
-    assert len(await c.scans()) == 2                    # sans filtre : tout
-    only = await c.scans(domain="a.com")                # filtre côté MCP
+    assert len(await c.scans()) == 2  # sans filtre : tout
+    only = await c.scans(domain="a.com")  # filtre côté MCP
     assert [s["id"] for s in only] == ["1"]
 
 
@@ -73,6 +74,7 @@ def test_server_registers_tools_read_only():
     import asyncio
 
     from sonar_mcp import server
+
     tools = asyncio.run(server.mcp.list_tools())
     names = {t.name for t in tools}
     assert {"list_domains", "list_scans", "get_report", "diff_scans", "get_fix"} <= names

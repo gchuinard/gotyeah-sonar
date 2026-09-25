@@ -17,6 +17,7 @@ Le catalogue est indexé à plat par clé ``(scope, key, code)`` :
 **Ajouter une langue = déposer des fichiers, zéro code** : les langues disponibles
 sont *découvertes* en listant ``locales/ui/*.json``.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,8 +36,8 @@ UI_DIR = _BASE / "locales" / "ui"
 DEFAULT_LANG = "fr"
 
 _lock = threading.Lock()
-_content_cache: dict[str, dict] = {}   # lang -> {(scope, key, code): entrée}
-_ui_cache: dict[str, dict] = {}        # lang -> dict UI
+_content_cache: dict[str, dict] = {}  # lang -> {(scope, key, code): entrée}
+_ui_cache: dict[str, dict] = {}  # lang -> dict UI
 
 
 def clear_cache() -> None:

@@ -1,4 +1,5 @@
 """Scan de ports : logique CDN, sélection de ports, codes — seams mockés, hors-ligne."""
+
 from types import SimpleNamespace
 
 import scanner.checks.ports as portsmod
@@ -11,8 +12,8 @@ def _ctx(host="x.com"):
 
 
 def test_is_cdn_ip():
-    assert portsmod._is_cdn_ip("104.16.0.1") == "Cloudflare"   # plage Cloudflare
-    assert portsmod._is_cdn_ip("93.184.216.34") is None         # IP publique, hors CDN
+    assert portsmod._is_cdn_ip("104.16.0.1") == "Cloudflare"  # plage Cloudflare
+    assert portsmod._is_cdn_ip("93.184.216.34") is None  # IP publique, hors CDN
     assert portsmod._is_cdn_ip("pas-une-ip") is None
 
 
@@ -33,6 +34,7 @@ async def test_behind_cdn(monkeypatch):
 
     async def fake_resolve(host):
         return ["104.16.0.1"]
+
     monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
     out = await ports(_ctx())
     assert len(out) == 1 and out[0].code == "behind-cdn"
@@ -49,6 +51,7 @@ async def test_service_exposed(monkeypatch):
 
     async def fake_probe(ip, port, timeout):
         return (port == 6379, "")
+
     monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
     monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
     out = await ports(_ctx())
@@ -66,6 +69,7 @@ async def test_clean(monkeypatch):
 
     async def fake_probe(ip, port, timeout):
         return (False, "")
+
     monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
     monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
     out = await ports(_ctx())
@@ -83,6 +87,7 @@ async def test_scans_all_non_cdn_ips(monkeypatch):
 
     async def fake_probe(ip, port, timeout):
         return (ip == "8.8.8.8" and port == 6379, "")
+
     monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
     monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
     out = await ports(_ctx())
@@ -99,16 +104,18 @@ async def test_blocked_internal_no_probe(monkeypatch):
 
     async def fake_resolve(host):
         return ["192.168.1.42"]
+
     probed = []
 
     async def fake_probe(ip, port, timeout):
         probed.append(ip)
         return (False, "")
+
     monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
     monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
     out = await ports(_ctx())
     assert len(out) == 1 and out[0].code == "blocked-internal"
-    assert probed == []                                    # rien n'a été port-scanné
+    assert probed == []  # rien n'a été port-scanné
 
 
 async def test_mixed_internal_scans_only_public(monkeypatch):
@@ -119,11 +126,13 @@ async def test_mixed_internal_scans_only_public(monkeypatch):
 
     async def fake_resolve(host):
         return ["93.184.216.34", "127.0.0.1"]
+
     probed = set()
 
     async def fake_probe(ip, port, timeout):
         probed.add(ip)
         return (False, "")
+
     monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
     monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
     await ports(_ctx())
@@ -141,6 +150,7 @@ async def test_allow_private_scans_internal(monkeypatch):
 
     async def fake_probe(ip, port, timeout):
         return (ip == "192.168.1.42" and port == 6379, "")
+
     monkeypatch.setattr(portsmod, "_resolve_ips", fake_resolve)
     monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
     out = await ports(_ctx())
@@ -150,10 +160,11 @@ async def test_allow_private_scans_internal(monkeypatch):
 
 async def test_origin_ip_bypasses_cdn(monkeypatch):
     monkeypatch.delenv("SONAR_PORTS", raising=False)
-    monkeypatch.setenv("SONAR_ORIGIN_IP", "1.1.1.1")   # court-circuite résolution + CDN
+    monkeypatch.setenv("SONAR_ORIGIN_IP", "1.1.1.1")  # court-circuite résolution + CDN
 
     async def fake_probe(ip, port, timeout):
         return (ip == "1.1.1.1" and port == 3306, "")
+
     monkeypatch.setattr(portsmod, "_probe_port", fake_probe)
     out = await ports(_ctx())
     exposed = [f for f in out if f.code == "service-exposed"]

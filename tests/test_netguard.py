@@ -1,4 +1,5 @@
 """Garde réseau anti-SSRF partagée (`scanner.netguard`)."""
+
 import scanner.netguard as ng
 
 
@@ -18,7 +19,7 @@ def test_host_is_internal_blocks_mixed(monkeypatch):
     monkeypatch.setattr(ng, "resolve_ips", lambda h: ["1.2.3.4", "8.8.8.8"])
     assert ng.host_is_internal("public.example") is False
     monkeypatch.setattr(ng, "resolve_ips", lambda h: [])
-    assert ng.host_is_internal("irresolu.example") is False   # irrésoluble → pas notre rôle
+    assert ng.host_is_internal("irresolu.example") is False  # irrésoluble → pas notre rôle
 
 
 def test_allow_private(monkeypatch):

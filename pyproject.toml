@@ -1,6 +1,6 @@
 # Outillage de qualité (lint / format / typage). La config des tests reste dans pytest.ini.
 # Ruff et mypy tournent en CI (ci.yml), d'abord en mode INFORMATIF (continue-on-error) le
-# temps de résorber la dette, puis on pourra les rendre bloquants.
+# temps de résorber la dette, BLOQUANTS depuis le 25/09/2026 (dette résorbée).
 
 [tool.ruff]
 line-length = 100

@@ -2,7 +2,10 @@
 pytest>=8
 pytest-asyncio>=0.23
 pytest-cov>=5
-ruff>=0.6
-mypy>=1.11
+# ruff et mypy bloquent la CI depuis le 25/09/2026 : épinglés sur leur version mineure,
+# car une nouvelle mineure peut changer le style du formateur ou ajouter des règles, et
+# rendre la CI rouge sans qu'une ligne ait bougé. Monter la version à la main, en corrigeant.
+ruff~=0.16.9
+mypy~=2.3.1
 pip-audit>=2.7
 allure-pytest>=2.13

@@ -4,6 +4,7 @@ Garantit que chaque alerte ZAP de tools/zap_sources possède une entrée FR char
 que les entrées générées sont marquées `a_verifier`, et que la chaîne de fallback
 fonctionne (pluginId connu → FR ; inconnu → texte d'origine anglais).
 """
+
 from __future__ import annotations
 
 import json
@@ -13,14 +14,23 @@ from scanner.finding import Category, Finding, Severity
 from scanner.i18n import loader, render
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = json.loads((ROOT / "tools" / "zap_sources" / "zap_alerts.json").read_text(encoding="utf-8"))
+SOURCES = json.loads(
+    (ROOT / "tools" / "zap_sources" / "zap_alerts.json").read_text(encoding="utf-8")
+)
 PLUGIN_IDS = [str(a["pluginId"]) for a in SOURCES["alerts"]]
 
 
 def _zap_finding(plugin_id: str, known_title: str = "EN original"):
-    return Finding("zap-0-" + plugin_id, Category.ZAP, Severity.MEDIUM, code="alert",
-                   catalog="zap", entry_id=plugin_id, params={"cwe": "", "count": 1},
-                   source_text={"title": known_title, "detail": "EN", "recommendation": "EN", "refs": []}).as_dict()
+    return Finding(
+        "zap-0-" + plugin_id,
+        Category.ZAP,
+        Severity.MEDIUM,
+        code="alert",
+        catalog="zap",
+        entry_id=plugin_id,
+        params={"cwe": "", "count": 1},
+        source_text={"title": known_title, "detail": "EN", "recommendation": "EN", "refs": []},
+    ).as_dict()
 
 
 def test_all_curated_plugins_have_fr_entry():
@@ -41,8 +51,11 @@ def test_zap_entries_have_explicit_a_verifier():
     # Chaque entrée porte un drapeau a_verifier booléen explicite (true = à relire,
     # false = relu). Les 20 entrées curées sont relues → a_verifier: false.
     cat = loader.content_catalog("fr")
-    bad = [pid for pid in PLUGIN_IDS
-           if not isinstance(cat[("zap", pid, "alert")].get("a_verifier"), bool)]
+    bad = [
+        pid
+        for pid in PLUGIN_IDS
+        if not isinstance(cat[("zap", pid, "alert")].get("a_verifier"), bool)
+    ]
     assert not bad, f"entrées ZAP sans a_verifier booléen explicite : {bad}"
 
 

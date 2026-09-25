@@ -18,17 +18,23 @@ on:
     branches: [main]
   workflow_dispatch:        # bouton « Run workflow » pour déclencher à la main
 
-# Un seul déploiement à la fois ; on annule un déploiement en cours s'il en arrive un nouveau.
+# Un seul déploiement à la fois, et on ne coupe JAMAIS celui qui tourne (25/09) : annulé en
+# route, il laisse le Pi dans un état bancal (code synchronisé mais image pas reconstruite,
+# ou conteneur arrêté). Un nouveau push attend la fin du précédent ; s'il en arrive plusieurs
+# pendant ce temps, GitHub ne garde en attente que le plus récent.
 concurrency:
   group: deploy-pi
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   REMOTE_DIR: /home/pi/sites/gotyeah-sonar   # dossier cible sur le Pi (chemin absolu)
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Image figée : ce job installe ses dépendances dans le Python DU SYSTÈME
+    # (--break-system-packages), 3.12 sur Ubuntu 24.04 comme l'image Docker. ubuntu-latest
+    # passe à Ubuntu 26 le 19/10/2026 et changerait ce Python sans prévenir.
+    runs-on: ubuntu-24.04
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v5
@@ -82,13 +88,27 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
-          # On retire d'abord tout conteneur "sonar" préexistant (ex. ancien déploiement
-          # depuis un autre dossier) : container_name est fixe, donc un orphelin bloquerait
-          # le nom ET le port 8000. Idempotent : || true si rien à supprimer.
+          # On construit l'image AVANT de toucher au conteneur (25/09) : l'ancienne version
+          # supprimait d'abord le conteneur (docker rm -f) puis construisait, si bien que le
+          # site restait coupé pendant tout le build, et pour de bon si le build échouait.
+          # Désormais l'ancien conteneur sert jusqu'à ce que la nouvelle image soit prête, et
+          # `up -d` ne fait plus que le recréer sur cette image (quelques secondes).
+          #
+          # Un conteneur "sonar" né ailleurs (ex. ancien déploiement depuis un autre dossier)
+          # bloquerait le nom ET le port 8000, container_name étant fixe : on ne le retire
+          # que si compose ne le reconnaît pas comme le sien, juste avant de recréer.
           ssh -i ~/.ssh/id_ed25519 -p 22 \
             -o HostKeyAlias=pi-gotyeah -o UserKnownHostsFile=~/.ssh/known_hosts_pi -o StrictHostKeyChecking=yes \
             "$SSH_USER@$SSH_HOST" \
-            "set -e; cd ${REMOTE_DIR}; docker rm -f sonar 2>/dev/null || true; docker compose up -d --build; docker image prune -f"
+            "set -e
+             cd ${REMOTE_DIR}
+             docker compose build
+             if [ -n \"\$(docker ps -aq -f name=^sonar\$)\" ] && [ -z \"\$(docker compose ps -aq sonar)\" ]; then
+               echo 'conteneur sonar orphelin (hors de ce projet compose) : suppression'
+               docker rm -f sonar
+             fi
+             docker compose up -d
+             docker image prune -f"
 
       # Le déploiement n'est réussi que si l'application RÉPOND. Sans cette étape, un
       # conteneur qui démarre puis meurt aussitôt passe pour un succès : `docker compose

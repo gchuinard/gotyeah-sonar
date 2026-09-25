@@ -6,6 +6,7 @@ avec `title`/`severity`/`remediation`, tels que les renvoie get_report / l'API /
 aucun accès DB, réseau ou i18n ici — uniquement de la stdlib. Donc importable côté client
 local (PYTHONPATH sur le dépôt) comme côté serveur, sans tirer le moteur de scan.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,9 +19,14 @@ _SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4, "pass"
 # Nom de techno détectée (finding tech/detected) -> clé de stack du catalogue. Miroir de
 # la détection du dashboard (templates/index.html : detectedStack()).
 _STACK_MAP = {
-    "nginx": "nginx", "apache": "apache", "cloudflare": "cloudflare",
-    "wordpress": "wordpress", "next.js": "nextjs", "nextjs": "nextjs",
-    "express": "express", "caddy": "caddy",
+    "nginx": "nginx",
+    "apache": "apache",
+    "cloudflare": "cloudflare",
+    "wordpress": "wordpress",
+    "next.js": "nextjs",
+    "nextjs": "nextjs",
+    "express": "express",
+    "caddy": "caddy",
 }
 
 
@@ -95,25 +101,42 @@ def diff_reports(before: dict, after: dict) -> dict:
     # sont suspectes (le problème peut toujours être là, simplement non testé).
     degraded_cats = {f.get("category") for f in after.get("findings", []) if f.get("unexecuted")}
 
-    resolved, uncertain = [], []
+    resolved: list[dict] = []
+    uncertain: list[dict] = []
     for k in issues_a.keys() - issues_b.keys():
         f = issues_a[k]
         (uncertain if f.get("category") in degraded_cats else resolved).append(_brief(f))
     resolved.sort(key=_sev_key)
     uncertain.sort(key=_sev_key)
     new = sorted((_brief(issues_b[k]) for k in issues_b.keys() - issues_a.keys()), key=_sev_key)
-    persistent = sorted((_brief(issues_b[k]) for k in issues_a.keys() & issues_b.keys()), key=_sev_key)
+    persistent = sorted(
+        (_brief(issues_b[k]) for k in issues_a.keys() & issues_b.keys()), key=_sev_key
+    )
 
     sa, sb = before.get("score"), after.get("score")
     delta = (sb - sa) if isinstance(sa, int) and isinstance(sb, int) else None
     return {
-        "from": {"scan_id": before.get("id"), "target": before.get("target"),
-                 "score": sa, "grade": before.get("grade"), "created_at": before.get("created_at")},
-        "to": {"scan_id": after.get("id"), "target": after.get("target"),
-               "score": sb, "grade": after.get("grade"), "created_at": after.get("created_at")},
+        "from": {
+            "scan_id": before.get("id"),
+            "target": before.get("target"),
+            "score": sa,
+            "grade": before.get("grade"),
+            "created_at": before.get("created_at"),
+        },
+        "to": {
+            "scan_id": after.get("id"),
+            "target": after.get("target"),
+            "score": sb,
+            "grade": after.get("grade"),
+            "created_at": after.get("created_at"),
+        },
         "score_delta": delta,
-        "summary": {"resolved": len(resolved), "new": len(new),
-                    "persistent": len(persistent), "uncertain": len(uncertain)},
+        "summary": {
+            "resolved": len(resolved),
+            "new": len(new),
+            "persistent": len(persistent),
+            "uncertain": len(uncertain),
+        },
         "resolved": resolved,
         "new": new,
         "persistent": persistent,
@@ -142,19 +165,21 @@ def extract_fixes(report: dict, check_id: str | None = None, code: str | None = 
         rem = f.get("remediation") or {}
         stacks = rem.get("stacks") or {}
         prompt = (rem.get("ai_prompt") or "").replace("{host}", host).replace("{stack}", stack_name)
-        out.append({
-            "check_id": f.get("check_id"),
-            "code": f.get("code") or "",
-            "severity": f.get("severity"),
-            "title": f.get("title") or "",
-            "recommendation": f.get("recommendation") or "",
-            "explanation": rem.get("explanation") or "",
-            "why": rem.get("why") or "",
-            "steps": rem.get("steps") or [],
-            "stacks": stacks,
-            "detected_stack": stack if stack in stacks else None,
-            "suggested_snippet": stacks.get(stack) if stack in stacks else None,
-            "ai_prompt": prompt,
-            "refs": rem.get("refs") or [],
-        })
+        out.append(
+            {
+                "check_id": f.get("check_id"),
+                "code": f.get("code") or "",
+                "severity": f.get("severity"),
+                "title": f.get("title") or "",
+                "recommendation": f.get("recommendation") or "",
+                "explanation": rem.get("explanation") or "",
+                "why": rem.get("why") or "",
+                "steps": rem.get("steps") or [],
+                "stacks": stacks,
+                "detected_stack": stack if stack in stacks else None,
+                "suggested_snippet": stacks.get(stack) if stack in stacks else None,
+                "ai_prompt": prompt,
+                "refs": rem.get("refs") or [],
+            }
+        )
     return sorted(out, key=_sev_key)

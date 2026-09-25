@@ -9,6 +9,7 @@ Détection pure : chaque finding ne porte qu'un `code` (+ `params`/`evidence`). 
 texte humain (titre, détail, recommandation, remédiation) vit dans
 `content/checks/tech.fr.yaml` et est rendu par `scanner.i18n`.
 """
+
 from __future__ import annotations
 
 import re
@@ -64,9 +65,16 @@ async def tech(ctx):
             if key in seen:
                 return
             seen.add(key)
-            findings.append(Finding("tech", C, Severity.INFO, code="detected",
-                params={"name": name},
-                evidence=(evidence or "")[:200]))
+            findings.append(
+                Finding(
+                    "tech",
+                    C,
+                    Severity.INFO,
+                    code="detected",
+                    params={"name": name},
+                    evidence=(evidence or "")[:200],
+                )
+            )
 
         def add_version(name: str, version: str, evidence: str) -> None:
             # Le LOW « version exposée » ne s'applique qu'aux sources non couvertes
@@ -76,9 +84,16 @@ async def tech(ctx):
             if key in seen:
                 return
             seen.add(key)
-            findings.append(Finding("tech", C, Severity.LOW, code="version",
-                params={"name": name, "version": version},
-                evidence=(evidence or "")[:200]))
+            findings.append(
+                Finding(
+                    "tech",
+                    C,
+                    Severity.LOW,
+                    code="version",
+                    params={"name": name, "version": version},
+                    evidence=(evidence or "")[:200],
+                )
+            )
 
         h = ctx.response.headers
 
@@ -112,7 +127,7 @@ async def tech(ctx):
         if m:
             content = m.group(1).strip()
             # Nom = texte avant le numéro de version (ex. "WordPress 6.5" -> "WordPress").
-            name = re.split(r"\s*\d", content, 1)[0].strip() or content
+            name = re.split(r"\s*\d", content, maxsplit=1)[0].strip() or content
             add_info(name, f"meta generator: {content}")
             version = _extract_version(content)
             if version:

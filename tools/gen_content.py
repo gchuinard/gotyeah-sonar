@@ -18,6 +18,7 @@ Exemples :
   python3 tools/gen_content.py zap --lang fr
   python3 tools/gen_content.py scaffold --lang fr
 """
+
 from __future__ import annotations
 
 import argparse
@@ -114,8 +115,10 @@ def cmd_zap(lang: str) -> int:
         if not (CONTENT / "zap" / f"{pid}.{lang}.yaml").is_file():
             missing.append((pid, a["name"]))
     total = len(_zap_sources())
-    print(f"[zap:{lang}] {total - len(missing)}/{total} alertes ZAP couvertes, "
-          f"{len(missing)} manquante(s) :")
+    print(
+        f"[zap:{lang}] {total - len(missing)}/{total} alertes ZAP couvertes, "
+        f"{len(missing)} manquante(s) :"
+    )
     for pid, name in missing:
         print(f"  - {pid}  {name}")
     return 0
@@ -137,15 +140,17 @@ def cmd_scaffold(lang: str) -> int:
                 "why": "TODO",
                 "steps": ["TODO"],
                 "stacks": {},
-                "refs": list(a.get("refs", [])) + [f"https://cwe.mitre.org/data/definitions/{a.get('cwe','')}.html"],
+                "refs": list(a.get("refs", []))
+                + [f"https://cwe.mitre.org/data/definitions/{a.get('cwe', '')}.html"],
                 "a_verifier": True,
             }
         }
         dest.write_text(
             f"# Squelette généré pour ZAP pluginId {pid} ({a['name']}). À enrichir (transform, pas trad).\n"
-            f"# Source : tools/zap_sources/zap_alerts.json — CWE-{a.get('cwe','')}\n"
+            f"# Source : tools/zap_sources/zap_alerts.json — CWE-{a.get('cwe', '')}\n"
             + yaml.safe_dump(skeleton, allow_unicode=True, sort_keys=False),
-            encoding="utf-8")
+            encoding="utf-8",
+        )
         written += 1
     print(f"[scaffold:{lang}] {written} squelette(s) écrit(s).")
     return 0

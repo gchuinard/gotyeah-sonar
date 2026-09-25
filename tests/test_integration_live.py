@@ -5,6 +5,7 @@ Ils valident, contre de vraies cibles (badssl.com), ce qu'aucun mock ne peut gar
 certificat cassé ne fait PLUS avorter le scan (C1, Batch 0) et que la branche verify-failed
 remonte réellement le problème en lisant le cert via binary_form (E11/Batch 7, plus de code mort).
 """
+
 import os
 
 import pytest
@@ -15,8 +16,10 @@ from scanner.runner import _build_context
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(not os.environ.get("SONAR_INTEGRATION"),
-                       reason="réseau : définis SONAR_INTEGRATION=1 (lancé en CI nocturne)"),
+    pytest.mark.skipif(
+        not os.environ.get("SONAR_INTEGRATION"),
+        reason="réseau : définis SONAR_INTEGRATION=1 (lancé en CI nocturne)",
+    ),
 ]
 
 

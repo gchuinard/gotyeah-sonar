@@ -4,6 +4,7 @@ Détection pure : chaque check ne renvoie qu'un `code` (+ `params`/`evidence`). 
 texte humain (titre, détail, recommandation, remédiation) vit dans
 `content/checks/headers.fr.yaml` et est rendu par `scanner.i18n`.
 """
+
 from __future__ import annotations
 
 import re
@@ -48,16 +49,23 @@ async def csp(ctx):
     # NEUTRALISÉ dès qu'un nonce OU un hash est présent dans la directive : les navigateurs
     # CSP2+ ignorent alors `'unsafe-inline'` (rétro-compat). `strict-dynamic` n'est PAS requis
     # → ne pas pénaliser `script-src 'nonce-xxx' 'unsafe-inline'`, qui est en réalité robuste.
-    neutralized = any(
-        marker in low for marker in ("'nonce-", "'sha256-", "'sha384-", "'sha512-"))
+    neutralized = any(marker in low for marker in ("'nonce-", "'sha256-", "'sha384-", "'sha512-"))
     weak = []
     if "'unsafe-inline'" in low and not neutralized:
         weak.append("`unsafe-inline`")
     if "'unsafe-eval'" in low:
         weak.append("`unsafe-eval`")
     if weak:
-        return [Finding("hdr-csp", C, Severity.LOW, code="weak",
-                        params={"items": ", ".join(weak)}, evidence=v[:300])]
+        return [
+            Finding(
+                "hdr-csp",
+                C,
+                Severity.LOW,
+                code="weak",
+                params={"items": ", ".join(weak)},
+                evidence=v[:300],
+            )
+        ]
     return [Finding("hdr-csp", C, Severity.PASS, code="ok", evidence=v[:300])]
 
 
@@ -74,8 +82,9 @@ async def hsts(ctx):
         return [Finding("hdr-hsts", C, Severity.MEDIUM, code="disabled", evidence=v[:200])]
     findings = [Finding("hdr-hsts", C, Severity.PASS, code="ok", evidence=v)]
     if int(m.group(1)) < 15552000:  # < ~6 mois
-        findings.append(Finding("hdr-hsts-maxage", C, Severity.LOW, code="low",
-                                params={"maxage": m.group(1)}))
+        findings.append(
+            Finding("hdr-hsts-maxage", C, Severity.LOW, code="low", params={"maxage": m.group(1)})
+        )
     return findings
 
 
@@ -87,16 +96,26 @@ async def xfo(ctx):
     # frame-ancestors (CSP) fait autorité quand il est présent : on valide ses sources.
     if fa is not None:
         if any(s in ("*", "http:", "https:") for s in fa):
-            return [Finding("hdr-xfo", C, Severity.MEDIUM, code="permissive",
-                            evidence="frame-ancestors " + " ".join(fa))]
+            return [
+                Finding(
+                    "hdr-xfo",
+                    C,
+                    Severity.MEDIUM,
+                    code="permissive",
+                    evidence="frame-ancestors " + " ".join(fa),
+                )
+            ]
         return [Finding("hdr-xfo", C, Severity.PASS, code="ok")]
     if xfo_val in ("deny", "sameorigin"):
         return [Finding("hdr-xfo", C, Severity.PASS, code="ok")]
     # Présent mais valeur permissive/dépréciée (ALLOWALL, ALLOW-FROM…) — ignorée des
     # navigateurs : la page reste framable, donc ce n'est PAS une protection.
     if xfo_val:
-        return [Finding("hdr-xfo", C, Severity.MEDIUM, code="permissive",
-                        evidence=h.get("x-frame-options"))]
+        return [
+            Finding(
+                "hdr-xfo", C, Severity.MEDIUM, code="permissive", evidence=h.get("x-frame-options")
+            )
+        ]
     return [Finding("hdr-xfo", C, Severity.MEDIUM, code="absent")]
 
 
@@ -142,8 +161,7 @@ async def disclosure(ctx):
         if val and any(ch.isdigit() for ch in val):
             leaks.append(f"{name}: {val}")
     if leaks:
-        return [Finding("hdr-disclosure", C, Severity.LOW, code="leak",
-                        evidence="; ".join(leaks))]
+        return [Finding("hdr-disclosure", C, Severity.LOW, code="leak", evidence="; ".join(leaks))]
     return [Finding("hdr-disclosure", C, Severity.PASS, code="ok")]
 
 
@@ -183,5 +201,12 @@ async def cache(ctx):
     cc = (h.get("cache-control") or "").lower()
     if any(d in cc for d in ("no-store", "private", "no-cache")):
         return [Finding("hdr-cache", C, Severity.PASS, code="ok")]
-    return [Finding("hdr-cache", C, Severity.LOW, code="sensitive-cacheable",
-                    evidence=cc or "(aucun Cache-Control)")]
+    return [
+        Finding(
+            "hdr-cache",
+            C,
+            Severity.LOW,
+            code="sensitive-cacheable",
+            evidence=cc or "(aucun Cache-Control)",
+        )
+    ]

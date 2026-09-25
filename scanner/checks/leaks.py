@@ -11,6 +11,7 @@ seul code 200, pour résister aux soft-404) :
 Chaque sonde renvoie exactement un Finding (problème ou conforme). Tout est borné et
 protégé par try/except : une sonde qui échoue ne casse jamais le scan.
 """
+
 from __future__ import annotations
 
 import json
@@ -70,8 +71,16 @@ async def _sourcemaps(ctx) -> list[Finding]:
             except Exception:
                 data = None
             if isinstance(data, dict) and ("sources" in data or "mappings" in data):
-                return [Finding("leak-sourcemap", C, Severity.LOW, code="exposed",
-                                params={"url": map_url}, evidence=map_url)]
+                return [
+                    Finding(
+                        "leak-sourcemap",
+                        C,
+                        Severity.LOW,
+                        code="exposed",
+                        params={"url": map_url},
+                        evidence=map_url,
+                    )
+                ]
     return [Finding("leak-sourcemap", C, Severity.PASS, code="clean")]
 
 
@@ -83,8 +92,14 @@ def _bases(ctx) -> list[str]:
     return [ctx.url] if ctx.url == root else [ctx.url, root]
 
 
-_SWAGGER_PATHS = ["openapi.json", "swagger.json", "api-docs", "v2/api-docs",
-                  "swagger/v1/swagger.json", "api/swagger.json"]
+_SWAGGER_PATHS = [
+    "openapi.json",
+    "swagger.json",
+    "api-docs",
+    "v2/api-docs",
+    "swagger/v1/swagger.json",
+    "api/swagger.json",
+]
 
 
 async def _swagger(ctx) -> list[Finding]:
@@ -102,9 +117,19 @@ async def _swagger(ctx) -> list[Finding]:
                 data = json.loads(resp.text or "")
             except Exception:
                 continue
-            if isinstance(data, dict) and ("openapi" in data or "swagger" in data or "paths" in data):
-                return [Finding("leak-swagger", C, Severity.MEDIUM, code="exposed",
-                                params={"path": path}, evidence=url)]
+            if isinstance(data, dict) and (
+                "openapi" in data or "swagger" in data or "paths" in data
+            ):
+                return [
+                    Finding(
+                        "leak-swagger",
+                        C,
+                        Severity.MEDIUM,
+                        code="exposed",
+                        params={"path": path},
+                        evidence=url,
+                    )
+                ]
     return [Finding("leak-swagger", C, Severity.PASS, code="clean")]
 
 
@@ -121,8 +146,9 @@ async def _graphql(ctx) -> list[Finding]:
                 continue
             seen.add(url)
             try:
-                resp = await ctx.client.post(url, content=_INTROSPECTION,
-                                             headers={"content-type": "application/json"})
+                resp = await ctx.client.post(
+                    url, content=_INTROSPECTION, headers={"content-type": "application/json"}
+                )
             except Exception:
                 continue
             if not resp or resp.status_code != 200:
@@ -131,9 +157,21 @@ async def _graphql(ctx) -> list[Finding]:
                 data = json.loads(resp.text or "")
             except Exception:
                 continue
-            if isinstance(data, dict) and isinstance(data.get("data"), dict) and "__schema" in data["data"]:
-                return [Finding("leak-graphql", C, Severity.MEDIUM, code="introspection",
-                                params={"path": path}, evidence=url)]
+            if (
+                isinstance(data, dict)
+                and isinstance(data.get("data"), dict)
+                and "__schema" in data["data"]
+            ):
+                return [
+                    Finding(
+                        "leak-graphql",
+                        C,
+                        Severity.MEDIUM,
+                        code="introspection",
+                        params={"path": path},
+                        evidence=url,
+                    )
+                ]
     return [Finding("leak-graphql", C, Severity.PASS, code="clean")]
 
 
@@ -145,8 +183,16 @@ async def _autoindex(ctx) -> list[Finding]:
     # On part de la page déjà récupérée, puis on sonde quelques répertoires courants.
     try:
         if _AUTOINDEX_SIG.search(ctx.response.text or ""):
-            return [Finding("leak-autoindex", C, Severity.LOW, code="listing",
-                            params={"path": "/"}, evidence=ctx.url)]
+            return [
+                Finding(
+                    "leak-autoindex",
+                    C,
+                    Severity.LOW,
+                    code="listing",
+                    params={"path": "/"},
+                    evidence=ctx.url,
+                )
+            ]
     except Exception:
         pass
     for d in _AUTOINDEX_DIRS[1:]:
@@ -154,8 +200,16 @@ async def _autoindex(ctx) -> list[Finding]:
         if resp and resp.status_code == 200:
             try:
                 if _AUTOINDEX_SIG.search(resp.text or ""):
-                    return [Finding("leak-autoindex", C, Severity.LOW, code="listing",
-                                    params={"path": "/" + d}, evidence=urljoin(ctx.url, d))]
+                    return [
+                        Finding(
+                            "leak-autoindex",
+                            C,
+                            Severity.LOW,
+                            code="listing",
+                            params={"path": "/" + d},
+                            evidence=urljoin(ctx.url, d),
+                        )
+                    ]
             except Exception:
                 continue
     return [Finding("leak-autoindex", C, Severity.PASS, code="clean")]
@@ -179,8 +233,7 @@ async def _securitytxt(ctx) -> list[Finding]:
             except Exception:
                 body = ""
             if "contact:" in body or "policy:" in body or "expires:" in body:
-                return [Finding("leak-securitytxt", C, Severity.PASS, code="present",
-                                evidence=url)]
+                return [Finding("leak-securitytxt", C, Severity.PASS, code="present", evidence=url)]
     return [Finding("leak-securitytxt", C, Severity.INFO, code="missing")]
 
 

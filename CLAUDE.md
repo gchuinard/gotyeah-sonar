@@ -63,5 +63,7 @@ structurée → un scan se **re-rend dans n'importe quelle langue**.
 - En-têtes de sécurité posés par un middleware ASGI (`app.py`) — l'app suit ses propres règles.
 - Dépôt **PUBLIC** : ne jamais committer de secrets ni de notes de failles
   (`.env`, `TODO-securite-sites.md`, `AMELIORATIONS.md` sont gitignorés).
-- Déploiement : `deploy.yml` (push main → tests → rsync Pi → `docker compose up -d --build`).
+- Déploiement : `deploy.yml` (push main → tests → rsync Pi → `docker compose build` puis
+  `docker compose up -d` : l'image est construite avant de recréer le conteneur, le site ne
+  coupe pas pendant le build ; un déploiement en cours n'est jamais annulé par un nouveau push).
   Le Pi reçoit les fichiers par rsync (pas de `git pull`) → son HEAD git ne bouge pas.

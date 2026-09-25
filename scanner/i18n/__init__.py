@@ -5,6 +5,7 @@ findings *structurés* (``code`` + ``params``) ; ici on les *rend* dans la langu
 voulue à partir des fichiers de ``content/`` et ``locales/ui/`` — aucun texte humain
 n'est figé dans le code des checks.
 """
+
 from __future__ import annotations
 
 from .loader import available_langs, clear_cache

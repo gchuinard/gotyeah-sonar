@@ -5,6 +5,7 @@ requête inoffensive (TRACE se contente de renvoyer la requête en écho — auc
 écriture). On NE teste PAS réellement PUT/DELETE (pas d'écriture de données) : on
 signale seulement qu'ils sont annoncés, à vérifier côté contrôle d'accès.
 """
+
 from __future__ import annotations
 
 from ..finding import Category, Finding, Severity
@@ -51,11 +52,25 @@ async def methods(ctx):
 
     dangerous = sorted(m for m in _DANGEROUS if m in allow)
     if dangerous:
-        findings.append(Finding("http-methods", C, Severity.INFO, code="dangerous-methods",
-                                params={"methods": ", ".join(dangerous)},
-                                evidence=", ".join(sorted(allow))))
+        findings.append(
+            Finding(
+                "http-methods",
+                C,
+                Severity.INFO,
+                code="dangerous-methods",
+                params={"methods": ", ".join(dangerous)},
+                evidence=", ".join(sorted(allow)),
+            )
+        )
 
     if not findings:
-        findings.append(Finding("http-methods", C, Severity.PASS, code="ok",
-                                evidence=", ".join(sorted(allow)) or None))
+        findings.append(
+            Finding(
+                "http-methods",
+                C,
+                Severity.PASS,
+                code="ok",
+                evidence=", ".join(sorted(allow)) or None,
+            )
+        )
     return findings

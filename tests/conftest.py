@@ -4,6 +4,7 @@ Tout est hors-ligne : les checks reçoivent des réponses fabriquées à la main
 les checks actifs (cors, exposed) reçoivent un `FakeClient` qui renvoie des
 réponses préprogrammées. Aucun test ne touche le réseau.
 """
+
 from __future__ import annotations
 
 import types
@@ -26,8 +27,9 @@ def _make_response(status=200, headers=None, text="", url="https://example.com/"
     )
 
 
-def _make_ctx(response=None, url="https://example.com/", history=None,
-              client=None, host="example.com"):
+def _make_ctx(
+    response=None, url="https://example.com/", history=None, client=None, host="example.com"
+):
     """Reproduit l'interface de scanner.runner.Context attendue par les checks."""
     if response is None:
         response = _make_response(url=url)
@@ -53,7 +55,7 @@ class FakeClient:
         self.default = default
         self.calls = []
 
-    async def get(self, url, headers=None, **kwargs):   # **kwargs : absorbe follow_redirects, etc.
+    async def get(self, url, headers=None, **kwargs):  # **kwargs : absorbe follow_redirects, etc.
         self.calls.append((str(url), headers))
         for frag, resp in self.routes.items():
             if str(url).endswith(frag):
@@ -82,16 +84,22 @@ def fake_client_cls():
 # Fixtures d'auth (partagées par test_auth.py et test_domains.py)
 # --------------------------------------------------------------------------- #
 import auth  # noqa: E402
-import db    # noqa: E402
+import db  # noqa: E402
 
 
 @pytest.fixture
 def authdb(tmp_path, monkeypatch):
     """Base temporaire + tables d'auth, env propre."""
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "sonar.db")
-    for k in ("SONAR_OPEN_REGISTRATION", "SONAR_ADMIN_EMAIL", "BREVO_API_KEY",
-              "SONAR_MAGIC_TTL_MIN", "SONAR_RATE_EMAIL", "SONAR_RATE_IP",
-              "SONAR_ADMIN_SCAN_ANY"):
+    for k in (
+        "SONAR_OPEN_REGISTRATION",
+        "SONAR_ADMIN_EMAIL",
+        "BREVO_API_KEY",
+        "SONAR_MAGIC_TTL_MIN",
+        "SONAR_RATE_EMAIL",
+        "SONAR_RATE_IP",
+        "SONAR_ADMIN_SCAN_ANY",
+    ):
         monkeypatch.delenv(k, raising=False)
     db.init_db()
     auth.init_auth()
@@ -102,12 +110,14 @@ def authdb(tmp_path, monkeypatch):
 def client(tmp_path, monkeypatch):
     """App réelle via TestClient (le lifespan initialise la base temporaire)."""
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "sonar.db")
-    monkeypatch.setenv("SONAR_COOKIE_SECURE", "false")   # http en test
+    monkeypatch.setenv("SONAR_COOKIE_SECURE", "false")  # http en test
     monkeypatch.setenv("SONAR_OPEN_REGISTRATION", "true")
     monkeypatch.delenv("SONAR_ADMIN_EMAIL", raising=False)
     monkeypatch.delenv("BREVO_API_KEY", raising=False)
     monkeypatch.delenv("SONAR_ADMIN_SCAN_ANY", raising=False)
     from fastapi.testclient import TestClient
+
     import app as appmod
+
     with TestClient(appmod.app) as c:
         yield c, appmod

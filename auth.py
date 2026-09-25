@@ -17,6 +17,7 @@ Garde-fous :
 La base est partagée avec `db.py` (même fichier SQLite). On référence `db.DB_PATH`
 dynamiquement pour rester testable (monkeypatch).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -85,7 +86,7 @@ def session_max_age() -> int:
 # Helpers bas niveau
 # --------------------------------------------------------------------------- #
 def _now() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
+    return datetime.datetime.now(datetime.UTC)
 
 
 def _iso(dt: datetime.datetime) -> str:
@@ -111,7 +112,7 @@ def is_valid_email(email: str) -> bool:
 
 
 def _conn() -> sqlite3.Connection:
-    conn = db.connect()                 # busy_timeout + WAL persistant (cf. db.connect)
+    conn = db.connect()  # busy_timeout + WAL persistant (cf. db.connect)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -182,7 +183,7 @@ def init_auth() -> None:
         ucols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         if "lang" not in ucols:
             conn.execute("ALTER TABLE users ADD COLUMN lang TEXT")
-    purge_expired()   # nettoyage au démarrage (sessions / liens magiques expirés)
+    purge_expired()  # nettoyage au démarrage (sessions / liens magiques expirés)
 
 
 def purge_expired() -> int:
@@ -235,14 +236,15 @@ def update_user_email(user_id: str, new_email: str):
     if not user:
         return "not_found"
     if new_email == user["email"]:
-        return user   # no-op : même adresse
+        return user  # no-op : même adresse
     try:
         with _conn() as conn:
             conn.execute("UPDATE users SET email=? WHERE id=?", (new_email, user_id))
-            conn.execute("DELETE FROM magic_tokens WHERE email IN (?, ?)",
-                         (user["email"], new_email))
+            conn.execute(
+                "DELETE FROM magic_tokens WHERE email IN (?, ?)", (user["email"], new_email)
+            )
     except sqlite3.IntegrityError:
-        return "conflict"   # contrainte UNIQUE(email) : un autre compte a déjà cette adresse
+        return "conflict"  # contrainte UNIQUE(email) : un autre compte a déjà cette adresse
     return get_user_by_id(user_id)
 
 
@@ -333,7 +335,8 @@ def demote_admin(user_id: str) -> bool:
             "UPDATE users SET is_admin = 0 "
             "WHERE id = ? AND is_admin = 1 "
             "AND (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1",
-            (user_id,))
+            (user_id,),
+        )
         return cur.rowcount > 0
 
 
@@ -344,7 +347,7 @@ def delete_user_guarded(user_id: str) -> str:
     Renvoie 'ok' | 'last_admin' | 'not_found'."""
     conn = _conn()
     try:
-        conn.isolation_level = None        # gestion manuelle de la transaction
+        conn.isolation_level = None  # gestion manuelle de la transaction
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT is_admin, email FROM users WHERE id = ?", (user_id,)).fetchone()
         if row is None:
@@ -355,11 +358,13 @@ def delete_user_guarded(user_id: str) -> str:
             if n <= 1:
                 conn.execute("ROLLBACK")
                 return "last_admin"
-        for sql in ("DELETE FROM scans WHERE user_id = ?",
-                    "DELETE FROM verified_domains WHERE user_id = ?",
-                    "DELETE FROM personal_tokens WHERE user_id = ?",
-                    "DELETE FROM sessions WHERE user_id = ?",
-                    "DELETE FROM annotations WHERE user_id = ?"):
+        for sql in (
+            "DELETE FROM scans WHERE user_id = ?",
+            "DELETE FROM verified_domains WHERE user_id = ?",
+            "DELETE FROM personal_tokens WHERE user_id = ?",
+            "DELETE FROM sessions WHERE user_id = ?",
+            "DELETE FROM annotations WHERE user_id = ?",
+        ):
             conn.execute(sql, (user_id,))
         conn.execute("DELETE FROM magic_tokens WHERE email = ?", (row["email"],))
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -381,13 +386,16 @@ def rate_limit_ok(email: str, ip: str) -> bool:
         conn.execute("DELETE FROM auth_rate WHERE created_at < ?", (cutoff,))
         n_email = conn.execute(
             "SELECT COUNT(*) FROM auth_rate WHERE key=? AND created_at >= ?",
-            (f"email:{email}", cutoff)).fetchone()[0]
+            (f"email:{email}", cutoff),
+        ).fetchone()[0]
         n_ip = conn.execute(
-            "SELECT COUNT(*) FROM auth_rate WHERE key=? AND created_at >= ?",
-            (f"ip:{ip}", cutoff)).fetchone()[0]
+            "SELECT COUNT(*) FROM auth_rate WHERE key=? AND created_at >= ?", (f"ip:{ip}", cutoff)
+        ).fetchone()[0]
         if n_email >= _env_int("SONAR_RATE_EMAIL", 5) or n_ip >= _env_int("SONAR_RATE_IP", 20):
             return False
-        conn.execute("INSERT INTO auth_rate (key, created_at) VALUES (?, ?)", (f"email:{email}", now_iso))
+        conn.execute(
+            "INSERT INTO auth_rate (key, created_at) VALUES (?, ?)", (f"email:{email}", now_iso)
+        )
         conn.execute("INSERT INTO auth_rate (key, created_at) VALUES (?, ?)", (f"ip:{ip}", now_iso))
     return True
 
@@ -407,8 +415,8 @@ def scan_rate_ok(user_id: str) -> bool:
     with _conn() as conn:
         conn.execute("DELETE FROM auth_rate WHERE key=? AND created_at < ?", (key, cutoff))
         n = conn.execute(
-            "SELECT COUNT(*) FROM auth_rate WHERE key=? AND created_at >= ?",
-            (key, cutoff)).fetchone()[0]
+            "SELECT COUNT(*) FROM auth_rate WHERE key=? AND created_at >= ?", (key, cutoff)
+        ).fetchone()[0]
         if n >= limit:
             return False
         conn.execute("INSERT INTO auth_rate (key, created_at) VALUES (?, ?)", (key, now_iso))
@@ -440,13 +448,15 @@ def redeem_magic_token(raw: str):
     with _conn() as conn:
         row = conn.execute(
             "SELECT email, expires_at, redeemed_at FROM magic_tokens WHERE token_hash=?",
-            (token_hash,)).fetchone()
+            (token_hash,),
+        ).fetchone()
         if not row or row["redeemed_at"] is not None or row["expires_at"] <= now_iso:
             return None
         # invalidation atomique : la 1re consommation gagne.
         cur = conn.execute(
             "UPDATE magic_tokens SET redeemed_at=? WHERE token_hash=? AND redeemed_at IS NULL",
-            (now_iso, token_hash))
+            (now_iso, token_hash),
+        )
         if cur.rowcount != 1:
             return None
         return row["email"]
@@ -467,19 +477,20 @@ def create_session(user_id: str) -> str:
     return raw
 
 
-def get_session_user(raw: str):
+def get_session_user(raw: str | None):
     if not raw:
         return None
     now_iso = _iso(_now())
     with _conn() as conn:
         row = conn.execute(
-            "SELECT user_id, expires_at FROM sessions WHERE token_hash=?", (_hash(raw),)).fetchone()
+            "SELECT user_id, expires_at FROM sessions WHERE token_hash=?", (_hash(raw),)
+        ).fetchone()
         if not row or row["expires_at"] <= now_iso:
             return None
     return get_user_by_id(row["user_id"])
 
 
-def destroy_session(raw: str) -> None:
+def destroy_session(raw: str | None) -> None:
     if not raw:
         return
     with _conn() as conn:
@@ -509,8 +520,9 @@ def _pat_to_dict(row) -> dict:
     }
 
 
-def create_pat(user_id: str, name: str = "", scope: str = PAT_DEFAULT_SCOPE,
-               ttl_days: int | None = None) -> tuple[str, dict]:
+def create_pat(
+    user_id: str, name: str = "", scope: str = PAT_DEFAULT_SCOPE, ttl_days: int | None = None
+) -> tuple[str, dict]:
     """Crée un jeton personnel. Retourne (raw, meta) ; `raw` n'est disponible qu'ICI."""
     raw = PAT_PREFIX + secrets.token_urlsafe(32)
     pid = uuid.uuid4().hex
@@ -556,8 +568,7 @@ def delete_pat(token_id: str, user_id: str) -> bool:
     du simple nettoyage de la liste. Retourne True si une ligne a été supprimée."""
     with _conn() as conn:
         cur = conn.execute(
-            "DELETE FROM personal_tokens "
-            "WHERE id=? AND user_id=? AND revoked_at IS NOT NULL",
+            "DELETE FROM personal_tokens WHERE id=? AND user_id=? AND revoked_at IS NOT NULL",
             (token_id, user_id),
         )
         return cur.rowcount > 0
@@ -580,8 +591,7 @@ def resolve_pat(raw: str, required_scope: str | None = None):
             return None
         if required_scope is not None and required_scope not in (row["scope"] or "").split():
             return None  # default-deny si on ajoute des scopes plus tard
-        conn.execute(
-            "UPDATE personal_tokens SET last_used_at=? WHERE id=?", (now_iso, row["id"]))
+        conn.execute("UPDATE personal_tokens SET last_used_at=? WHERE id=?", (now_iso, row["id"]))
     return get_user_by_id(row["user_id"])
 
 
@@ -610,8 +620,8 @@ def is_valid_domain(domain: str) -> bool:
 def has_verified_domain(user_id: str) -> bool:
     with _conn() as conn:
         n = conn.execute(
-            "SELECT COUNT(*) FROM verified_domains WHERE user_id=? AND verified=1",
-            (user_id,)).fetchone()[0]
+            "SELECT COUNT(*) FROM verified_domains WHERE user_id=? AND verified=1", (user_id,)
+        ).fetchone()[0]
     return n > 0
 
 
@@ -626,8 +636,8 @@ def user_can_scan(user) -> bool:
 def _verified_domains_of(user_id: str) -> list[str]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT domain FROM verified_domains WHERE user_id=? AND verified=1",
-            (user_id,)).fetchall()
+            "SELECT domain FROM verified_domains WHERE user_id=? AND verified=1", (user_id,)
+        ).fetchall()
     return [r["domain"] for r in rows]
 
 
@@ -659,7 +669,11 @@ def _domain_to_dict(row) -> dict:
         # Enregistrement TXT à publier (apex recommandé, sous-domaine en alternative).
         "dns": {
             "apex": {"type": "TXT", "host": row["domain"], "value": f"sonar-verify={row['token']}"},
-            "subdomain": {"type": "TXT", "host": f"{CHALLENGE_PREFIX}.{row['domain']}", "value": row["token"]},
+            "subdomain": {
+                "type": "TXT",
+                "host": f"{CHALLENGE_PREFIX}.{row['domain']}",
+                "value": row["token"],
+            },
         },
     }
 
@@ -667,7 +681,8 @@ def _domain_to_dict(row) -> dict:
 def get_domain(domain_id: str, user_id: str):
     with _conn() as conn:
         row = conn.execute(
-            "SELECT * FROM verified_domains WHERE id=? AND user_id=?", (domain_id, user_id)).fetchone()
+            "SELECT * FROM verified_domains WHERE id=? AND user_id=?", (domain_id, user_id)
+        ).fetchone()
     return _domain_to_dict(row) if row else None
 
 
@@ -675,14 +690,16 @@ def get_domain_by_name(user_id: str, domain: str):
     domain = normalize_domain(domain)
     with _conn() as conn:
         row = conn.execute(
-            "SELECT * FROM verified_domains WHERE user_id=? AND domain=?", (user_id, domain)).fetchone()
+            "SELECT * FROM verified_domains WHERE user_id=? AND domain=?", (user_id, domain)
+        ).fetchone()
     return _domain_to_dict(row) if row else None
 
 
 def list_domains(user_id: str) -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM verified_domains WHERE user_id=? ORDER BY created_at DESC", (user_id,)).fetchall()
+            "SELECT * FROM verified_domains WHERE user_id=? ORDER BY created_at DESC", (user_id,)
+        ).fetchall()
     return [_domain_to_dict(r) for r in rows]
 
 
@@ -728,7 +745,7 @@ def update_domain(domain_id: str, user_id: str, new_domain: str):
     if not current:
         return None
     if new_domain == current["domain"]:
-        return current   # no-op : même nom, on ne casse pas la vérification existante
+        return current  # no-op : même nom, on ne casse pas la vérification existante
     if get_domain_by_name(user_id, new_domain):
         return "conflict"
     token = secrets.token_hex(16)
@@ -745,7 +762,8 @@ def _mark_verified(domain_id: str) -> None:
     with _conn() as conn:
         conn.execute(
             "UPDATE verified_domains SET verified=1, verified_at=? WHERE id=?",
-            (_iso(_now()), domain_id))
+            (_iso(_now()), domain_id),
+        )
 
 
 async def _txt_records(name: str) -> list[str]:
@@ -788,8 +806,10 @@ async def verify_domain(domain_id: str, user_id: str):
         _mark_verified(domain_id)
         return True, f"Domaine vérifié (TXT sur {CHALLENGE_PREFIX})."
 
-    return False, ("Enregistrement TXT introuvable. Vérifie la valeur, puis patiente : "
-                   "la propagation DNS peut prendre quelques minutes.")
+    return False, (
+        "Enregistrement TXT introuvable. Vérifie la valeur, puis patiente : "
+        "la propagation DNS peut prendre quelques minutes."
+    )
 
 
 # --------------------------------------------------------------------------- #

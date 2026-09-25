@@ -1,5 +1,6 @@
 """Batch 0 — sémantique de couverture du moteur : un cert cassé ne perd plus la cible
 (C1), et un check non exécuté plafonne la note au lieu de la gonfler (C3)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,8 +11,13 @@ import pytest
 
 from scanner.finding import Category, Finding, Severity, summarize
 from scanner.registry import Check
-from scanner.runner import (_fetch_root, _host_is_internal, _is_blocked_ip,
-                            _safe_run, _stream_results)
+from scanner.runner import (
+    _fetch_root,
+    _host_is_internal,
+    _is_blocked_ip,
+    _safe_run,
+    _stream_results,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -40,7 +46,7 @@ class _AllDownClient:
 async def test_fetch_root_falls_back_to_http():
     client = _HttpsDownClient()
     resp = await _fetch_root(client, "https://x.test/")
-    assert str(resp.url).startswith("http://")            # on a bien basculé sur http
+    assert str(resp.url).startswith("http://")  # on a bien basculé sur http
     assert client.calls == ["https://x.test/", "http://x.test/"]
 
 
@@ -87,10 +93,11 @@ async def test_crash_is_marked_unexecuted_not_pass():
         raise RuntimeError("kaboom")
 
     _c, findings = await _safe_run(
-        Check(id="tls", title="TLS / Certificat", category=Category.TLS, fn=boom), ctx=None)
+        Check(id="tls", title="TLS / Certificat", category=Category.TLS, fn=boom), ctx=None
+    )
     assert findings[0].unexecuted is True
-    assert findings[0].category == Category.TLS          # groupé sous la vraie catégorie
-    assert summarize(findings)["grade"] == "B"           # un crash ne donne jamais A+
+    assert findings[0].category == Category.TLS  # groupé sous la vraie catégorie
+    assert summarize(findings)["grade"] == "B"  # un crash ne donne jamais A+
 
 
 # --------------------------------------------------------------------------- #
@@ -107,7 +114,7 @@ def test_is_blocked_ip():
 def test_host_is_internal_ip_literals():
     # IP littérales : getaddrinfo ne déclenche pas de DNS → testable hors-ligne.
     assert _host_is_internal("127.0.0.1")
-    assert _host_is_internal("169.254.169.254")          # endpoint métadonnées cloud
+    assert _host_is_internal("169.254.169.254")  # endpoint métadonnées cloud
     assert not _host_is_internal("8.8.8.8")
     assert not _host_is_internal("")
 
@@ -135,10 +142,10 @@ async def test_stream_results_deadline_interrupts_hanging_check():
     ]
     events = [ev async for ev in _stream_results(_fake_ctx(), checks, deadline=0.3)]
     kinds = [e["event"] for e in events]
-    assert "done" in kinds                                # le scan se termine (jamais figé)
+    assert "done" in kinds  # le scan se termine (jamais figé)
     findings = [e["data"] for e in events if e["event"] == "finding"]
     assert any(f["check_id"] == "fast" for f in findings)
     hang_f = next(f for f in findings if f["check_id"] == "hang")
-    assert hang_f["unexecuted"] is True                  # le check bloqué est interrompu + tracé
+    assert hang_f["unexecuted"] is True  # le check bloqué est interrompu + tracé
     done = next(e["data"] for e in events if e["event"] == "done")
-    assert done["incomplete"] is True                    # couverture incomplète → note plafonnée
+    assert done["incomplete"] is True  # couverture incomplète → note plafonnée

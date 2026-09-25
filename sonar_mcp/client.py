@@ -8,6 +8,7 @@ Config par variables d'environnement (lues à défaut d'arguments explicites) :
   SONAR_TOKEN     jeton « sonar_pat_… » généré dans l'UI Sonar (obligatoire)
   SONAR_BASE_URL  base de l'instance, ex. https://sonar.gautierchuinard.com (obligatoire)
 """
+
 from __future__ import annotations
 
 import os
@@ -22,8 +23,13 @@ class SonarClient:
     créé/fermé à chaque appel.
     """
 
-    def __init__(self, base_url: str | None = None, token: str | None = None,
-                 client: httpx.AsyncClient | None = None, timeout: float = 20.0):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        token: str | None = None,
+        client: httpx.AsyncClient | None = None,
+        timeout: float = 20.0,
+    ):
         env_base = os.environ.get("SONAR_BASE_URL") or ""
         env_token = os.environ.get("SONAR_TOKEN") or ""
         self.base_url = (base_url if base_url is not None else env_base).strip().rstrip("/")
@@ -38,7 +44,8 @@ class SonarClient:
             raise RuntimeError("SONAR_TOKEN manquant — génère un jeton dans l'UI Sonar.")
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
         client = self._client or httpx.AsyncClient(
-            base_url=self.base_url, timeout=httpx.Timeout(self._timeout))
+            base_url=self.base_url, timeout=httpx.Timeout(self._timeout)
+        )
         owns = self._client is None
         try:
             resp = await client.get(path, params=params, headers=headers)

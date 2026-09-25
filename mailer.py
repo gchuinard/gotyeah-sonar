@@ -10,6 +10,7 @@ Variables d'environnement :
   SONAR_MAIL_FROM      email expéditeur (ex. sonar@tondomaine.com)
   SONAR_MAIL_FROM_NAME nom expéditeur affiché (défaut: Sonar)
 """
+
 from __future__ import annotations
 
 import html as _html
@@ -123,7 +124,7 @@ def _bodies(link: str, lang: str = "fr") -> tuple[str, str, str]:
     html = html.replace("__LANG__", _html.escape(lang, quote=True))
     for slot in ("subtitle", "heading", "intro", "button", "fallback", "security", "footer"):
         html = html.replace(f"__{slot.upper()}__", _html.escape(e[slot]))
-    html = html.replace("__LINK__", link)   # token urlsafe : aucun caractère à échapper
+    html = html.replace("__LINK__", link)  # token urlsafe : aucun caractère à échapper
     return subject, text, html
 
 
@@ -142,8 +143,10 @@ async def send_magic_link(to_email: str, link: str, lang: str = "fr") -> bool:
         return False
 
     payload = {
-        "sender": {"email": _env("SONAR_MAIL_FROM", "sonar@localhost"),
-                   "name": _env("SONAR_MAIL_FROM_NAME", "Sonar")},
+        "sender": {
+            "email": _env("SONAR_MAIL_FROM", "sonar@localhost"),
+            "name": _env("SONAR_MAIL_FROM_NAME", "Sonar"),
+        },
         "to": [{"email": to_email}],
         "subject": subject,
         "textContent": text,
@@ -151,8 +154,11 @@ async def send_magic_link(to_email: str, link: str, lang: str = "fr") -> bool:
     }
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
-            resp = await client.post(BREVO_ENDPOINT, json=payload,
-                                     headers={"api-key": api_key, "accept": "application/json"})
+            resp = await client.post(
+                BREVO_ENDPOINT,
+                json=payload,
+                headers={"api-key": api_key, "accept": "application/json"},
+            )
             resp.raise_for_status()
         log.info("Lien magique envoyé à %s via Brevo.", to_email)
         return True

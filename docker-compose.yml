@@ -76,6 +76,17 @@ services:
       - "api.addrs.addr.name=.*"      # autorise l'API depuis les autres conteneurs
       - -config
       - "api.addrs.addr.regex=true"
+    # L'image fournit son propre healthcheck (curl http://localhost:$ZAP_PORT/), avec
+    # ZAP_PORT=8080 dans l'image alors que ZAP écoute ici sur 8090 (voir -port ci-dessus) :
+    # la sonde frappait un port fermé, d'où « unhealthy » depuis juin alors que ZAP répond
+    # (constaté le 25/09/2026 : 8080 refusé, 8090 renvoie 200). On vise donc le bon port,
+    # et 127.0.0.1 plutôt que localhost, qui résout d'abord en ::1 dans les conteneurs du Pi.
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--output", "/dev/null", "--fail", "http://127.0.0.1:8090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 2m      # démarrage Java lent sur le Pi : échecs non comptés pendant 2 min
     networks:
       - default
     restart: unless-stopped

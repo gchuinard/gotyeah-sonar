@@ -14,6 +14,7 @@ rattrapée dans le chemin qui décide qui entre est un défaut.
 `mcp_bridge.py` évitait déjà le piège en comparant des bytes ; la leçon n'avait pas été
 propagée ici. Trouvé le 05/09/2026, corrigé en même temps dans `radar-prospects/auth.py`.
 """
+
 from __future__ import annotations
 
 import base64

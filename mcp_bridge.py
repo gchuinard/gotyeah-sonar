@@ -14,6 +14,7 @@ Default-deny : sans `SONAR_MCP_SHARED_SECRET` (ou avec un mauvais secret), toute
 Les routes sont montées via `register(app)` (add_api_route → APIRoute normales avec `.path`),
 et non un APIRouter/include_router, pour rester robuste à toutes les versions FastAPI.
 """
+
 from __future__ import annotations
 
 import hmac
@@ -39,8 +40,11 @@ def _require_bridge(secret: str | None, email: str | None):
     expected = (os.environ.get("SONAR_MCP_SHARED_SECRET") or "").strip()
     # Comparaison en bytes : compare_digest lève TypeError sur une str non-ASCII (un
     # X-MCP-Secret forgé avec des octets latin-1 renverrait alors 500 au lieu de 401).
-    if (not expected or not secret
-            or not hmac.compare_digest(secret.encode("utf-8"), expected.encode("utf-8"))):
+    if (
+        not expected
+        or not secret
+        or not hmac.compare_digest(secret.encode("utf-8"), expected.encode("utf-8"))
+    ):
         raise HTTPException(status_code=401, detail="Secret MCP invalide.")
     if not email:
         raise HTTPException(status_code=401, detail="X-Act-As-Email requis.")
@@ -56,59 +60,77 @@ async def _run(coro):
     try:
         return await coro
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # --------------------------------------------------------------------------- #
 # Endpoints (lectures + une action). Miroir de mcp_remote/sonar_tools.py côté hub.
 # --------------------------------------------------------------------------- #
-async def _list_domains(x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
-                        x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
+async def _list_domains(
+    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
+    x_act_as_email: str | None = Header(None, alias="X-Act-As-Email"),
+):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.list_domains_logic(user))
 
 
-async def _list_scans(domain: str | None = Query(None),
-                      x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
-                      x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
+async def _list_scans(
+    domain: str | None = Query(None),
+    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
+    x_act_as_email: str | None = Header(None, alias="X-Act-As-Email"),
+):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.list_scans_logic(user, domain))
 
 
-async def _get_report(scan_id: str = Query(...), lang: str | None = Query(None),
-                      x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
-                      x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
+async def _get_report(
+    scan_id: str = Query(...),
+    lang: str | None = Query(None),
+    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
+    x_act_as_email: str | None = Header(None, alias="X-Act-As-Email"),
+):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.get_report_logic(user, scan_id, lang))
 
 
-async def _diff_scans(scan_a: str = Query(...), scan_b: str = Query(...),
-                      lang: str | None = Query(None),
-                      x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
-                      x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
+async def _diff_scans(
+    scan_a: str = Query(...),
+    scan_b: str = Query(...),
+    lang: str | None = Query(None),
+    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
+    x_act_as_email: str | None = Header(None, alias="X-Act-As-Email"),
+):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.diff_scans_logic(user, scan_a, scan_b, lang))
 
 
-async def _get_fix(scan_id: str = Query(...), check_id: str | None = Query(None),
-                   code: str | None = Query(None), lang: str | None = Query(None),
-                   x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
-                   x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
+async def _get_fix(
+    scan_id: str = Query(...),
+    check_id: str | None = Query(None),
+    code: str | None = Query(None),
+    lang: str | None = Query(None),
+    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
+    x_act_as_email: str | None = Header(None, alias="X-Act-As-Email"),
+):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.get_fix_logic(user, scan_id, check_id, code, lang))
 
 
-async def _get_scan_status(scan_id: str = Query(...),
-                           x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
-                           x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
+async def _get_scan_status(
+    scan_id: str = Query(...),
+    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
+    x_act_as_email: str | None = Header(None, alias="X-Act-As-Email"),
+):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.get_scan_status_logic(user, scan_id))
 
 
-async def _run_scan(domain: str = Body(..., embed=True),
-                    profile: str = Body("full", embed=True),
-                    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
-                    x_act_as_email: str | None = Header(None, alias="X-Act-As-Email")):
+async def _run_scan(
+    domain: str = Body(..., embed=True),
+    profile: str = Body("full", embed=True),
+    x_mcp_secret: str | None = Header(None, alias="X-MCP-Secret"),
+    x_act_as_email: str | None = Header(None, alias="X-Act-As-Email"),
+):
     user = _require_bridge(x_mcp_secret, x_act_as_email)
     return await _run(tools.run_scan_logic(user, domain, profile))
 

@@ -4,6 +4,7 @@ Détection pure : chaque check ne renvoie qu'un `code` (+ `params`/`evidence`). 
 texte humain (titre, détail, recommandation, remédiation) vit dans
 `content/checks/tls.fr.yaml` et est rendu par `scanner.i18n`.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,9 +21,12 @@ from ..registry import check
 # Absent (dev sans la lib), le check se désactive proprement plutôt que de planter.
 try:
     from cryptography import x509 as _x509
-    from cryptography.hazmat.primitives.asymmetric import dsa as _dsa, ec as _ec, rsa as _rsa
+    from cryptography.hazmat.primitives.asymmetric import dsa as _dsa
+    from cryptography.hazmat.primitives.asymmetric import ec as _ec
+    from cryptography.hazmat.primitives.asymmetric import rsa as _rsa
 except Exception:  # pragma: no cover
-    _x509 = _rsa = _dsa = _ec = None
+    # None assumé (testé avant usage) : mypy attend un module, d'où l'ignore ciblé.
+    _x509 = _rsa = _dsa = _ec = None  # type: ignore[assignment]
 
 C = Category.TLS
 
@@ -38,6 +42,7 @@ async def _ssrf_blocked(host: str) -> bool:
     if allow_private():
         return False
     return await asyncio.to_thread(host_is_internal, host)
+
 
 # Versions négociées considérées comme obsolètes (< TLS 1.2).
 _OBSOLETE_VERSIONS = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
@@ -78,10 +83,26 @@ def _version_findings(version: str | None) -> list[Finding]:
     if not version:
         return []
     if version in _OBSOLETE_VERSIONS:
-        return [Finding("tls-version", C, Severity.HIGH,
-            code="obsolete", params={"version": version}, evidence=version)]
-    return [Finding("tls-version", C, Severity.PASS,
-        code="ok", params={"version": version}, evidence=version)]
+        return [
+            Finding(
+                "tls-version",
+                C,
+                Severity.HIGH,
+                code="obsolete",
+                params={"version": version},
+                evidence=version,
+            )
+        ]
+    return [
+        Finding(
+            "tls-version",
+            C,
+            Severity.PASS,
+            code="ok",
+            params={"version": version},
+            evidence=version,
+        )
+    ]
 
 
 def _expiry_findings(cert: dict) -> list[Finding]:
@@ -96,9 +117,16 @@ def _expiry_findings(cert: dict) -> list[Finding]:
         try:
             starts = ssl.cert_time_to_seconds(not_before)
             if starts > time.time():
-                findings.append(Finding("tls-cert-validity", C, Severity.CRITICAL,
-                    code="not-yet-valid", params={"not_before": not_before},
-                    evidence=subject or not_before))
+                findings.append(
+                    Finding(
+                        "tls-cert-validity",
+                        C,
+                        Severity.CRITICAL,
+                        code="not-yet-valid",
+                        params={"not_before": not_before},
+                        evidence=subject or not_before,
+                    )
+                )
         except (ValueError, TypeError):
             pass
 
@@ -109,26 +137,55 @@ def _expiry_findings(cert: dict) -> list[Finding]:
     try:
         expires = ssl.cert_time_to_seconds(not_after)
     except (ValueError, TypeError):
-        findings.append(Finding("tls-cert-expiry", C, Severity.INFO,
-            code="unparseable", params={"not_after": not_after},
-            evidence=not_after))
+        findings.append(
+            Finding(
+                "tls-cert-expiry",
+                C,
+                Severity.INFO,
+                code="unparseable",
+                params={"not_after": not_after},
+                evidence=not_after,
+            )
+        )
         return findings
 
     remaining = expires - time.time()
     days = int(remaining // 86400)
     if remaining <= 0:
-        findings.append(Finding("tls-cert-expiry", C, Severity.CRITICAL,
-            code="expired",
-            params={"not_after": not_after, "issuer": issuer or "inconnu"},
-            evidence=not_after))
-    elif days < 30:  # ~1 mois : fenêtre standard d'alerte de renouvellement (était 15 j, trop court)
-        findings.append(Finding("tls-cert-expiry", C, Severity.MEDIUM,
-            code="soon", params={"days": days, "not_after": not_after},
-            evidence=not_after))
+        findings.append(
+            Finding(
+                "tls-cert-expiry",
+                C,
+                Severity.CRITICAL,
+                code="expired",
+                params={"not_after": not_after, "issuer": issuer or "inconnu"},
+                evidence=not_after,
+            )
+        )
+    elif (
+        days < 30
+    ):  # ~1 mois : fenêtre standard d'alerte de renouvellement (était 15 j, trop court)
+        findings.append(
+            Finding(
+                "tls-cert-expiry",
+                C,
+                Severity.MEDIUM,
+                code="soon",
+                params={"days": days, "not_after": not_after},
+                evidence=not_after,
+            )
+        )
     else:
-        findings.append(Finding("tls-cert-expiry", C, Severity.PASS,
-            code="ok", params={"days": days, "not_after": not_after},
-            evidence=not_after))
+        findings.append(
+            Finding(
+                "tls-cert-expiry",
+                C,
+                Severity.PASS,
+                code="ok",
+                params={"days": days, "not_after": not_after},
+                evidence=not_after,
+            )
+        )
     return findings
 
 
@@ -138,14 +195,20 @@ async def tls(ctx):
 
     # Pas de HTTPS du tout : inutile de tenter un handshake.
     if parsed.scheme != "https":
-        return [Finding("tls", C, Severity.HIGH,
-            code="http", params={"url": ctx.url})]
+        return [Finding("tls", C, Severity.HIGH, code="http", params={"url": ctx.url})]
 
     host = ctx.host
     port = parsed.port or 443
     if await _ssrf_blocked(host):
-        return [Finding("tls", C, Severity.INFO, code="unreachable",
-                        params={"host": host, "port": port, "error_type": "blocked-internal"})]
+        return [
+            Finding(
+                "tls",
+                C,
+                Severity.INFO,
+                code="unreachable",
+                params={"host": host, "port": port, "error_type": "blocked-internal"},
+            )
+        ]
 
     try:
         # 1. Handshake VÉRIFIANT (chaîne + hostname).
@@ -157,10 +220,16 @@ async def tls(ctx):
             #    dict, elle, renvoie {} → l'ancienne confirmation par _expiry_findings(dict) était
             #    du CODE MORT). On n'émet PAS de finding « version OK » ici : afficher un point
             #    vert (version moderne) à côté d'un certificat refusé induit en erreur.
-            findings: list[Finding] = [Finding("tls", C, Severity.HIGH,
-                code="verify-failed",
-                params={"error": str(exc.reason or exc)},
-                evidence=str(exc.verify_message or exc.reason or exc))]
+            findings: list[Finding] = [
+                Finding(
+                    "tls",
+                    C,
+                    Severity.HIGH,
+                    code="verify-failed",
+                    params={"error": str(exc.reason or exc)},
+                    evidence=str(exc.verify_message or exc.reason or exc),
+                )
+            ]
             der = await asyncio.to_thread(_peer_cert_der, host, port)
             if der:
                 findings.extend(_expiry_from_der(der))
@@ -171,16 +240,29 @@ async def tls(ctx):
         findings.extend(_expiry_findings(cert))
         return findings
 
-    except (socket.timeout, ssl.SSLError, OSError) as exc:
+    except (TimeoutError, ssl.SSLError, OSError) as exc:
         # 3. Connexion impossible (timeout, port fermé, pas de TLS…).
-        return [Finding("tls", C, Severity.INFO,
-            code="unreachable",
-            params={"host": host, "port": port, "error_type": type(exc).__name__},
-            evidence=str(exc))]
+        return [
+            Finding(
+                "tls",
+                C,
+                Severity.INFO,
+                code="unreachable",
+                params={"host": host, "port": port, "error_type": type(exc).__name__},
+                evidence=str(exc),
+            )
+        ]
     except Exception as exc:  # filet de sécurité : aucune exception ne remonte.
-        return [Finding("tls", C, Severity.INFO,
-            code="error", params={"error_type": type(exc).__name__},
-            evidence=str(exc))]
+        return [
+            Finding(
+                "tls",
+                C,
+                Severity.INFO,
+                code="error",
+                params={"error_type": type(exc).__name__},
+                evidence=str(exc),
+            )
+        ]
 
 
 def _handshake(host: str, port: int, vmin, vmax) -> bool:
@@ -224,25 +306,50 @@ async def tls_protocols(ctx):
     host = ctx.host
     port = parsed.port or 443
     if await _ssrf_blocked(host):
-        return [Finding("tls-protocols", C, Severity.INFO, code="unverifiable",
-                        params={"host": host, "port": port})]
+        return [
+            Finding(
+                "tls-protocols",
+                C,
+                Severity.INFO,
+                code="unverifiable",
+                params={"host": host, "port": port},
+            )
+        ]
 
-    modern = await asyncio.to_thread(_handshake, host, port,
-                                     ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3)
+    modern = await asyncio.to_thread(
+        _handshake, host, port, ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3
+    )
     if not modern:
-        return [Finding("tls-protocols", C, Severity.INFO, code="unverifiable",
-                        params={"host": host, "port": port})]
+        return [
+            Finding(
+                "tls-protocols",
+                C,
+                Severity.INFO,
+                code="unverifiable",
+                params={"host": host, "port": port},
+            )
+        ]
 
     obsolete: list[str] = []
     if await asyncio.to_thread(_handshake, host, port, ssl.TLSVersion.TLSv1, ssl.TLSVersion.TLSv1):
         obsolete.append("TLS 1.0")
-    if await asyncio.to_thread(_handshake, host, port, ssl.TLSVersion.TLSv1_1, ssl.TLSVersion.TLSv1_1):
+    if await asyncio.to_thread(
+        _handshake, host, port, ssl.TLSVersion.TLSv1_1, ssl.TLSVersion.TLSv1_1
+    ):
         obsolete.append("TLS 1.1")
 
     if obsolete:
         joined = ", ".join(obsolete)
-        return [Finding("tls-protocols", C, Severity.MEDIUM, code="obsolete-accepted",
-                        params={"protocols": joined}, evidence=joined)]
+        return [
+            Finding(
+                "tls-protocols",
+                C,
+                Severity.MEDIUM,
+                code="obsolete-accepted",
+                params={"protocols": joined},
+                evidence=joined,
+            )
+        ]
     return [Finding("tls-protocols", C, Severity.PASS, code="ok")]
 
 
@@ -278,12 +385,14 @@ def _expiry_from_der(der: bytes) -> list[Finding]:
     def _fmt(dt):
         return dt.strftime("%b %d %H:%M:%S %Y GMT")
 
-    return _expiry_findings({
-        "notBefore": _fmt(nb),
-        "notAfter": _fmt(na),
-        "issuer": ((("organizationName", cert.issuer.rfc4514_string()),),),
-        "subject": ((("commonName", cert.subject.rfc4514_string()),),),
-    })
+    return _expiry_findings(
+        {
+            "notBefore": _fmt(nb),
+            "notAfter": _fmt(na),
+            "issuer": ((("organizationName", cert.issuer.rfc4514_string()),),),
+            "subject": ((("commonName", cert.subject.rfc4514_string()),),),
+        }
+    )
 
 
 def _cert_strength_findings(der: bytes) -> list[Finding]:
@@ -311,14 +420,38 @@ def _strength_from_cert(cert) -> list[Finding]:
     findings: list[Finding] = []
     pub = cert.public_key()
     if isinstance(pub, _rsa.RSAPublicKey) and pub.key_size < 2048:
-        findings.append(Finding("tls-key", C, Severity.HIGH, code="weak-key",
-            params={"type": "RSA", "bits": pub.key_size}, evidence=f"RSA-{pub.key_size}"))
+        findings.append(
+            Finding(
+                "tls-key",
+                C,
+                Severity.HIGH,
+                code="weak-key",
+                params={"type": "RSA", "bits": pub.key_size},
+                evidence=f"RSA-{pub.key_size}",
+            )
+        )
     elif isinstance(pub, _dsa.DSAPublicKey) and pub.key_size < 2048:
-        findings.append(Finding("tls-key", C, Severity.HIGH, code="weak-key",
-            params={"type": "DSA", "bits": pub.key_size}, evidence=f"DSA-{pub.key_size}"))
+        findings.append(
+            Finding(
+                "tls-key",
+                C,
+                Severity.HIGH,
+                code="weak-key",
+                params={"type": "DSA", "bits": pub.key_size},
+                evidence=f"DSA-{pub.key_size}",
+            )
+        )
     elif isinstance(pub, _ec.EllipticCurvePublicKey) and pub.curve.key_size < 256:
-        findings.append(Finding("tls-key", C, Severity.HIGH, code="weak-key",
-            params={"type": "EC", "bits": pub.curve.key_size}, evidence=f"EC-{pub.curve.key_size}"))
+        findings.append(
+            Finding(
+                "tls-key",
+                C,
+                Severity.HIGH,
+                code="weak-key",
+                params={"type": "EC", "bits": pub.curve.key_size},
+                evidence=f"EC-{pub.curve.key_size}",
+            )
+        )
 
     try:
         algo = cert.signature_hash_algorithm
@@ -326,8 +459,11 @@ def _strength_from_cert(cert) -> list[Finding]:
         algo = None
     name = (getattr(algo, "name", "") or "").lower()
     if name in _WEAK_SIG_HASHES:
-        findings.append(Finding("tls-key", C, Severity.MEDIUM, code="weak-sig",
-            params={"algo": name}, evidence=name))
+        findings.append(
+            Finding(
+                "tls-key", C, Severity.MEDIUM, code="weak-sig", params={"algo": name}, evidence=name
+            )
+        )
 
     if not findings:
         findings.append(Finding("tls-key", C, Severity.PASS, code="ok"))
@@ -342,10 +478,24 @@ async def tls_key(ctx):
         return []
     port = parsed.port or 443
     if await _ssrf_blocked(ctx.host):
-        return [Finding("tls-key", C, Severity.INFO, code="unreachable",
-                        params={"host": ctx.host, "port": port})]
+        return [
+            Finding(
+                "tls-key",
+                C,
+                Severity.INFO,
+                code="unreachable",
+                params={"host": ctx.host, "port": port},
+            )
+        ]
     der = await asyncio.to_thread(_peer_cert_der, ctx.host, port)
     if not der:
-        return [Finding("tls-key", C, Severity.INFO, code="unreachable",
-                        params={"host": ctx.host, "port": port})]
+        return [
+            Finding(
+                "tls-key",
+                C,
+                Severity.INFO,
+                code="unreachable",
+                params={"host": ctx.host, "port": port},
+            )
+        ]
     return _cert_strength_findings(der)

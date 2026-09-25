@@ -20,6 +20,7 @@ Variables d'environnement :
   ZAP_TIMEOUT     délai global en secondes (défaut 240)
   SONAR_ZAP       "off" pour désactiver même si ZAP_API_URL est défini
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -111,8 +112,9 @@ def _drop_cdn_cgi(alerts: list[dict]) -> list[dict]:
     On ne filtre QUE l'alerte id 2 ET sur un endpoint cdn-cgi : sinon une VRAIE alerte
     (XSS, injection…) dont l'URL contient `/cdn-cgi/` serait silencieusement supprimée.
     """
+
     def _is_cf_private_ip_fp(a: dict) -> bool:
-        if str(a.get("pluginId") or "") != "2":        # 2 = Private IP Disclosure
+        if str(a.get("pluginId") or "") != "2":  # 2 = Private IP Disclosure
             return False
         if "/cdn-cgi/" in urlparse(a.get("url") or "").path:
             return True
@@ -160,22 +162,24 @@ def _dedup_to_findings(alerts: list[dict]) -> list[Finding]:
         # Finding EXTERNE : la clé de contenu est (catalog="zap", entry_id=pluginId,
         # code="alert"). Le texte ZAP d'origine (anglais) part dans `source_text` et
         # sert de fallback si aucune entrée FR n'existe → couverture toujours complète.
-        findings.append(Finding(
-            check_id=f"zap-{i}-{a.get('pluginId') or 'x'}",
-            category=C,
-            severity=_map_risk(a.get("risk")),
-            code="alert",
-            catalog="zap",
-            entry_id=pid or "_",
-            params={"cwe": cwe, "count": g["count"], "name": name},
-            evidence=str(evidence)[:400] or None,
-            source_text={
-                "title": title,
-                "detail": detail,
-                "recommendation": (a.get("solution") or "").strip(),
-                "refs": refs_list,
-            },
-        ))
+        findings.append(
+            Finding(
+                check_id=f"zap-{i}-{a.get('pluginId') or 'x'}",
+                category=C,
+                severity=_map_risk(a.get("risk")),
+                code="alert",
+                catalog="zap",
+                entry_id=pid or "_",
+                params={"cwe": cwe, "count": g["count"], "name": name},
+                evidence=str(evidence)[:400] or None,
+                source_text={
+                    "title": title,
+                    "detail": detail,
+                    "recommendation": (a.get("solution") or "").strip(),
+                    "refs": refs_list,
+                },
+            )
+        )
     return findings
 
 
@@ -198,31 +202,53 @@ async def _run(ctx, base: str) -> list[Finding]:
             try:
                 await _zap_get(client, "/JSON/core/action/newSession/", overwrite="true")
             except Exception as exc:
-                log.warning("ZAP newSession a échoué (%s: %s) — alertes possiblement périmées",
-                            type(exc).__name__, exc)
+                log.warning(
+                    "ZAP newSession a échoué (%s: %s) — alertes possiblement périmées",
+                    type(exc).__name__,
+                    exc,
+                )
 
             # 1) ZAP charge l'URL : le scan passif analyse le trafic.
-            await _zap_get(client, "/JSON/core/action/accessUrl/", url=target, followRedirects="true")
+            await _zap_get(
+                client, "/JSON/core/action/accessUrl/", url=target, followRedirects="true"
+            )
 
             # 2) Petit spider borné (best effort : on continue même s'il échoue).
             try:
-                r = await _zap_get(client, "/JSON/spider/action/scan/",
-                                   url=target, maxChildren=_env("ZAP_SPIDER_MAX", "10"), recurse="true")
-                await _poll(client, "/JSON/spider/view/status/", {"scanId": r.get("scan")}, key="status")
+                r = await _zap_get(
+                    client,
+                    "/JSON/spider/action/scan/",
+                    url=target,
+                    maxChildren=_env("ZAP_SPIDER_MAX", "10"),
+                    recurse="true",
+                )
+                await _poll(
+                    client, "/JSON/spider/view/status/", {"scanId": r.get("scan")}, key="status"
+                )
             except Exception:
                 pass
 
             # 3) Scan actif (intrusif) — uniquement si explicitement demandé.
             if _env("ZAP_ACTIVE").lower() == "on":
                 try:
-                    r = await _zap_get(client, "/JSON/ascan/action/scan/", url=target, recurse="true")
-                    await _poll(client, "/JSON/ascan/view/status/", {"scanId": r.get("scan")}, key="status")
+                    r = await _zap_get(
+                        client, "/JSON/ascan/action/scan/", url=target, recurse="true"
+                    )
+                    await _poll(
+                        client, "/JSON/ascan/view/status/", {"scanId": r.get("scan")}, key="status"
+                    )
                 except Exception:
                     pass
 
             # 4) Attendre la fin du scan passif.
-            await _poll(client, "/JSON/pscan/view/recordsToScan/", {},
-                        key="recordsToScan", target=0, descending=True)
+            await _poll(
+                client,
+                "/JSON/pscan/view/recordsToScan/",
+                {},
+                key="recordsToScan",
+                target=0,
+                descending=True,
+            )
 
             # 5) Récupérer les alertes pour la cible.
             data = await _zap_get(client, "/JSON/core/view/alerts/", baseurl=target)
@@ -254,8 +280,15 @@ async def zap(ctx):
     timeout = int(_env("ZAP_TIMEOUT", "240") or "240")
     try:
         return await asyncio.wait_for(_run(ctx, base), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return [Finding("zap", C, Severity.INFO, code="timeout", params={"timeout": timeout})]
     except Exception as exc:
-        return [Finding("zap", C, Severity.INFO, code="unreachable",
-                        params={"error": f"{type(exc).__name__}: {exc}"})]
+        return [
+            Finding(
+                "zap",
+                C,
+                Severity.INFO,
+                code="unreachable",
+                params={"error": f"{type(exc).__name__}: {exc}"},
+            )
+        ]

@@ -5,6 +5,7 @@ Lance avec :  python -m sonar_mcp   (variables SONAR_TOKEN et SONAR_BASE_URL req
 Vérifié contre le SDK officiel `mcp` 1.27.x : FastMCP sous mcp.server.fastmcp,
 décorateur @mcp.tool(), mcp.run(transport="stdio").
 """
+
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
@@ -67,8 +68,9 @@ async def diff_scans(scan_a: str, scan_b: str, lang: str | None = None) -> dict:
 
 
 @mcp.tool(annotations=_READ_ANN)
-async def get_fix(scan_id: str, check_id: str | None = None,
-                  code: str | None = None, lang: str | None = None) -> list[dict]:
+async def get_fix(
+    scan_id: str, check_id: str | None = None, code: str | None = None, lang: str | None = None
+) -> list[dict]:
     """Remédiation actionnable des problèmes d'un scan (prompt IA + snippet par stack).
 
     check_id : optionnel, ne garde que ce check (ex. 'hdr-csp') ; code : affine encore.

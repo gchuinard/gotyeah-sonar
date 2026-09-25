@@ -1,4 +1,5 @@
 """Cœur : format Finding/scoring, registre, moteur (isolation d'erreurs), DB."""
+
 import asyncio
 
 import pytest
@@ -14,6 +15,7 @@ def _f(sev):
 
 
 # ---- finding.py ----
+
 
 def test_grade_boundaries():
     assert score_and_grade([]) == (100, "A+")
@@ -35,8 +37,9 @@ def test_grade_capped_by_worst_severity():
 
 def test_grade_capped_when_coverage_incomplete():
     # Un check qui n'a pas tourné (unexecuted) : score 100 mais pas d'A+/A → plafond B.
-    incomplete = Finding("nuclei", Category.PENTEST, Severity.INFO, code="not-installed",
-                         unexecuted=True)
+    incomplete = Finding(
+        "nuclei", Category.PENTEST, Severity.INFO, code="not-installed", unexecuted=True
+    )
     assert score_and_grade([incomplete]) == (100, "B")
     # Combiné à un CRITICAL : c'est le pire des deux plafonds (E) qui gagne.
     assert score_and_grade([incomplete, _f(Severity.CRITICAL)]) == (75, "E")
@@ -61,6 +64,7 @@ async def test_active_check_network_error_is_unexecuted():
     # incomplète (unexecuted), pas comme un PASS rassurant.
     async def cors_err(ctx):
         return [Finding("cors", Category.CORS, Severity.INFO, code="error")]
+
     chk = Check(id="cors", title="CORS", category=Category.CORS, fn=cors_err)
     _, findings = await _safe_run(chk, ctx=None)
     assert findings[0].unexecuted is True
@@ -72,7 +76,7 @@ def test_summarize():
     assert s["total"] == 3
     assert s["counts"]["critical"] == 1 and s["counts"]["low"] == 1 and s["counts"]["pass"] == 1
     assert s["score"] == 100 - 25 - 3
-    assert s["grade"] == "E"                      # score C (72) mais plafonné par le CRITICAL
+    assert s["grade"] == "E"  # score C (72) mais plafonné par le CRITICAL
     assert s["incomplete"] is False and s["unexecuted"] == []
 
 
@@ -80,17 +84,32 @@ def test_as_dict_legacy():
     # Forme legacy (texte rendu en dur) : title/detail/reco renseignés, structuré vide.
     d = Finding("cid", Category.TLS, Severity.HIGH, "titre", "det", "reco", evidence="ev").as_dict()
     assert d == {
-        "check_id": "cid", "category": "tls", "severity": "high",
-        "code": "", "params": {}, "evidence": "ev",
-        "catalog": None, "entry_id": None, "source_text": None, "unexecuted": False,
-        "title": "titre", "detail": "det", "recommendation": "reco",
+        "check_id": "cid",
+        "category": "tls",
+        "severity": "high",
+        "code": "",
+        "params": {},
+        "evidence": "ev",
+        "catalog": None,
+        "entry_id": None,
+        "source_text": None,
+        "unexecuted": False,
+        "title": "titre",
+        "detail": "det",
+        "recommendation": "reco",
     }
 
 
 def test_as_dict_structured():
     # Forme structurée (cible) : code/params portent la détection, pas de texte humain.
-    d = Finding("hdr-csp", Category.HEADERS, Severity.MEDIUM,
-                code="absent", params={"host": "x.com"}, evidence="ev").as_dict()
+    d = Finding(
+        "hdr-csp",
+        Category.HEADERS,
+        Severity.MEDIUM,
+        code="absent",
+        params={"host": "x.com"},
+        evidence="ev",
+    ).as_dict()
     assert d["check_id"] == "hdr-csp" and d["code"] == "absent"
     assert d["params"] == {"host": "x.com"} and d["title"] == ""
     assert d["catalog"] is None and d["source_text"] is None
@@ -98,15 +117,28 @@ def test_as_dict_structured():
 
 # ---- registry.py ----
 
+
 def test_real_checks_registered():
     ids = {c.id for c in all_checks()}
-    for expected in ("hdr-csp", "cookies", "tls", "dns", "exposed", "cors", "mixed",
-                     "subresources", "tech", "nuclei", "zap"):
+    for expected in (
+        "hdr-csp",
+        "cookies",
+        "tls",
+        "dns",
+        "exposed",
+        "cors",
+        "mixed",
+        "subresources",
+        "tech",
+        "nuclei",
+        "zap",
+    ):
         assert expected in ids
 
 
 def test_duplicate_id_raises():
     with pytest.raises(ValueError):
+
         @check("hdr-csp", "doublon", Category.HEADERS)
         async def _dup(ctx):
             return []
@@ -116,11 +148,13 @@ def test_decorator_registers_and_returns_coro():
     @check("test-dummy-unique", "Dummy", Category.INFO)
     async def dummy(ctx):
         return []
+
     assert any(c.id == "test-dummy-unique" for c in all_checks())
     assert asyncio.iscoroutinefunction(dummy)
 
 
 # ---- runner.py ----
+
 
 def test_normalize_target():
     assert normalize_target("example.com") == "https://example.com"
@@ -132,6 +166,7 @@ def test_normalize_target():
 async def test_safe_run_isolates_exceptions():
     async def boom(ctx):
         raise RuntimeError("boom")
+
     chk = Check(id="boom", title="Boom", category=Category.HEADERS, fn=boom)
     rchk, findings = await _safe_run(chk, ctx=None)
     assert rchk is chk
@@ -146,35 +181,52 @@ async def test_safe_run_isolates_exceptions():
 async def test_safe_run_none_returns_empty():
     async def nothing(ctx):
         return None
+
     _c, findings = await _safe_run(
-        Check(id="n", title="N", category=Category.HEADERS, fn=nothing), ctx=None)
+        Check(id="n", title="N", category=Category.HEADERS, fn=nothing), ctx=None
+    )
     assert findings == []
 
 
 async def test_safe_run_passthrough():
     async def ok(ctx):
         return [Finding("ok", Category.HEADERS, Severity.PASS, "ok")]
+
     _c, findings = await _safe_run(
-        Check(id="ok", title="OK", category=Category.HEADERS, fn=ok), ctx=None)
+        Check(id="ok", title="OK", category=Category.HEADERS, fn=ok), ctx=None
+    )
     assert len(findings) == 1 and findings[0].severity == Severity.PASS
 
 
 # ---- db.py ----
 
+
 def test_db_roundtrip(tmp_path, monkeypatch):
     import db as dbmod
+
     monkeypatch.setattr(dbmod, "DB_PATH", tmp_path / "scans.db")
     dbmod.init_db()
     summary = {"score": 82, "grade": "B", "counts": {"low": 2}, "total": 5, "target": "https://x"}
-    findings = [{"check_id": "hdr-csp", "category": "headers", "severity": "low",
-                 "title": "t", "detail": "d", "recommendation": "r", "evidence": None}]
+    findings = [
+        {
+            "check_id": "hdr-csp",
+            "category": "headers",
+            "severity": "low",
+            "title": "t",
+            "detail": "d",
+            "recommendation": "r",
+            "evidence": None,
+        }
+    ]
     sid = dbmod.save_scan("https://x", summary, findings)
     assert isinstance(sid, str) and sid
 
     row = dbmod.list_scans()[0]
     assert row["id"] == sid and row["score"] == 82 and row["grade"] == "B"
-    assert "findings" not in row                 # la liste latérale ne porte pas les findings
-    assert row["counts"] == {"low": 2}           # mais bien les compteurs de sévérité (pastilles)  # la liste latérale ne porte pas les findings
+    assert "findings" not in row  # la liste latérale ne porte pas les findings
+    assert (
+        row["counts"] == {"low": 2}
+    )  # mais bien les compteurs de sévérité (pastilles)  # la liste latérale ne porte pas les findings
 
     one = dbmod.get_scan(sid)
     assert one["target"] == "https://x"
@@ -186,6 +238,7 @@ def test_db_roundtrip(tmp_path, monkeypatch):
 
 def test_db_delete_scan(tmp_path, monkeypatch):
     import db as dbmod
+
     monkeypatch.setattr(dbmod, "DB_PATH", tmp_path / "scans.db")
     dbmod.init_db()
     summary = {"score": 70, "grade": "C", "counts": {}, "total": 0, "target": "https://x"}
@@ -198,7 +251,7 @@ def test_db_delete_scan(tmp_path, monkeypatch):
     # Le propriétaire supprime le sien.
     assert dbmod.delete_scan(sid_a, user_id="alice") is True
     assert dbmod.get_scan(sid_a) is None
-    assert dbmod.delete_scan(sid_a, user_id="alice") is False   # déjà parti
+    assert dbmod.delete_scan(sid_a, user_id="alice") is False  # déjà parti
     # Sans user_id (admin) : supprime quel que soit le propriétaire.
     assert dbmod.delete_scan(sid_b) is True
     assert dbmod.get_scan(sid_b) is None
@@ -206,6 +259,7 @@ def test_db_delete_scan(tmp_path, monkeypatch):
 
 def test_db_status_legacy_and_save(tmp_path, monkeypatch):
     import db as dbmod
+
     monkeypatch.setattr(dbmod, "DB_PATH", tmp_path / "scans.db")
     dbmod.init_db()
     summary = {"score": 88, "grade": "A", "counts": {}, "total": 0, "target": "https://x"}
@@ -215,6 +269,7 @@ def test_db_status_legacy_and_save(tmp_path, monkeypatch):
     assert dbmod.list_scans()[0]["status"] == "done"
     # Une ligne sans statut (base d'avant la feature) est lue comme 'done'.
     import sqlite3
+
     with sqlite3.connect(dbmod.DB_PATH) as conn:
         conn.execute("UPDATE scans SET status=NULL WHERE id=?", (sid,))
     assert dbmod.get_scan(sid)["status"] == "done"
@@ -222,6 +277,7 @@ def test_db_status_legacy_and_save(tmp_path, monkeypatch):
 
 def test_db_running_finalize_fail(tmp_path, monkeypatch):
     import db as dbmod
+
     monkeypatch.setattr(dbmod, "DB_PATH", tmp_path / "scans.db")
     dbmod.init_db()
 
@@ -233,7 +289,13 @@ def test_db_running_finalize_fail(tmp_path, monkeypatch):
     assert dbmod.list_scans(user_id="u1")[0]["status"] == "running"
 
     # finalize_scan : complète la ligne (statut 'done').
-    summary = {"score": 73, "grade": "C", "counts": {"low": 1}, "total": 1, "target": "https://x/final"}
+    summary = {
+        "score": 73,
+        "grade": "C",
+        "counts": {"low": 1},
+        "total": 1,
+        "target": "https://x/final",
+    }
     findings = [{"check_id": "hdr-csp", "category": "headers", "severity": "low", "code": "absent"}]
     dbmod.finalize_scan(sid, summary, findings)
     done = dbmod.get_scan(sid)
@@ -251,11 +313,12 @@ def test_db_running_finalize_fail(tmp_path, monkeypatch):
 def test_checks_for_fast_excludes_slow():
     from scanner.finding import Category
     from scanner.runner import checks_for
+
     full = {c.id for c in checks_for(fast=False)}
     fast = {c.id for c in checks_for(fast=True)}
     # Les checks lents (nuclei/ZAP/ports) sont dans le scan complet, jamais dans le rapide.
     assert {"nuclei", "zap", "ports"} <= full
     assert not ({"nuclei", "zap", "ports"} & fast)
-    assert fast < full and len(fast) == len(full) - 3      # le rapide n'enlève QUE ces 3
+    assert fast < full and len(fast) == len(full) - 3  # le rapide n'enlève QUE ces 3
     cats = {c.category for c in checks_for(fast=True)}
     assert not ({Category.PENTEST, Category.ZAP, Category.PORTS} & cats)

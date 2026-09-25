@@ -1,9 +1,11 @@
 """Smoke test de la couche web : l'app s'importe et expose ses routes."""
+
 from fastapi import FastAPI
 
 
 def test_app_and_routes():
     import app
+
     assert isinstance(app.app, FastAPI)
     paths = {r.path for r in app.app.routes}
     assert {"/", "/api/scan/stream", "/api/history"} <= paths
@@ -11,6 +13,7 @@ def test_app_and_routes():
 
 def test_sse_format():
     import app
+
     out = app._sse("finding", {"a": 1})
     assert out.startswith("event: finding\n")
     assert "data: " in out and out.endswith("\n\n")
@@ -31,15 +34,25 @@ def test_login_message_adapts_to_registration_mode(client, monkeypatch):
 
 def _req(headers=None, peer="9.9.9.9"):
     from starlette.requests import Request
+
     raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
-    return Request({"type": "http", "method": "GET", "path": "/", "query_string": b"",
-                    "headers": raw, "client": (peer, 12345)})
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "query_string": b"",
+            "headers": raw,
+            "client": (peer, 12345),
+        }
+    )
 
 
 def test_client_ip_anti_spoof(monkeypatch):
     """#3 — on ne fait JAMAIS confiance à la 1ʳᵉ valeur XFF (falsifiable par le client)."""
     import app
-    monkeypatch.delenv("SONAR_TRUSTED_PROXY_HOPS", raising=False)   # défaut 1 (NPM)
+
+    monkeypatch.delenv("SONAR_TRUSTED_PROXY_HOPS", raising=False)  # défaut 1 (NPM)
     # `1.2.3.4` est forgé par le client ; `5.6.7.8` est ajouté par NPM (le vrai peer).
     assert app._client_ip(_req({"x-forwarded-for": "1.2.3.4, 5.6.7.8"})) == "5.6.7.8"
     # 2 hops (Cloudflare + NPM) : la vraie IP est l'avant-dernière.
@@ -56,12 +69,14 @@ def test_client_ip_anti_spoof(monkeypatch):
 def test_scan_stream_rate_limited(client, monkeypatch):
     """#4 — l'endpoint de scan web applique le rate-limit (429), comme le MCP."""
     import sqlite3
+
     import auth
     import db
+
     c, _ = client
     u = auth.create_user("a@b.com")
     d = auth.add_domain(u["id"], "ex.com")
-    with sqlite3.connect(db.DB_PATH) as conn:        # vérifie le domaine sans passer par le DNS
+    with sqlite3.connect(db.DB_PATH) as conn:  # vérifie le domaine sans passer par le DNS
         conn.execute("UPDATE verified_domains SET verified=1 WHERE id=?", (d["id"],))
     c.cookies.set("sonar_session", auth.create_session(u["id"]))
     monkeypatch.setattr(auth, "scan_rate_ok", lambda uid: False)
@@ -84,7 +99,7 @@ def test_security_headers(client):
     assert r.headers.get("x-content-type-options") == "nosniff"
     csp = r.headers.get("content-security-policy", "")
     assert "frame-ancestors 'none'" in csp
-    assert "unpkg.com" not in csp                    # #6 — plus de CDN dans la CSP
+    assert "unpkg.com" not in csp  # #6 — plus de CDN dans la CSP
     assert r.headers.get("referrer-policy")
     # isolation cross-origin (dogfooding du scan : COOP/CORP/Permissions-Policy)
     assert r.headers.get("cross-origin-opener-policy") == "same-origin-allow-popups"
@@ -102,6 +117,7 @@ def test_vue_self_hosted(client):
 def test_help_mcp_page(client):
     """Page d'aide MCP : login requis (302) puis 200 avec l'URL d'instance injectée."""
     import auth
+
     c, _ = client
     r = c.get("/help/mcp", follow_redirects=False)
     assert r.status_code == 302 and "/login" in r.headers["location"]
@@ -109,5 +125,5 @@ def test_help_mcp_page(client):
     c.cookies.set("sonar_session", auth.create_session(u["id"]))
     r2 = c.get("/help/mcp")
     assert r2.status_code == 200
-    assert "__SONAR_HELP_BASE__" not in r2.text   # placeholder bien remplacé
+    assert "__SONAR_HELP_BASE__" not in r2.text  # placeholder bien remplacé
     assert "/mcp" in r2.text and "sonar_mcp" in r2.text

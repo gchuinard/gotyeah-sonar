@@ -14,6 +14,7 @@ Détection pure : chaque finding ne porte qu'un `code` (+ `params`/`evidence`). 
 texte humain (titre, détail, recommandation, remédiation) vit dans
 `content/checks/subresources.fr.yaml` et est rendu par `scanner.i18n`.
 """
+
 from __future__ import annotations
 
 import re
@@ -95,13 +96,26 @@ async def subresources(ctx) -> list[Finding]:
         return [Finding("subresources", C, Severity.INFO, code="unreachable")]
 
     # Note d'échantillonnage : non vide uniquement quand on a tronqué la liste.
-    note = (f" (échantillon de {len(sampled)} sur {len(targets)})"
-            if len(targets) > len(sampled) else "")
+    note = (
+        f" (échantillon de {len(sampled)} sur {len(targets)})"
+        if len(targets) > len(sampled)
+        else ""
+    )
 
     if missing:
-        return [Finding("subresources", C, Severity.LOW, code="missing",
-                        params={"missing_count": len(missing), "checked": checked, "note": note},
-                        evidence="; ".join(u[:120] for u in missing[:3]))]
+        return [
+            Finding(
+                "subresources",
+                C,
+                Severity.LOW,
+                code="missing",
+                params={"missing_count": len(missing), "checked": checked, "note": note},
+                evidence="; ".join(u[:120] for u in missing[:3]),
+            )
+        ]
 
-    return [Finding("subresources", C, Severity.PASS, code="pass-protected",
-                    params={"checked": checked})]
+    return [
+        Finding(
+            "subresources", C, Severity.PASS, code="pass-protected", params={"checked": checked}
+        )
+    ]

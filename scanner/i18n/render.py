@@ -16,10 +16,10 @@ Interpolation : on remplace les placeholders ``{nom}`` par `params[nom]` (ou
 contenu (snippets nginx ``add_header ...``, Next.js ``headers(): { ... }``…). Un
 placeholder inconnu (ex. ``{stack}``, choisi côté UI) est laissé tel quel.
 """
+
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 from . import loader
 
@@ -48,13 +48,13 @@ def _interp(template, ctx: dict) -> str:
     return _PLACEHOLDER.sub(lambda m: str(ctx.get(m.group(1), m.group(0))), template)
 
 
-def _interp_ctx(params: Optional[dict], evidence) -> dict:
+def _interp_ctx(params: dict | None, evidence) -> dict:
     ctx = dict(params or {})
     ctx.setdefault("evidence", evidence or "")
     return ctx
 
 
-def _resolve_entry(f: dict, lang: str) -> Optional[dict]:
+def _resolve_entry(f: dict, lang: str) -> dict | None:
     """Cherche l'entrée de catalogue selon la chaîne de fallback de langue."""
     if f.get("catalog"):
         scope, key = str(f["catalog"]), str(f.get("entry_id"))
@@ -89,9 +89,14 @@ def _from_source(base: dict, src: dict) -> dict:
         detail=src.get("detail") or "",
         recommendation=src.get("recommendation") or "",
         remediation={
-            "explanation": "", "why": "", "steps": [], "stacks": {},
-            "ai_prompt": "", "refs": list(src.get("refs") or []),
-            "a_verifier": False, "untranslated": True,
+            "explanation": "",
+            "why": "",
+            "steps": [],
+            "stacks": {},
+            "ai_prompt": "",
+            "refs": list(src.get("refs") or []),
+            "a_verifier": False,
+            "untranslated": True,
         },
     )
     return base

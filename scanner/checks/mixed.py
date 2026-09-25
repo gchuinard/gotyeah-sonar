@@ -4,6 +4,7 @@ Détection pure : chaque check ne renvoie qu'un `code` (+ `params`/`evidence`). 
 texte humain (titre, détail, recommandation, remédiation) vit dans
 `content/checks/mixed.fr.yaml` et est rendu par `scanner.i18n`.
 """
+
 from __future__ import annotations
 
 import re
@@ -61,12 +62,13 @@ async def mixed(ctx):
     content_type = (ctx.response.headers.get("content-type") or "").lower()
 
     if scheme != "https" or "text/html" not in content_type:
-        raison = ("la page finale n'est pas servie en HTTPS"
-                  if scheme != "https"
-                  else "la réponse n'est pas du HTML")
+        raison = (
+            "la page finale n'est pas servie en HTTPS"
+            if scheme != "https"
+            else "la réponse n'est pas du HTML"
+        )
         # Non-applicable (pas une lacune) : rien à signaler → PASS, pas INFO.
-        return [Finding("mixed", C, Severity.PASS, code="not-evaluated",
-                        params={"reason": raison})]
+        return [Finding("mixed", C, Severity.PASS, code="not-evaluated", params={"reason": raison})]
 
     try:
         text = ctx.response.text or ""
@@ -75,26 +77,42 @@ async def mixed(ctx):
 
         # Compte spécifique des scripts pour ajuster la sévérité.
         script_rx = _ACTIVE_PATTERNS[0][1]
-        scripts = [m.group(1) for m in script_rx.finditer(text)
-                   if not any(m.group(1).lower().startswith(p) for p in _IGNORE)]
+        scripts = [
+            m.group(1)
+            for m in script_rx.finditer(text)
+            if not any(m.group(1).lower().startswith(p) for p in _IGNORE)
+        ]
 
         findings = []
 
         if active:
             sev = Severity.HIGH if len(scripts) >= 2 else Severity.MEDIUM
-            findings.append(Finding("mixed-active", C, sev, code="active",
-                                    params={"count": len(active)},
-                                    evidence=_evidence(active)))
+            findings.append(
+                Finding(
+                    "mixed-active",
+                    C,
+                    sev,
+                    code="active",
+                    params={"count": len(active)},
+                    evidence=_evidence(active),
+                )
+            )
 
         if passive:
-            findings.append(Finding("mixed-passive", C, Severity.LOW, code="passive",
-                                    params={"count": len(passive)},
-                                    evidence=_evidence(passive)))
+            findings.append(
+                Finding(
+                    "mixed-passive",
+                    C,
+                    Severity.LOW,
+                    code="passive",
+                    params={"count": len(passive)},
+                    evidence=_evidence(passive),
+                )
+            )
 
         if findings:
             return findings
 
         return [Finding("mixed", C, Severity.PASS, code="pass")]
     except Exception as exc:  # noqa: BLE001 — un check ne doit jamais faire planter le scan.
-        return [Finding("mixed", C, Severity.INFO, code="error",
-                        params={"error": str(exc)})]
+        return [Finding("mixed", C, Severity.INFO, code="error", params={"error": str(exc)})]

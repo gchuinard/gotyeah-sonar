@@ -4,6 +4,7 @@ Détection pure : chaque branche ne renvoie qu'un `code` (+ `params`/`evidence`)
 texte humain (titre, détail, recommandation, remédiation) vit dans
 `content/checks/dns.fr.yaml` et est rendu par `scanner.i18n`.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,10 +27,38 @@ _RESOLVE_FAILED = (dns.resolver.NoNameservers, dns.exception.Timeout)
 # au bon domaine d'organisation sans dépendance externe. Liste volontairement courte (cas
 # fréquents) ; au pire on retombe sur les 2 derniers labels.
 _MULTI_SUFFIX = {
-    "co.uk", "org.uk", "gov.uk", "ac.uk", "me.uk", "ltd.uk", "net.uk",
-    "co.jp", "or.jp", "ne.jp", "go.jp", "com.au", "net.au", "org.au", "edu.au", "gov.au",
-    "co.nz", "org.nz", "net.nz", "com.br", "com.mx", "com.ar", "co.za", "co.in", "co.kr",
-    "com.sg", "com.hk", "com.tr", "com.cn", "com.tw", "com.ua", "com.pl",
+    "co.uk",
+    "org.uk",
+    "gov.uk",
+    "ac.uk",
+    "me.uk",
+    "ltd.uk",
+    "net.uk",
+    "co.jp",
+    "or.jp",
+    "ne.jp",
+    "go.jp",
+    "com.au",
+    "net.au",
+    "org.au",
+    "edu.au",
+    "gov.au",
+    "co.nz",
+    "org.nz",
+    "net.nz",
+    "com.br",
+    "com.mx",
+    "com.ar",
+    "co.za",
+    "co.in",
+    "co.kr",
+    "com.sg",
+    "com.hk",
+    "com.tr",
+    "com.cn",
+    "com.tw",
+    "com.ua",
+    "com.pl",
 }
 
 
@@ -39,7 +68,7 @@ def _org_domain(host: str) -> str:
     « absent » à tort (~22 pts de pénalité injustifiés). Heuristique sans dépendance externe
     (liste de suffixes 2-niveaux usuels), repli sur les 2 derniers labels."""
     host = (host or "").strip().rstrip(".").lower()
-    labels = [l for l in host.split(".") if l]
+    labels = [lab for lab in host.split(".") if lab]
     if len(labels) <= 2:
         return host
     last2 = ".".join(labels[-2:])
@@ -91,19 +120,35 @@ async def dns_check(ctx):
             findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="absent"))
         elif len(spfs) > 1:
             # Plusieurs `v=spf1` → permerror : les destinataires IGNORENT la politique entière.
-            findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="multiple",
-                                    params={"count": len(spfs)},
-                                    evidence="; ".join(s[:120] for s in spfs)[:300]))
+            findings.append(
+                Finding(
+                    "dns-spf",
+                    C,
+                    Severity.MEDIUM,
+                    code="multiple",
+                    params={"count": len(spfs)},
+                    evidence="; ".join(s[:120] for s in spfs)[:300],
+                )
+            )
         else:
             qual = _spf_all_qualifier(spfs[0])
             # `+all` (ou `all` nu) / `?all` : n'importe qui peut usurper le domaine — la
             # présence d'un SPF ne protège alors RIEN. `-all`/`~all` restent acceptables.
             if qual in ("+", "?"):
-                findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="weak",
-                                        params={"qualifier": qual + "all"}, evidence=spfs[0][:300]))
+                findings.append(
+                    Finding(
+                        "dns-spf",
+                        C,
+                        Severity.MEDIUM,
+                        code="weak",
+                        params={"qualifier": qual + "all"},
+                        evidence=spfs[0][:300],
+                    )
+                )
             else:
-                findings.append(Finding("dns-spf", C, Severity.PASS, code="present",
-                                        evidence=spfs[0][:300]))
+                findings.append(
+                    Finding("dns-spf", C, Severity.PASS, code="present", evidence=spfs[0][:300])
+                )
     except _NO_RECORD:
         findings.append(Finding("dns-spf", C, Severity.MEDIUM, code="absent"))
     except _RESOLVE_FAILED as exc:
@@ -117,41 +162,70 @@ async def dns_check(ctx):
         txts = [_join_txt(v) for v in await asyncio.to_thread(_resolve, dmarc_name, "TXT")]
         dmarc = next((t for t in txts if t.lower().startswith("v=dmarc1")), None)
         if not dmarc:
-            findings.append(Finding(
-                "dns-dmarc", C, Severity.MEDIUM,
-                code="absent", params={"dmarc_name": dmarc_name}))
+            findings.append(
+                Finding(
+                    "dns-dmarc",
+                    C,
+                    Severity.MEDIUM,
+                    code="absent",
+                    params={"dmarc_name": dmarc_name},
+                )
+            )
         else:
             policy = _dmarc_policy(dmarc)
             if policy == "none":
-                findings.append(Finding(
-                    "dns-dmarc", C, Severity.LOW,
-                    code="monitor", evidence=f"p={policy}"))
+                findings.append(
+                    Finding("dns-dmarc", C, Severity.LOW, code="monitor", evidence=f"p={policy}")
+                )
             elif policy in ("quarantine", "reject"):
                 pct = _dmarc_tag(dmarc, "pct")
                 sp = (_dmarc_tag(dmarc, "sp") or "").lower()
                 if pct is not None and pct.strip() == "0":
                     # `pct=0` : la politique ne s'applique à AUCUN message → application fictive.
-                    findings.append(Finding(
-                        "dns-dmarc", C, Severity.MEDIUM,
-                        code="pct-zero", params={"policy": policy}, evidence=f"p={policy}; pct=0"))
+                    findings.append(
+                        Finding(
+                            "dns-dmarc",
+                            C,
+                            Severity.MEDIUM,
+                            code="pct-zero",
+                            params={"policy": policy},
+                            evidence=f"p={policy}; pct=0",
+                        )
+                    )
                 elif sp == "none":
                     # Politique stricte sur l'apex mais `sp=none` : les sous-domaines sont usurpables.
-                    findings.append(Finding(
-                        "dns-dmarc", C, Severity.LOW,
-                        code="subdomain", params={"policy": policy}, evidence=f"p={policy}; sp=none"))
+                    findings.append(
+                        Finding(
+                            "dns-dmarc",
+                            C,
+                            Severity.LOW,
+                            code="subdomain",
+                            params={"policy": policy},
+                            evidence=f"p={policy}; sp=none",
+                        )
+                    )
                 else:
-                    findings.append(Finding(
-                        "dns-dmarc", C, Severity.PASS,
-                        code="enforced", params={"policy": policy}, evidence=f"p={policy}"))
+                    findings.append(
+                        Finding(
+                            "dns-dmarc",
+                            C,
+                            Severity.PASS,
+                            code="enforced",
+                            params={"policy": policy},
+                            evidence=f"p={policy}",
+                        )
+                    )
             else:
                 # `v=DMARC1` présent mais `p=` manquant ou invalide : équivaut à pas d'application.
-                findings.append(Finding(
-                    "dns-dmarc", C, Severity.LOW,
-                    code="no-policy", evidence=dmarc[:300]))
+                findings.append(
+                    Finding("dns-dmarc", C, Severity.LOW, code="no-policy", evidence=dmarc[:300])
+                )
     except _NO_RECORD:
-        findings.append(Finding(
-            "dns-dmarc", C, Severity.MEDIUM,
-            code="absent", params={"dmarc_name": dmarc_name}))
+        findings.append(
+            Finding(
+                "dns-dmarc", C, Severity.MEDIUM, code="absent", params={"dmarc_name": dmarc_name}
+            )
+        )
     except _RESOLVE_FAILED as exc:
         findings.append(_resolution_unavailable(f"`{dmarc_name}` (DMARC)", exc))
     except Exception as exc:
@@ -161,9 +235,9 @@ async def dns_check(ctx):
     try:
         caa = await asyncio.to_thread(_resolve, domain, "CAA")
         if caa:
-            findings.append(Finding(
-                "dns-caa", C, Severity.PASS,
-                code="present", evidence="; ".join(caa)[:300]))
+            findings.append(
+                Finding("dns-caa", C, Severity.PASS, code="present", evidence="; ".join(caa)[:300])
+            )
         else:
             findings.append(_caa_absent())
     except _NO_RECORD:
@@ -194,7 +268,7 @@ def _dmarc_tag(record: str, name: str) -> str | None:
     for tag in record.split(";"):
         tag = tag.strip()
         if tag.lower().startswith(name + "="):
-            return tag[len(name) + 1:].strip()
+            return tag[len(name) + 1 :].strip()
     return None
 
 
@@ -209,8 +283,20 @@ def _caa_absent() -> Finding:
 
 
 # Sélecteurs DKIM courants (on ne peut pas tous les énumérer → sondage best-effort).
-_DKIM_SELECTORS = ["default", "google", "selector1", "selector2", "k1", "k2",
-                   "mail", "dkim", "s1", "s2", "mandrill", "sendgrid"]
+_DKIM_SELECTORS = [
+    "default",
+    "google",
+    "selector1",
+    "selector2",
+    "k1",
+    "k2",
+    "mail",
+    "dkim",
+    "s1",
+    "s2",
+    "mandrill",
+    "sendgrid",
+]
 
 
 @check("dns-dkim", "DKIM (sélecteurs courants)", C)
@@ -225,8 +311,16 @@ async def dkim(ctx):
         except Exception:
             continue
         if any("v=dkim1" in t.lower() or ("p=" in t.lower() and "k=" in t.lower()) for t in txts):
-            return [Finding("dns-dkim", C, Severity.PASS, code="present",
-                            params={"selector": sel}, evidence=name)]
+            return [
+                Finding(
+                    "dns-dkim",
+                    C,
+                    Severity.PASS,
+                    code="present",
+                    params={"selector": sel},
+                    evidence=name,
+                )
+            ]
     return [Finding("dns-dkim", C, Severity.INFO, code="none")]
 
 

@@ -10,6 +10,7 @@ propre à ce service.
 Catégorie DNS (c'est un défaut de configuration DNS). Pas de scan supplémentaire :
 on réutilise la réponse HTTP du moteur.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,8 +26,18 @@ _FINGERPRINTS: list[tuple[str, list[str], list[str]]] = [
     ("GitHub Pages", ["github.io"], ["there isn't a github pages site here"]),
     ("AWS S3", ["amazonaws.com"], ["nosuchbucket", "the specified bucket does not exist"]),
     ("Heroku", ["herokuapp.com", "herokudns.com"], ["no such app", "no-such-app.herokuapp.com"]),
-    ("Azure", ["azurewebsites.net", "cloudapp.net", "cloudapp.azure.com", "trafficmanager.net",
-               "azureedge.net", "azurefd.net"], ["404 web site not found", "web app - unavailable"]),
+    (
+        "Azure",
+        [
+            "azurewebsites.net",
+            "cloudapp.net",
+            "cloudapp.azure.com",
+            "trafficmanager.net",
+            "azureedge.net",
+            "azurefd.net",
+        ],
+        ["404 web site not found", "web app - unavailable"],
+    ),
     ("Fastly", ["fastly.net"], ["fastly error: unknown domain"]),
     ("Surge.sh", ["surge.sh"], ["project not found"]),
     ("Shopify", ["myshopify.com"], ["sorry, this shop is currently unavailable"]),
@@ -67,16 +78,35 @@ async def takeover(ctx):
         if not any(cname.endswith(s) for s in suffixes):
             continue
         if any(sig in body for sig in sigs):
-            return [Finding("takeover", C, Severity.HIGH, code="vulnerable",
-                            params={"service": service, "cname": cname}, evidence=cname)]
+            return [
+                Finding(
+                    "takeover",
+                    C,
+                    Severity.HIGH,
+                    code="vulnerable",
+                    params={"service": service, "cname": cname},
+                    evidence=cname,
+                )
+            ]
         if status in (404, 410) or status >= 500:
-            return [Finding("takeover", C, Severity.MEDIUM, code="dangling",
-                            params={"service": service, "cname": cname},
-                            evidence=f"{cname} (HTTP {status})")]
+            return [
+                Finding(
+                    "takeover",
+                    C,
+                    Severity.MEDIUM,
+                    code="dangling",
+                    params={"service": service, "cname": cname},
+                    evidence=f"{cname} (HTTP {status})",
+                )
+            ]
         # CNAME vers un service connu mais la ressource répond normalement → revendiquée.
-        return [Finding("takeover", C, Severity.PASS, code="ok",
-                        params={"cname": cname}, evidence=cname)]
+        return [
+            Finding(
+                "takeover", C, Severity.PASS, code="ok", params={"cname": cname}, evidence=cname
+            )
+        ]
 
     # CNAME vers une cible non « takeover-prone ».
-    return [Finding("takeover", C, Severity.PASS, code="ok",
-                    params={"cname": cname}, evidence=cname)]
+    return [
+        Finding("takeover", C, Severity.PASS, code="ok", params={"cname": cname}, evidence=cname)
+    ]

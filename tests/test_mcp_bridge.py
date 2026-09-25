@@ -2,9 +2,8 @@
 partagé + X-Act-As-Email. On couvre la garde (secret/identité, default-deny), la délégation à
 la logique `mcp_remote.tools` (réutilisée, inchangée), et la traduction ValueError -> 400.
 """
-import sqlite3
 
-import pytest
+import sqlite3
 
 import auth
 import db
@@ -33,8 +32,9 @@ HDR = {"X-MCP-Secret": SECRET, "X-Act-As-Email": "user@b.com"}
 def test_bridge_wrong_secret_is_401(client, monkeypatch):
     c, _ = client
     monkeypatch.setenv("SONAR_MCP_SHARED_SECRET", SECRET)
-    r = c.get("/api/mcp/list_domains",
-              headers={"X-MCP-Secret": "nope", "X-Act-As-Email": "user@b.com"})
+    r = c.get(
+        "/api/mcp/list_domains", headers={"X-MCP-Secret": "nope", "X-Act-As-Email": "user@b.com"}
+    )
     assert r.status_code == 401
 
 

@@ -1,5 +1,6 @@
 """Jetons d'accès personnels (PAT) : unités (génération/hash/résolution/révocation/
 expiry/scope) + endpoints de gestion (réservés à la session)."""
+
 import datetime
 import sqlite3
 
@@ -18,10 +19,11 @@ def test_pat_created_hashed_and_prefixed(authdb):
     assert meta["revoked"] is False and meta["last_used_at"] is None
     # Stocké HASHÉ : seul le SHA-256 est en base, jamais le secret brut.
     row = sqlite3.connect(db.DB_PATH).execute("SELECT * FROM personal_tokens").fetchone()
-    stored = sqlite3.connect(db.DB_PATH).execute(
-        "SELECT token_hash FROM personal_tokens").fetchone()[0]
+    stored = (
+        sqlite3.connect(db.DB_PATH).execute("SELECT token_hash FROM personal_tokens").fetchone()[0]
+    )
     assert stored == auth._hash(raw) and stored != raw
-    assert raw not in " ".join(str(c) for c in row)          # nulle part en clair
+    assert raw not in " ".join(str(c) for c in row)  # nulle part en clair
 
 
 def test_pat_resolve_ok_updates_last_used(authdb):
@@ -29,21 +31,21 @@ def test_pat_resolve_ok_updates_last_used(authdb):
     raw, _ = auth.create_pat(u["id"])
     got = auth.resolve_pat(raw)
     assert got and got["id"] == u["id"]
-    assert auth.list_pats(u["id"])[0]["last_used_at"] is not None   # marqué utilisé
+    assert auth.list_pats(u["id"])[0]["last_used_at"] is not None  # marqué utilisé
 
 
 def test_pat_resolve_scope(authdb):
     u = auth.create_user("p@b.com")
     raw, _ = auth.create_pat(u["id"])
     assert auth.resolve_pat(raw, "scans:read") is not None
-    assert auth.resolve_pat(raw, "scans:write") is None       # default-deny
+    assert auth.resolve_pat(raw, "scans:write") is None  # default-deny
 
 
 def test_pat_resolve_unknown(authdb):
     assert auth.resolve_pat(None) is None
     assert auth.resolve_pat("") is None
-    assert auth.resolve_pat("pas-un-token") is None           # mauvais préfixe
-    assert auth.resolve_pat("sonar_pat_inconnu") is None      # bon préfixe, inconnu
+    assert auth.resolve_pat("pas-un-token") is None  # mauvais préfixe
+    assert auth.resolve_pat("sonar_pat_inconnu") is None  # bon préfixe, inconnu
 
 
 def test_pat_revoke_owner_scoped(authdb):
@@ -57,7 +59,7 @@ def test_pat_revoke_owner_scoped(authdb):
     assert auth.revoke_pat(meta["id"], a["id"]) is True
     assert auth.resolve_pat(raw) is None
     assert auth.list_pats(a["id"])[0]["revoked"] is True
-    assert auth.revoke_pat(meta["id"], a["id"]) is False      # idempotent
+    assert auth.revoke_pat(meta["id"], a["id"]) is False  # idempotent
 
 
 def test_pat_delete_requires_revoked_and_owner(authdb):
@@ -70,11 +72,11 @@ def test_pat_delete_requires_revoked_and_owner(authdb):
     auth.revoke_pat(meta["id"], a["id"])
     # B ne peut pas supprimer le jeton (révoqué) de A -> pas d'IDOR.
     assert auth.delete_pat(meta["id"], b["id"]) is False
-    assert auth.list_pats(a["id"])                    # toujours là
+    assert auth.list_pats(a["id"])  # toujours là
     # A supprime le sien -> la ligne disparaît (plus dans la liste).
     assert auth.delete_pat(meta["id"], a["id"]) is True
     assert auth.list_pats(a["id"]) == []
-    assert auth.delete_pat(meta["id"], a["id"]) is False   # idempotent (déjà parti)
+    assert auth.delete_pat(meta["id"], a["id"]) is False  # idempotent (déjà parti)
 
 
 def test_pat_expired(authdb):
@@ -115,10 +117,10 @@ def test_tokens_endpoints_session(client):
     assert auth.resolve_pat(body["token"])["id"] == u["id"]
 
     items = c.get("/api/tokens").json()["tokens"]
-    assert len(items) == 1 and "token" not in items[0]        # liste sans secret
+    assert len(items) == 1 and "token" not in items[0]  # liste sans secret
 
     assert c.delete(f"/api/tokens/{tid}").status_code == 200
-    assert auth.resolve_pat(body["token"]) is None            # révoqué
+    assert auth.resolve_pat(body["token"]) is None  # révoqué
 
 
 def test_tokens_purge_endpoint(client):

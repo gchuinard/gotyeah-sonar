@@ -10,6 +10,7 @@ Détection pure : chaque check ne renvoie qu'un `code` (+ `params`/`evidence`). 
 texte humain (titre, détail, recommandation, remédiation) vit dans
 `content/checks/cookies.fr.yaml` et est rendu par `scanner.i18n`.
 """
+
 from __future__ import annotations
 
 from ..finding import Category, Finding, Severity
@@ -103,27 +104,67 @@ async def cookies(ctx):
         # Secure : sans lui, le cookie repart en clair sur une connexion http.
         if is_https and not secure:
             clean = False
-            findings.append(Finding("cookie-secure", C, Severity.MEDIUM,
-                code="missing", params={"name": name}, evidence=raw[:300]))
+            findings.append(
+                Finding(
+                    "cookie-secure",
+                    C,
+                    Severity.MEDIUM,
+                    code="missing",
+                    params={"name": name},
+                    evidence=raw[:300],
+                )
+            )
 
         # HttpOnly : sans lui, le cookie est lisible par du JavaScript (vol via XSS).
         if not httponly:
             clean = False
-            findings.append(Finding("cookie-httponly", C, Severity.MEDIUM,
-                code="missing", params={"name": name}, evidence=raw[:300]))
+            findings.append(
+                Finding(
+                    "cookie-httponly",
+                    C,
+                    Severity.MEDIUM,
+                    code="missing",
+                    params={"name": name},
+                    evidence=raw[:300],
+                )
+            )
 
         # SameSite : sans lui (ou None sans Secure), risque de CSRF.
         if samesite is None:
             clean = False
-            findings.append(Finding("cookie-samesite", C, Severity.LOW,
-                code="missing", params={"name": name}, evidence=raw[:300]))
+            findings.append(
+                Finding(
+                    "cookie-samesite",
+                    C,
+                    Severity.LOW,
+                    code="missing",
+                    params={"name": name},
+                    evidence=raw[:300],
+                )
+            )
         elif samesite == "none" and not secure:
             clean = False
-            findings.append(Finding("cookie-samesite", C, Severity.LOW,
-                code="none-insecure", params={"name": name}, evidence=raw[:300]))
+            findings.append(
+                Finding(
+                    "cookie-samesite",
+                    C,
+                    Severity.LOW,
+                    code="none-insecure",
+                    params={"name": name},
+                    evidence=raw[:300],
+                )
+            )
 
         if clean:
-            findings.append(Finding("cookie-ok", C, Severity.PASS,
-                code="ok", params={"name": name}, evidence=raw[:300]))
+            findings.append(
+                Finding(
+                    "cookie-ok",
+                    C,
+                    Severity.PASS,
+                    code="ok",
+                    params={"name": name},
+                    evidence=raw[:300],
+                )
+            )
 
     return findings

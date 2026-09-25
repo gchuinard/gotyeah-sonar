@@ -1,8 +1,12 @@
 name: CI
 
 # Qualité sur CHAQUE push et CHAQUE pull request (le déploiement, lui, vit dans deploy.yml
-# et n'a lieu que sur main). Lint/format/typage/audit sont INFORMATIFS pour l'instant
-# (continue-on-error) le temps de résorber la dette ; les tests + la couverture, eux, bloquent.
+# et n'a lieu que sur main). Lint, format, typage et tests BLOQUENT : la dette qu'ils
+# signalaient a été résorbée le 25/09/2026 (ils étaient rouges en permanence, masqués par
+# continue-on-error). Seul l'audit reste INFORMATIF : un avis publié du jour au lendemain ne
+# doit pas rendre rouge un push qui n'y est pour rien. La couverture est mesurée, sans seuil :
+# la version précédente de ce commentaire disait qu'elle bloquait, c'était inexact, aucun
+# plancher (--cov-fail-under) n'a jamais été posé.
 
 on:
   push:
@@ -14,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6   # v6 : Node 24 (v5 tournait sous Node 20)
         with:
           python-version: "3.12"
           cache: pip
@@ -25,15 +29,12 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Lint (ruff)
-        continue-on-error: true        # informatif tant que la dette n'est pas résorbée
         run: ruff check .
 
       - name: Format (ruff)
-        continue-on-error: true
         run: ruff format --check .
 
       - name: Typage (mypy)
-        continue-on-error: true
         run: mypy app.py auth.py db.py scan_jobs.py scan_compare.py scanner mcp_remote sonar_mcp
 
       - name: Audit des dépendances (pip-audit)

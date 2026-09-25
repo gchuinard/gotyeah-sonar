@@ -8,6 +8,7 @@ Anti-SSRF strict : un hôte est considéré interne dès qu'il résout vers **au
 interne (et pas seulement si TOUTES le sont) — sinon un hôte à résolution mixte
 `[1.2.3.4, 127.0.0.1]` contournerait la garde et exposerait la ressource interne.
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -22,8 +23,14 @@ def is_blocked_ip(ip_str: str) -> bool:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return False
-    return (ip.is_private or ip.is_loopback or ip.is_link_local
-            or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
 
 
 def allow_private() -> bool:
@@ -39,7 +46,7 @@ def resolve_ips(host: str) -> list[str]:
         return []
     seen: list[str] = []
     for info in infos:
-        ip = info[4][0]
+        ip = str(info[4][0])  # adresse textuelle pour AF_INET/AF_INET6
         if ip not in seen:
             seen.append(ip)
     return seen

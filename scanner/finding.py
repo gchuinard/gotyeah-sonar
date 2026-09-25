@@ -4,15 +4,15 @@ L'idée directrice : chaque check, quel qu'il soit (header HTTP, TLS, DNS, et
 demain un wrapper nuclei), rend une liste de `Finding`. Tout le reste de l'appli
 — scoring, streaming, dashboard, historique — ne manipule que ce type-là.
 """
+
 from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -21,20 +21,20 @@ class Severity(str, Enum):
     PASS = "pass"  # configuration correcte (point vert), ne pénalise pas le score
 
 
-class Category(str, Enum):
+class Category(StrEnum):
     HEADERS = "headers"
     COOKIES = "cookies"
     TLS = "tls"
     DNS = "dns"
-    EXPOSURE = "exposure"   # Phase 2 — fichiers/chemins sensibles exposés
-    CORS = "cors"           # Phase 2 — partage de ressources cross-origin
-    CONTENT = "content"     # Phase 2 — contenu mixte (ressources http sur page https)
+    EXPOSURE = "exposure"  # Phase 2 — fichiers/chemins sensibles exposés
+    CORS = "cors"  # Phase 2 — partage de ressources cross-origin
+    CONTENT = "content"  # Phase 2 — contenu mixte (ressources http sur page https)
     SUBRESOURCE = "subresource"  # Phase 2 — en-têtes de sécurité sur les sous-ressources
-    TECH = "tech"           # Phase 2 — technologies/versions détectées
-    PORTS = "ports"         # Réseau — services/ports exposés (connect-scan borné)
-    HTTP = "http"           # Méthodes HTTP (TRACE/PUT…) et durcissement verbe
-    PENTEST = "pentest"     # Phase 3 — résultats du moteur nuclei
-    ZAP = "zap"             # Phase 3 (bonus) — résultats d'OWASP ZAP (mode API)
+    TECH = "tech"  # Phase 2 — technologies/versions détectées
+    PORTS = "ports"  # Réseau — services/ports exposés (connect-scan borné)
+    HTTP = "http"  # Méthodes HTTP (TRACE/PUT…) et durcissement verbe
+    PENTEST = "pentest"  # Phase 3 — résultats du moteur nuclei
+    ZAP = "zap"  # Phase 3 (bonus) — résultats d'OWASP ZAP (mode API)
     TRANSPORT = "transport"
     INFO = "info"
 
@@ -76,19 +76,20 @@ class Finding:
     Seules `severity` (le score) et `check_id`/`category` (le routage) sont
     structurelles ; tout le reste est de la présentation.
     """
+
     check_id: str
     category: Category
     severity: Severity
     title: str = ""
     detail: str = ""
     recommendation: str = ""
-    evidence: Optional[str] = None
+    evidence: str | None = None
     # --- i18n : détection structurée (le texte humain vit dans le catalogue) ---
-    code: str = ""                              # result_code : discriminant DANS un check_id
+    code: str = ""  # result_code : discriminant DANS un check_id
     params: dict = field(default_factory=dict)  # valeurs d'interpolation (host, value, count…)
-    catalog: Optional[str] = None               # "zap" | "nuclei" | None (= maison, clé = check_id)
-    entry_id: Optional[str] = None              # pluginId / template-id (clé de contenu stable)
-    source_text: Optional[dict] = None          # {title, detail, recommendation, refs[]} langue d'origine
+    catalog: str | None = None  # "zap" | "nuclei" | None (= maison, clé = check_id)
+    entry_id: str | None = None  # pluginId / template-id (clé de contenu stable)
+    source_text: dict | None = None  # {title, detail, recommendation, refs[]} langue d'origine
     # --- couverture : True si ce finding signale que le check N'A PAS pu s'exécuter
     # (crash isolé par le runner, outil de pentest absent/timeout, hôte injoignable). Ce
     # n'est PAS un PASS : ça plafonne le grade (cf. score_and_grade) au lieu de le gonfler.
@@ -142,7 +143,7 @@ def _worst_grade(*grades: str) -> str:
     return max(grades, key=_GRADE_ORDER.index)
 
 
-def score_and_grade(findings: list["Finding"]) -> tuple[int, str]:
+def score_and_grade(findings: list[Finding]) -> tuple[int, str]:
     # Pénalité PLAFONNÉE par (check_id, sévérité) : au-delà de `_MAX_SAME_PENALIZED` findings
     # identiques (ex. 8 cookies tiers sans Secure/HttpOnly), les suivants ne pénalisent plus —
     # sinon un seul check répétitif fait tomber le score à 0 et écrase tout le diagnostic. Le
@@ -177,7 +178,7 @@ def score_and_grade(findings: list["Finding"]) -> tuple[int, str]:
     return score, grade
 
 
-def summarize(findings: list["Finding"]) -> dict:
+def summarize(findings: list[Finding]) -> dict:
     counts = {s.value: 0 for s in Severity}
     for f in findings:
         counts[f.severity.value] += 1
@@ -185,5 +186,11 @@ def summarize(findings: list["Finding"]) -> dict:
     # Checks qui n'ont pas pu s'exécuter (couverture partielle) — exposé au front pour une
     # bannière « scan incomplet », et reflété par le plafond de grade ci-dessus.
     incomplete = sorted({f.check_id for f in findings if getattr(f, "unexecuted", False)})
-    return {"score": score, "grade": grade, "counts": counts, "total": len(findings),
-            "incomplete": bool(incomplete), "unexecuted": incomplete}
+    return {
+        "score": score,
+        "grade": grade,
+        "counts": counts,
+        "total": len(findings),
+        "incomplete": bool(incomplete),
+        "unexecuted": incomplete,
+    }

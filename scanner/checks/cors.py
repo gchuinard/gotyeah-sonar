@@ -4,6 +4,7 @@ Détection pure : le check ne renvoie qu'un `code` (+ `params`/`evidence`). Le t
 humain (titre, détail, recommandation, remédiation) vit dans
 `content/checks/cors.fr.yaml` et est rendu par `scanner.i18n`.
 """
+
 from __future__ import annotations
 
 from ..finding import Category, Finding, Severity
@@ -20,8 +21,11 @@ async def cors(ctx) -> list[Finding]:
     try:
         resp = await ctx.client.get(ctx.url, headers={"Origin": PROBE})
     except Exception as exc:
-        return [Finding("cors", C, Severity.INFO, code="error",
-            params={"error_type": type(exc).__name__})]
+        return [
+            Finding(
+                "cors", C, Severity.INFO, code="error", params={"error_type": type(exc).__name__}
+            )
+        ]
 
     acao = resp.headers.get("access-control-allow-origin")
     acac = (resp.headers.get("access-control-allow-credentials") or "").strip().lower()
@@ -33,27 +37,21 @@ async def cors(ctx) -> list[Finding]:
         return [Finding("cors", C, Severity.PASS, code="pass-none")]
 
     if acao == PROBE and creds:
-        return [Finding("cors", C, Severity.HIGH, code="reflected-creds",
-            evidence=evidence)]
+        return [Finding("cors", C, Severity.HIGH, code="reflected-creds", evidence=evidence)]
 
     if acao == "*" and creds:
-        return [Finding("cors", C, Severity.HIGH, code="wildcard-creds",
-            evidence=evidence)]
+        return [Finding("cors", C, Severity.HIGH, code="wildcard-creds", evidence=evidence)]
 
     if acao == PROBE:
-        return [Finding("cors", C, Severity.MEDIUM, code="reflected",
-            evidence=evidence)]
+        return [Finding("cors", C, Severity.MEDIUM, code="reflected", evidence=evidence)]
 
     if acao == "null":
-        return [Finding("cors", C, Severity.MEDIUM, code="null",
-            evidence=evidence)]
+        return [Finding("cors", C, Severity.MEDIUM, code="null", evidence=evidence)]
 
     if acao == "*":
-        return [Finding("cors", C, Severity.LOW, code="wildcard",
-            evidence=evidence)]
+        return [Finding("cors", C, Severity.LOW, code="wildcard", evidence=evidence)]
 
-    return [Finding("cors", C, Severity.PASS, code="restricted",
-        evidence=evidence)]
+    return [Finding("cors", C, Severity.PASS, code="restricted", evidence=evidence)]
 
 
 def _evidence(acao, acac) -> str:

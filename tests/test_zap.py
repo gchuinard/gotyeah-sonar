@@ -1,20 +1,21 @@
 """Phase 3 (bonus) : wrapper OWASP ZAP — mapping, dédup, flux API mocké, dégradations."""
+
 from types import SimpleNamespace
 
 import httpx
-import pytest
 
 import scanner.checks.zap as zapmod
 from scanner.checks.zap import zap
 from scanner.finding import Category, Severity
 
-
 # ---- helpers ----
+
 
 def _handler(alerts, calls=None):
     """Simule l'API REST de ZAP : chaque endpoint renvoie un JSON plausible.
 
     `calls` (optionnel) : liste où l'on enregistre les chemins frappés, dans l'ordre."""
+
     def handle(request):
         p = request.url.path
         if calls is not None:
@@ -32,15 +33,18 @@ def _handler(alerts, calls=None):
         if p.endswith("/core/view/alerts/"):
             return httpx.Response(200, json={"alerts": alerts})
         return httpx.Response(404, json={})
+
     return handle
 
 
 def _mock_client(alerts, calls=None):
-    return httpx.AsyncClient(base_url="http://zap:8090",
-                             transport=httpx.MockTransport(_handler(alerts, calls)))
+    return httpx.AsyncClient(
+        base_url="http://zap:8090", transport=httpx.MockTransport(_handler(alerts, calls))
+    )
 
 
 # ---- unités pures ----
+
 
 def test_map_risk():
     assert zapmod._map_risk("High") == Severity.HIGH
@@ -69,19 +73,38 @@ def test_dedup_groups_and_counts():
 def test_drop_cdn_cgi_filters_cloudflare_false_positives():
     alerts = [
         # Private IP Disclosure (id 2) sur un endpoint cdn-cgi -> faux positif Cloudflare.
-        {"pluginId": "2", "alert": "Private IP Disclosure", "risk": "Low",
-         "url": "https://x/cdn-cgi/l/email-protection", "evidence": "10.0.0.1"},
+        {
+            "pluginId": "2",
+            "alert": "Private IP Disclosure",
+            "risk": "Low",
+            "url": "https://x/cdn-cgi/l/email-protection",
+            "evidence": "10.0.0.1",
+        },
         # cdn-cgi remonté côté evidence -> écarté aussi.
-        {"pluginId": "2", "alert": "Private IP Disclosure", "risk": "Low",
-         "url": "https://x/page", "evidence": "https://x/cdn-cgi/trace"},
+        {
+            "pluginId": "2",
+            "alert": "Private IP Disclosure",
+            "risk": "Low",
+            "url": "https://x/page",
+            "evidence": "https://x/cdn-cgi/trace",
+        },
         # Vraie alerte hors cdn-cgi -> conservée.
         {"pluginId": "40012", "alert": "XSS", "risk": "High", "url": "https://x/a"},
         # VRAIE alerte (id != 2) dont l'URL contient /cdn-cgi/ -> NE DOIT PAS être supprimée.
-        {"pluginId": "40012", "alert": "XSS cdn-cgi", "risk": "High",
-         "url": "https://x/cdn-cgi/challenge?q=<script>"},
+        {
+            "pluginId": "40012",
+            "alert": "XSS cdn-cgi",
+            "risk": "High",
+            "url": "https://x/cdn-cgi/challenge?q=<script>",
+        },
         # Private IP Disclosure (id 2) mais HORS cdn-cgi -> conservée (vraie fuite d'IP interne).
-        {"pluginId": "2", "alert": "Private IP", "risk": "Low",
-         "url": "https://x/status", "evidence": "10.1.2.3"},
+        {
+            "pluginId": "2",
+            "alert": "Private IP",
+            "risk": "Low",
+            "url": "https://x/status",
+            "evidence": "10.1.2.3",
+        },
     ]
     kept = [a["alert"] for a in zapmod._drop_cdn_cgi(alerts)]
     assert kept == ["XSS", "XSS cdn-cgi", "Private IP"]
@@ -89,16 +112,36 @@ def test_drop_cdn_cgi_filters_cloudflare_false_positives():
 
 # ---- flux complet (API mockée) ----
 
+
 async def test_zap_full_flow(monkeypatch):
     monkeypatch.delenv("SONAR_ZAP", raising=False)
     monkeypatch.setenv("ZAP_API_URL", "http://zap:8090")
     alerts = [
-        {"pluginId": "40012", "alert": "Cross Site Scripting", "risk": "High",
-         "description": "d", "solution": "s", "url": "https://x/a", "cweid": "79"},
-        {"pluginId": "10038", "alert": "CSP absente", "risk": "Medium",
-         "description": "d2", "solution": "s2", "url": "https://x/"},
-        {"pluginId": "10038", "alert": "CSP absente", "risk": "Medium",
-         "description": "d2", "solution": "s2", "url": "https://x/b"},
+        {
+            "pluginId": "40012",
+            "alert": "Cross Site Scripting",
+            "risk": "High",
+            "description": "d",
+            "solution": "s",
+            "url": "https://x/a",
+            "cweid": "79",
+        },
+        {
+            "pluginId": "10038",
+            "alert": "CSP absente",
+            "risk": "Medium",
+            "description": "d2",
+            "solution": "s2",
+            "url": "https://x/",
+        },
+        {
+            "pluginId": "10038",
+            "alert": "CSP absente",
+            "risk": "Medium",
+            "description": "d2",
+            "solution": "s2",
+            "url": "https://x/b",
+        },
     ]
     monkeypatch.setattr(zapmod, "_make_client", lambda base: _mock_client(alerts))
     out = await zap(SimpleNamespace(url="https://x/"))
@@ -111,8 +154,13 @@ async def test_zap_skips_cdn_cgi_alerts(monkeypatch):
     monkeypatch.delenv("SONAR_ZAP", raising=False)
     monkeypatch.setenv("ZAP_API_URL", "http://zap:8090")
     alerts = [
-        {"pluginId": "2", "alert": "Private IP Disclosure", "risk": "Low",
-         "url": "https://x/cdn-cgi/l/email-protection", "evidence": "192.168.0.1"},
+        {
+            "pluginId": "2",
+            "alert": "Private IP Disclosure",
+            "risk": "Low",
+            "url": "https://x/cdn-cgi/l/email-protection",
+            "evidence": "192.168.0.1",
+        },
         {"pluginId": "40012", "alert": "XSS", "risk": "High", "url": "https://x/a", "cweid": "79"},
     ]
     monkeypatch.setattr(zapmod, "_make_client", lambda base: _mock_client(alerts))
@@ -135,13 +183,15 @@ async def test_zap_resets_session_before_reading_alerts(monkeypatch):
     assert calls, "ZAP doit avoir été contacté"
     # Invariant fort : la session neuve doit être le TOUT PREMIER appel ZAP — sinon un reset placé
     # après accessUrl/spider effacerait les alertes du scan en cours (régression silencieuse).
-    assert calls[0].endswith("/core/action/newSession/"), \
+    assert calls[0].endswith("/core/action/newSession/"), (
         "le 1er appel ZAP doit ouvrir une session vierge"
+    )
     new_session = next(i for i, p in enumerate(calls) if p.endswith("/core/action/newSession/"))
     access_url = next(i for i, p in enumerate(calls) if p.endswith("/core/action/accessUrl/"))
     alerts_read = next(i for i, p in enumerate(calls) if p.endswith("/core/view/alerts/"))
-    assert new_session < access_url < alerts_read, \
+    assert new_session < access_url < alerts_read, (
         "ordre attendu : session vierge -> chargement de l'URL -> lecture des alertes"
+    )
 
 
 async def test_zap_no_alerts_pass(monkeypatch):
@@ -166,6 +216,7 @@ async def test_zap_unreachable(monkeypatch):
 
 
 # ---- dégradations de config ----
+
 
 async def test_zap_not_configured(monkeypatch):
     monkeypatch.delenv("SONAR_ZAP", raising=False)

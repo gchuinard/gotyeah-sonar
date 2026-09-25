@@ -1,4 +1,5 @@
 """Check redirection HTTP → HTTPS — seam client mocké, hors-ligne."""
+
 from types import SimpleNamespace
 
 import httpx

@@ -17,6 +17,7 @@ Réglable par variables d'environnement :
   SONAR_PORTS_LIST       liste de ports à scanner (override, ex. "6379,3306,22")
   SONAR_ORIGIN_IP        IP d'origine à scanner (bypass de la résolution/CDN)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -61,12 +62,28 @@ _PORTS: list[tuple[int, str, Severity]] = [
 # l'origine. Source : cloudflare.com/ips (stables).
 _CDN_RANGES = {
     "Cloudflare": [
-        "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
-        "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
-        "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
-        "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
-        "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32",
-        "2405:8100::/32", "2a06:98c0::/29", "2c0f:f248::/32",
+        "173.245.48.0/20",
+        "103.21.244.0/22",
+        "103.22.200.0/22",
+        "103.31.4.0/22",
+        "141.101.64.0/18",
+        "108.162.192.0/18",
+        "190.93.240.0/20",
+        "188.114.96.0/20",
+        "197.234.240.0/22",
+        "198.41.128.0/17",
+        "162.158.0.0/15",
+        "104.16.0.0/13",
+        "104.24.0.0/14",
+        "172.64.0.0/13",
+        "131.0.72.0/22",
+        "2400:cb00::/32",
+        "2606:4700::/32",
+        "2803:f800::/32",
+        "2405:b500::/32",
+        "2405:8100::/32",
+        "2a06:98c0::/29",
+        "2c0f:f248::/32",
     ],
 }
 _CDN_NETS = {name: [ipaddress.ip_network(c) for c in cidrs] for name, cidrs in _CDN_RANGES.items()}
@@ -99,6 +116,7 @@ def _is_cdn_ip(ip: str) -> str | None:
 
 async def _resolve_ips(host: str) -> list[str]:
     """Résout A/AAAA (bloquant → thread). Seam mockable. Liste vide si échec."""
+
     def query() -> list[str]:
         try:
             infos = socket.getaddrinfo(host, None)
@@ -106,10 +124,11 @@ async def _resolve_ips(host: str) -> list[str]:
             return []
         seen: list[str] = []
         for info in infos:
-            ip = info[4][0]
+            ip = str(info[4][0])  # adresse textuelle pour AF_INET/AF_INET6
             if ip not in seen:
                 seen.append(ip)
         return seen
+
     return await asyncio.to_thread(query)
 
 
@@ -161,8 +180,11 @@ async def ports(ctx):
             # Toutes les IP sont derrière un CDN → on ne scanne pas l'edge du tiers.
             # Non-événement (pas une lacune de couverture) : ton origine n'est pas
             # port-scannable de l'extérieur, c'est un état sain → PASS, pas INFO.
-            return [Finding("ports", C, Severity.PASS, code="behind-cdn",
-                            params={"cdn": cdn, "host": host})]
+            return [
+                Finding(
+                    "ports", C, Severity.PASS, code="behind-cdn", params={"cdn": cdn, "host": host}
+                )
+            ]
 
     # Garde anti-SSRF des SOCKETS BRUTS (la garde httpx ne couvre pas ce check) : on ne
     # port-scanne JAMAIS une IP interne, même si un domaine vérifié repointe son A vers
@@ -171,8 +193,15 @@ async def ports(ctx):
         internal = [ip for ip in scan_ips if is_blocked_ip(ip)]
         scan_ips = [ip for ip in scan_ips if not is_blocked_ip(ip)]
         if not scan_ips:
-            return [Finding("ports", C, Severity.INFO, code="blocked-internal",
-                            params={"host": host, "ip": ", ".join(internal)})]
+            return [
+                Finding(
+                    "ports",
+                    C,
+                    Severity.INFO,
+                    code="blocked-internal",
+                    params={"host": host, "ip": ", ".join(internal)},
+                )
+            ]
 
     sem = asyncio.Semaphore(max(1, concurrency))
 
@@ -182,7 +211,8 @@ async def ports(ctx):
         return (ip, port, service, severity, banner) if is_open else None
 
     results = await asyncio.gather(
-        *[scan(ip, p, s, sev) for ip in scan_ips for p, s, sev in _port_list()])
+        *[scan(ip, p, s, sev) for ip in scan_ips for p, s, sev in _port_list()]
+    )
 
     findings: list[Finding] = []
     for r in results:
@@ -190,9 +220,16 @@ async def ports(ctx):
             continue
         ip, port, service, severity, banner = r
         evidence = f"{ip}:{port}" + (f" — {banner[:120]}" if banner else "")
-        findings.append(Finding("ports", C, severity, code="service-exposed",
-                                params={"service": service, "port": port, "ip": ip},
-                                evidence=evidence))
+        findings.append(
+            Finding(
+                "ports",
+                C,
+                severity,
+                code="service-exposed",
+                params={"service": service, "port": port, "ip": ip},
+                evidence=evidence,
+            )
+        )
     if findings:
         return findings
     return [Finding("ports", C, Severity.PASS, code="clean", params={"ip": ", ".join(scan_ips)})]

@@ -5,10 +5,11 @@ Le runner appelle `all_checks()` pour récupérer tout ce qui a été déclaré 
 suffit donc d'importer le module d'un check (via `scanner/checks/__init__.py`)
 pour qu'il soit automatiquement pris en compte.
 """
+
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable
 
 from .finding import Category, Finding
 
@@ -35,11 +36,13 @@ def check(check_id: str, title: str, category: Category):
         @check("hdr-csp", "Content-Security-Policy", Category.HEADERS)
         async def csp(ctx): ...
     """
+
     def decorator(fn: CheckFn) -> CheckFn:
         if check_id in _REGISTRY:
             raise ValueError(f"check id en double : {check_id!r}")
         _REGISTRY[check_id] = Check(id=check_id, title=title, category=category, fn=fn)
         return fn
+
     return decorator
 
 

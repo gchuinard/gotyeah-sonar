@@ -5,11 +5,11 @@ On monte un catalogue temporaire (fr + en partiel) pour prouver que :
   - la chaîne de fallback langue→fr→source_text→défaut est respectée ;
   - ajouter une langue = déposer des fichiers (zéro code).
 """
+
 from __future__ import annotations
 
 import json
 import textwrap
-from pathlib import Path
 
 import pytest
 
@@ -26,7 +26,8 @@ def temp_catalog(tmp_path, monkeypatch):
     ui = tmp_path / "locales" / "ui"
     ui.mkdir(parents=True)
 
-    (content / "checks" / "demo.fr.yaml").write_text(textwrap.dedent("""\
+    (content / "checks" / "demo.fr.yaml").write_text(
+        textwrap.dedent("""\
         hdr-csp:
           absent:
             title: "CSP absent sur {host}"
@@ -44,21 +45,30 @@ def temp_catalog(tmp_path, monkeypatch):
             refs:
               - "https://developer.mozilla.org/fr/docs/Web/HTTP/CSP"
             a_verifier: false
-    """), encoding="utf-8")
+    """),
+        encoding="utf-8",
+    )
 
     # en PARTIEL : seulement le strict nécessaire — prouve l'ajout d'une langue.
-    (content / "checks" / "demo.en.yaml").write_text(textwrap.dedent("""\
+    (content / "checks" / "demo.en.yaml").write_text(
+        textwrap.dedent("""\
         hdr-csp:
           absent:
             title: "CSP missing on {host}"
             detail: "No CSP set."
             recommendation: "Add a CSP."
-    """), encoding="utf-8")
+    """),
+        encoding="utf-8",
+    )
 
-    (ui / "fr.json").write_text(json.dumps(
-        {"lang_name": "Français", "fallback": {"title": "Indisponible", "detail": "x"}}), encoding="utf-8")
-    (ui / "en.json").write_text(json.dumps(
-        {"lang_name": "English", "fallback": {"title": "Unavailable", "detail": "y"}}), encoding="utf-8")
+    (ui / "fr.json").write_text(
+        json.dumps({"lang_name": "Français", "fallback": {"title": "Indisponible", "detail": "x"}}),
+        encoding="utf-8",
+    )
+    (ui / "en.json").write_text(
+        json.dumps({"lang_name": "English", "fallback": {"title": "Unavailable", "detail": "y"}}),
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr(loader, "CONTENT_DIR", content)
     monkeypatch.setattr(loader, "UI_DIR", ui)
@@ -79,7 +89,7 @@ def test_render_structured_fr(temp_catalog):
     f = _struct(code="absent", params={"host": "x.com"}, evidence="dump")
     r = i18n.render_finding(f, "fr")
     assert r["title"] == "CSP absent sur x.com"
-    assert r["detail"] == "Aucune CSP. evidence=dump"          # {evidence} interpolé
+    assert r["detail"] == "Aucune CSP. evidence=dump"  # {evidence} interpolé
     assert r["severity"] == "medium" and r["category"] == "headers"
     rem = r["remediation"]
     assert rem["explanation"] and rem["why"]
@@ -103,10 +113,20 @@ def test_fallback_unknown_lang_to_fr(temp_catalog):
 
 def test_external_source_text_fallback(temp_catalog):
     # pluginId zap inconnu du catalogue → texte d'origine (EN) tel quel.
-    f = Finding("zap-0-99999", Category.ZAP, Severity.LOW, code="alert",
-                catalog="zap", entry_id="99999",
-                source_text={"title": "Some ZAP Alert", "detail": "english desc",
-                             "recommendation": "english fix", "refs": ["http://r"]}).as_dict()
+    f = Finding(
+        "zap-0-99999",
+        Category.ZAP,
+        Severity.LOW,
+        code="alert",
+        catalog="zap",
+        entry_id="99999",
+        source_text={
+            "title": "Some ZAP Alert",
+            "detail": "english desc",
+            "recommendation": "english fix",
+            "refs": ["http://r"],
+        },
+    ).as_dict()
     r = i18n.render_finding(f, "fr")
     assert r["title"] == "Some ZAP Alert"
     assert r["remediation"]["untranslated"] is True
@@ -121,7 +141,9 @@ def test_safe_default_when_nothing(temp_catalog):
 
 
 def test_legacy_passthrough(temp_catalog):
-    f = Finding("hdr-csp", Category.HEADERS, Severity.MEDIUM, "Titre legacy", "détail", "reco").as_dict()
+    f = Finding(
+        "hdr-csp", Category.HEADERS, Severity.MEDIUM, "Titre legacy", "détail", "reco"
+    ).as_dict()
     r = i18n.render_finding(f, "fr")
     assert r["title"] == "Titre legacy" and r["detail"] == "détail"
     assert r["remediation"] is None

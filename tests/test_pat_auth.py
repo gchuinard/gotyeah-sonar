@@ -4,17 +4,20 @@ Vérifie : cookie OU Bearer PAT acceptés ; PAT révoqué/expiré/mauvais scope 
 DEFAULT-DENY (un PAT ne peut atteindre aucune route d'écriture/admin) ; jeton jamais
 journalisé. Le branchement effectif sur les 3 lectures + l'IDOR HTTP sont à l'Étape 3.
 """
+
+from starlette.requests import Request
+
 import app as appmod
 import auth
 import db
-from starlette.requests import Request
 
 
 def _req(headers=None):
     """Request Starlette minimale avec en-têtes (et cookies via l'en-tête 'cookie')."""
     raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
-    return Request({"type": "http", "method": "GET", "path": "/", "query_string": b"",
-                    "headers": raw})
+    return Request(
+        {"type": "http", "method": "GET", "path": "/", "query_string": b"", "headers": raw}
+    )
 
 
 def _bearer(raw):
@@ -65,15 +68,17 @@ def test_pat_cannot_reach_write_or_admin_routes(client):
     h = _bearer(raw)  # PAT valide mais AUCUN cookie de session
     assert c.post("/api/domains", json={"domain": "x.com"}, headers=h).status_code == 401
     assert c.delete("/api/domains/whatever", headers=h).status_code == 401
-    assert c.post("/api/tokens", json={}, headers=h).status_code == 401        # pas de jeton via jeton
+    assert c.post("/api/tokens", json={}, headers=h).status_code == 401  # pas de jeton via jeton
     assert c.delete("/api/tokens/" + meta["id"], headers=h).status_code == 401
     assert c.delete("/api/tokens/" + meta["id"] + "/purge", headers=h).status_code == 401
-    assert c.post("/api/admin/scan-any", json={"enabled": True},
-                  headers=h).status_code in (401, 403)
+    assert c.post("/api/admin/scan-any", json={"enabled": True}, headers=h).status_code in (
+        401,
+        403,
+    )
     # Suppression de scan = écriture -> jamais via un PAT (cookie obligatoire).
     sid = _save_scan_for(u, "https://a.example")
     assert c.delete(f"/api/scan/{sid}", headers=h).status_code == 401
-    assert db.get_scan(sid) is not None       # rien supprimé
+    assert db.get_scan(sid) is not None  # rien supprimé
 
 
 # --------------------------------------------------------------------------- #
@@ -94,8 +99,15 @@ def test_pat_never_logged(authdb, caplog):
 # --------------------------------------------------------------------------- #
 def _save_scan_for(user, target):
     summary = {"score": 80, "grade": "B", "counts": {"low": 1}, "total": 1, "target": target}
-    findings = [{"check_id": "hdr-csp", "category": "headers", "severity": "low",
-                 "code": "absent", "params": {}}]
+    findings = [
+        {
+            "check_id": "hdr-csp",
+            "category": "headers",
+            "severity": "low",
+            "code": "absent",
+            "params": {},
+        }
+    ]
     return db.save_scan(target, summary, findings, user_id=user["id"])
 
 

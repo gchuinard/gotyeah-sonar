@@ -1,4 +1,5 @@
 """Subdomain takeover : fingerprint + codes — seam _cname mocké, ctx.response synthétique."""
+
 from types import SimpleNamespace
 
 import httpx
@@ -9,14 +10,19 @@ from scanner.finding import Severity
 
 
 def _ctx(status=200, text="", host="blog.x.com"):
-    resp = httpx.Response(status, headers={"content-type": "text/html"},
-                          content=text.encode("utf-8"), request=httpx.Request("GET", "https://" + host))
+    resp = httpx.Response(
+        status,
+        headers={"content-type": "text/html"},
+        content=text.encode("utf-8"),
+        request=httpx.Request("GET", "https://" + host),
+    )
     return SimpleNamespace(host=host, response=resp)
 
 
 def _patch_cname(monkeypatch, value):
     async def f(host):
         return value
+
     monkeypatch.setattr(tkmod, "_cname", f)
 
 

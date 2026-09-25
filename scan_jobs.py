@@ -13,6 +13,7 @@ client s'est déconnecté). Pas de logique métier ici : on réutilise le moteur
 la couche `db`. Le contrôle « domaine vérifié » reste à la charge de l'appelant (le MCP
 applique `auth.user_can_scan_target` AVANT d'appeler `start_scan`).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -65,7 +66,10 @@ async def _run_to_completion(scan_id: str, target: str, fast: bool = False) -> N
     try:
         async for ev in _engine_run_scan(target, fast=fast):
             if ev["event"] == "progress":
-                _PROGRESS[scan_id] = {"done": ev["data"].get("done"), "total": ev["data"].get("total")}
+                _PROGRESS[scan_id] = {
+                    "done": ev["data"].get("done"),
+                    "total": ev["data"].get("total"),
+                }
             elif ev["event"] == "done":
                 summary = ev["data"]
                 findings = ev.get("_findings", [])
@@ -79,11 +83,12 @@ async def _run_to_completion(scan_id: str, target: str, fast: bool = False) -> N
     except Exception as exc:  # le scan ne doit jamais laisser la ligne en 'running'
         db.fail_scan(scan_id, f"{type(exc).__name__}: {exc}")
     finally:
-        _PROGRESS.pop(scan_id, None)   # plus en cours → on libère la progression mémoire
+        _PROGRESS.pop(scan_id, None)  # plus en cours → on libère la progression mémoire
 
 
-async def wait_for_completion(scan_id: str, wait_secs: float | None = None,
-                              interval: float = 2.0) -> dict | None:
+async def wait_for_completion(
+    scan_id: str, wait_secs: float | None = None, interval: float = 2.0
+) -> dict | None:
     """Attend (au plus `wait_secs`) que le scan ne soit plus 'running'.
 
     Renvoie le scan complet s'il s'est terminé (ou a échoué) dans le délai, sinon None

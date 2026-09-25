@@ -1,4 +1,5 @@
 """Méthodes HTTP : TRACE (Allow + actif), méthodes d'écriture, ok — fake client .request."""
+
 from types import SimpleNamespace
 
 import httpx
@@ -8,8 +9,9 @@ from scanner.finding import Severity
 
 
 def _resp(status=200, headers=None):
-    return httpx.Response(status, headers=headers or {}, content=b"",
-                          request=httpx.Request("OPTIONS", "https://x/"))
+    return httpx.Response(
+        status, headers=headers or {}, content=b"", request=httpx.Request("OPTIONS", "https://x/")
+    )
 
 
 class Fake:

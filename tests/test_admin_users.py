@@ -4,6 +4,7 @@ Couvre : `auth.list_users` (compteurs domaines/scans/jetons), `auth.count_admins
 `auth.delete_user` (cascade + isolation), et les endpoints `/api/admin/users*` —
 gating admin, et garde-fous anti-lockout (pas soi-même, pas le dernier admin).
 """
+
 import sqlite3
 
 import auth
@@ -22,8 +23,15 @@ def _verify_domain(user_id, domain):
 
 def _save_scan_for(user, target="https://a.example"):
     summary = {"score": 80, "grade": "B", "counts": {"low": 1}, "total": 1, "target": target}
-    findings = [{"check_id": "hdr-csp", "category": "headers", "severity": "low",
-                 "code": "absent", "params": {}}]
+    findings = [
+        {
+            "check_id": "hdr-csp",
+            "category": "headers",
+            "severity": "low",
+            "code": "absent",
+            "params": {},
+        }
+    ]
     return db.save_scan(target, summary, findings, user_id=user["id"])
 
 
@@ -34,7 +42,7 @@ def test_list_users_counts(authdb):
     a = auth.create_user("a@b.com")
     auth.create_user("admin@b.com", is_admin=True)
     _verify_domain(a["id"], "a.com")
-    auth.add_domain(a["id"], "pas-verifie.com")   # non vérifié → pas compté
+    auth.add_domain(a["id"], "pas-verifie.com")  # non vérifié → pas compté
     _save_scan_for(a, "https://a.com")
     _save_scan_for(a, "https://a.com/2")
     auth.create_pat(a["id"])
@@ -49,14 +57,18 @@ def test_list_users_counts(authdb):
 
 def test_purge_expired(authdb):
     u = auth.create_user("u@b.com")
-    valid = auth.create_session(u["id"])           # expiration future
-    with sqlite3.connect(db.DB_PATH) as conn:      # une session + un lien magique EXPIRÉS
-        conn.execute("INSERT INTO sessions (token_hash, user_id, created_at, expires_at) "
-                     "VALUES (?,?,?,?)", ("old", u["id"], "2000-01-01T00:00:00", "2000-01-02T00:00:00"))
-        conn.execute("INSERT INTO magic_tokens (token_hash, email, purpose, created_at, expires_at) "
-                     "VALUES (?,?,?,?,?)", ("oldmt", "u@b.com", "login",
-                                            "2000-01-01T00:00:00", "2000-01-02T00:00:00"))
-    assert auth.purge_expired() == 2               # les 2 expirés supprimés
+    valid = auth.create_session(u["id"])  # expiration future
+    with sqlite3.connect(db.DB_PATH) as conn:  # une session + un lien magique EXPIRÉS
+        conn.execute(
+            "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?,?,?,?)",
+            ("old", u["id"], "2000-01-01T00:00:00", "2000-01-02T00:00:00"),
+        )
+        conn.execute(
+            "INSERT INTO magic_tokens (token_hash, email, purpose, created_at, expires_at) "
+            "VALUES (?,?,?,?,?)",
+            ("oldmt", "u@b.com", "login", "2000-01-01T00:00:00", "2000-01-02T00:00:00"),
+        )
+    assert auth.purge_expired() == 2  # les 2 expirés supprimés
     assert auth.get_session_user(valid) is not None  # la session valide est intacte
 
 
@@ -107,7 +119,7 @@ def test_delete_user_cascade_and_isolation(authdb):
     assert auth.list_domains(a["id"]) == []
     assert auth.list_pats(a["id"]) == []
     assert db.get_scan(sid_a) is None
-    assert auth.get_session_user(sess_a) is None        # session invalidée
+    assert auth.get_session_user(sess_a) is None  # session invalidée
     # B est intact (isolation)
     assert auth.get_user_by_id(b["id"]) is not None
     assert db.get_scan(sid_b) is not None
@@ -153,7 +165,7 @@ def test_admin_list_and_delete_user(client):
 def test_cannot_delete_self(client):
     c, _ = client
     admin = auth.create_user("admin@b.com", is_admin=True)
-    auth.create_user("other-admin@b.com", is_admin=True)   # pas le dernier admin
+    auth.create_user("other-admin@b.com", is_admin=True)  # pas le dernier admin
     _login(c, admin)
     r = c.delete("/api/admin/users/" + admin["id"])
     assert r.status_code == 409 and r.json()["code"] == "self"
@@ -170,10 +182,14 @@ def test_cannot_remove_last_admin(client):
     assert r.status_code == 409 and r.json()["code"] == "last_admin"
     assert auth.get_user_by_id(admin["id"])["is_admin"] == 1
     # promouvoir un autre, PUIS la rétrogradation du 1er passe (2 admins)
-    assert c.post("/api/admin/users/" + other["id"] + "/admin",
-                  json={"is_admin": True}).status_code == 200
-    assert c.post("/api/admin/users/" + admin["id"] + "/admin",
-                  json={"is_admin": False}).status_code == 200
+    assert (
+        c.post("/api/admin/users/" + other["id"] + "/admin", json={"is_admin": True}).status_code
+        == 200
+    )
+    assert (
+        c.post("/api/admin/users/" + admin["id"] + "/admin", json={"is_admin": False}).status_code
+        == 200
+    )
     assert auth.get_user_by_id(admin["id"])["is_admin"] == 0
 
 
@@ -185,9 +201,9 @@ def test_update_domain_rename_resets_verification(authdb):
     d = _verify_domain(u["id"], "old.com")
     assert auth.get_domain(d["id"], u["id"])["verified"] is True
     res = auth.update_domain(d["id"], u["id"], "New.COM")
-    assert res["domain"] == "new.com"      # normalisé
-    assert res["verified"] is False        # renommage → non vérifié (nom non prouvé)
-    assert res["token"] != d["token"]      # nouveau token de challenge
+    assert res["domain"] == "new.com"  # normalisé
+    assert res["verified"] is False  # renommage → non vérifié (nom non prouvé)
+    assert res["token"] != d["token"]  # nouveau token de challenge
 
 
 def test_update_domain_noop_conflict_invalid_missing(authdb):
@@ -218,8 +234,12 @@ def test_admin_domain_endpoints_list_rename_delete(client):
     assert r.status_code == 200
     assert r.json()["domain"]["domain"] == "new.com" and r.json()["domain"]["verified"] is False
     # nom invalide → 400
-    assert c.patch(f"/api/admin/users/{target['id']}/domains/{d['id']}",
-                   json={"domain": "??"}).status_code == 400
+    assert (
+        c.patch(
+            f"/api/admin/users/{target['id']}/domains/{d['id']}", json={"domain": "??"}
+        ).status_code
+        == 400
+    )
     # suppression → 200, plus de domaine
     assert c.delete(f"/api/admin/users/{target['id']}/domains/{d['id']}").status_code == 200
     assert auth.list_domains(target["id"]) == []
@@ -232,14 +252,22 @@ def test_admin_domain_conflict_and_gating(client):
     a = auth.add_domain(t["id"], "a.com")
     auth.add_domain(t["id"], "b.com")
     _login(c, admin)
-    assert c.patch(f"/api/admin/users/{t['id']}/domains/{a['id']}",
-                   json={"domain": "b.com"}).status_code == 409
+    assert (
+        c.patch(
+            f"/api/admin/users/{t['id']}/domains/{a['id']}", json={"domain": "b.com"}
+        ).status_code
+        == 409
+    )
     # non-admin → 403 sur les 3 routes
     c.cookies.clear()
     _login(c, auth.create_user("nobody@b.com"))
     assert c.get(f"/api/admin/users/{t['id']}/domains").status_code == 403
-    assert c.patch(f"/api/admin/users/{t['id']}/domains/{a['id']}",
-                   json={"domain": "x.com"}).status_code == 403
+    assert (
+        c.patch(
+            f"/api/admin/users/{t['id']}/domains/{a['id']}", json={"domain": "x.com"}
+        ).status_code
+        == 403
+    )
     assert c.delete(f"/api/admin/users/{t['id']}/domains/{a['id']}").status_code == 403
 
 
@@ -251,26 +279,29 @@ def test_update_user_email_success_purges_magic_tokens(authdb):
     # liens magiques en vol sur l'ancienne ET la future adresse
     with sqlite3.connect(db.DB_PATH) as conn:
         for em in ("old@b.com", "new@b.com"):
-            conn.execute("INSERT INTO magic_tokens (token_hash, email, purpose, created_at, expires_at) "
-                         "VALUES (?,?,?,?,?)", ("mt-" + em, em, "login",
-                                                "2099-01-01T00:00:00", "2099-01-02T00:00:00"))
-    res = auth.update_user_email(u["id"], "New@B.com")       # casse normalisée
+            conn.execute(
+                "INSERT INTO magic_tokens (token_hash, email, purpose, created_at, expires_at) "
+                "VALUES (?,?,?,?,?)",
+                ("mt-" + em, em, "login", "2099-01-01T00:00:00", "2099-01-02T00:00:00"),
+            )
+    res = auth.update_user_email(u["id"], "New@B.com")  # casse normalisée
     assert res["email"] == "new@b.com"
     assert auth.get_user_by_email("new@b.com")["id"] == u["id"]
-    with sqlite3.connect(db.DB_PATH) as conn:                # les 2 liens purgés
-        n = conn.execute("SELECT COUNT(*) FROM magic_tokens "
-                         "WHERE email IN ('old@b.com','new@b.com')").fetchone()[0]
+    with sqlite3.connect(db.DB_PATH) as conn:  # les 2 liens purgés
+        n = conn.execute(
+            "SELECT COUNT(*) FROM magic_tokens WHERE email IN ('old@b.com','new@b.com')"
+        ).fetchone()[0]
     assert n == 0
 
 
 def test_update_user_email_noop_invalid_conflict_missing(authdb):
     u = auth.create_user("u@b.com")
     auth.create_user("taken@b.com")
-    assert auth.update_user_email(u["id"], "u@b.com")["email"] == "u@b.com"   # no-op
+    assert auth.update_user_email(u["id"], "u@b.com")["email"] == "u@b.com"  # no-op
     assert auth.update_user_email(u["id"], "pas-un-email") == "invalid"
     assert auth.update_user_email(u["id"], "taken@b.com") == "conflict"
     assert auth.update_user_email("inexistant", "x@y.com") == "not_found"
-    assert auth.get_user_by_id(u["id"])["email"] == "u@b.com"   # inchangé après échecs
+    assert auth.get_user_by_id(u["id"])["email"] == "u@b.com"  # inchangé après échecs
 
 
 def test_admin_update_email_endpoint(client):

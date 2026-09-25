@@ -8,6 +8,7 @@
   (texte legacy, code vide) et les résultats externes ZAP/nuclei sont ignorés
   (ces derniers retombent sur leur `source_text`).
 """
+
 from __future__ import annotations
 
 import scenarios
@@ -49,7 +50,7 @@ def test_catalog_covers_migrated_codes():
     for findings in fresh.values():
         for f in findings:
             code = f.get("code")
-            if not code or f.get("catalog"):   # legacy/non migré, ou externe → ignoré
+            if not code or f.get("catalog"):  # legacy/non migré, ou externe → ignoré
                 continue
             key = ("checks", f["check_id"], code)
             if key not in cat:

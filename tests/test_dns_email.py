@@ -1,4 +1,5 @@
 """DNS e-mail / PKI : DKIM, MTA-STS, TLS-RPT, DNSSEC — seam _resolve mocké, hors-ligne."""
+
 from types import SimpleNamespace
 
 import dns.resolver
@@ -16,6 +17,7 @@ def _patch(monkeypatch, mapping):
         if (name, rdtype) in mapping:
             return mapping[(name, rdtype)]
         raise dns.resolver.NoAnswer
+
     monkeypatch.setattr(dnsmod, "_resolve", f)
 
 
@@ -53,6 +55,7 @@ async def test_dnssec(monkeypatch):
 
 # ---- Batch 3 : valeur SPF/DMARC + domaine d'organisation (eTLD+1) ----
 
+
 def _spf_finding(out):
     return next(f for f in out if f.check_id == "dns-spf")
 
@@ -63,8 +66,9 @@ def _dmarc_finding(out):
 
 async def test_spf_qualifier(monkeypatch):
     async def spf_code(record):
-        _patch(monkeypatch, {("example.com", "TXT"): ['"%s"' % record]})
+        _patch(monkeypatch, {("example.com", "TXT"): [f'"{record}"']})
         return _spf_finding(await dnsmod.dns_check(_ctx()))
+
     # `+all` / `?all` : n'importe qui peut usurper → weak (MEDIUM), plus jamais « present ».
     f = await spf_code("v=spf1 +all")
     assert f.code == "weak" and f.severity == Severity.MEDIUM
@@ -82,11 +86,15 @@ async def test_spf_multiple_records(monkeypatch):
 
 async def test_dmarc_pct_zero_and_sp_none(monkeypatch):
     async def dmarc_code(record):
-        _patch(monkeypatch, {
-            ("example.com", "TXT"): ['"v=spf1 -all"'],
-            ("_dmarc.example.com", "TXT"): ['"%s"' % record],
-        })
+        _patch(
+            monkeypatch,
+            {
+                ("example.com", "TXT"): ['"v=spf1 -all"'],
+                ("_dmarc.example.com", "TXT"): [f'"{record}"'],
+            },
+        )
         return _dmarc_finding(await dnsmod.dns_check(_ctx()))
+
     # p=reject mais pct=0 : appliqué à 0 % → fausse application.
     f = await dmarc_code("v=DMARC1; p=reject; pct=0")
     assert f.code == "pct-zero" and f.severity == Severity.MEDIUM

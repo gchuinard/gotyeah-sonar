@@ -21,6 +21,7 @@ Réglable par variables d'environnement :
   NUCLEI_ARGS       arguments supplémentaires bruts (défaut : "")
   SONAR_NUCLEI      "off" pour désactiver même si le binaire est présent
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,13 +56,16 @@ def _env(name: str, default: str) -> str:
 def _build_args(exe: str, url: str) -> list[str]:
     args = [
         exe,
-        "-target", url,
-        "-jsonl",                 # une ligne JSON par résultat (sortie machine)
-        "-silent",                # pas de bannière/log sur stdout
+        "-target",
+        url,
+        "-jsonl",  # une ligne JSON par résultat (sortie machine)
+        "-silent",  # pas de bannière/log sur stdout
         "-no-color",
         "-disable-update-check",
-        "-timeout", "10",         # par requête
-        "-rate-limit", _env("NUCLEI_RATE_LIMIT", "50"),
+        "-timeout",
+        "10",  # par requête
+        "-rate-limit",
+        _env("NUCLEI_RATE_LIMIT", "50"),
     ]
     severity = _env("NUCLEI_SEVERITY", "medium,high,critical")
     if severity:
@@ -146,8 +150,10 @@ def _dedup_to_findings(results: list[dict], fallback_url: str) -> list[Finding]:
             grouped[gkey] = {"sample": obj, "count": 0}
             order.append(gkey)
         grouped[gkey]["count"] += 1
-    return [_to_finding(grouped[k]["sample"], i, fallback_url, count=grouped[k]["count"])
-            for i, k in enumerate(order)]
+    return [
+        _to_finding(grouped[k]["sample"], i, fallback_url, count=grouped[k]["count"])
+        for i, k in enumerate(order)
+    ]
 
 
 async def _read_results(stream, out: list) -> None:
@@ -190,8 +196,15 @@ async def nuclei(ctx):
             stderr=asyncio.subprocess.PIPE,
         )
     except Exception as exc:  # binaire illisible, etc.
-        return [Finding("nuclei", C, Severity.INFO, code="unavailable",
-                        params={"error": f"{type(exc).__name__}: {exc}"})]
+        return [
+            Finding(
+                "nuclei",
+                C,
+                Severity.INFO,
+                code="unavailable",
+                params={"error": f"{type(exc).__name__}: {exc}"},
+            )
+        ]
 
     # Draine stderr en parallèle (évite que son tampon plein ne bloque la lecture stdout).
     stderr_chunks: list[bytes] = []
@@ -211,9 +224,9 @@ async def nuclei(ctx):
         await asyncio.wait_for(_read_results(proc.stdout, results), timeout=timeout)
         try:
             await asyncio.wait_for(proc.wait(), timeout=5)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
-    except asyncio.TimeoutError:
+    except TimeoutError:
         timed_out = True
         try:
             proc.kill()
@@ -231,8 +244,9 @@ async def nuclei(ctx):
     if timed_out:
         # On a peut-être trouvé des choses avant la coupure : on les remonte, ET on signale
         # que le scan n'a pas fini (couverture incomplète → la note est plafonnée côté runner).
-        findings.append(Finding("nuclei", C, Severity.INFO, code="timeout",
-                                params={"timeout": timeout}))
+        findings.append(
+            Finding("nuclei", C, Severity.INFO, code="timeout", params={"timeout": timeout})
+        )
         return findings
 
     if findings:
@@ -243,6 +257,5 @@ async def nuclei(ctx):
         stderr = b"".join(stderr_chunks)
         msg = stderr.decode("utf-8", "replace").strip().splitlines()
         tail = msg[-1] if msg else f"code de sortie {proc.returncode}"
-        return [Finding("nuclei", C, Severity.INFO, code="incomplete",
-                        params={"tail": tail})]
+        return [Finding("nuclei", C, Severity.INFO, code="incomplete", params={"tail": tail})]
     return [Finding("nuclei", C, Severity.PASS, code="pass")]

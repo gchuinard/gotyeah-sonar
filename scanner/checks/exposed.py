@@ -10,6 +10,7 @@ chemin) + `evidence` (le snippet). Le texte humain (titre, détail, recommandati
 remédiation) vit dans `content/checks/exposed.fr.yaml` et est rendu par
 `scanner.i18n` à partir de la clé ``(check_id, code)``.
 """
+
 from __future__ import annotations
 
 import re
@@ -67,9 +68,16 @@ def _sig_zip(text: str, content_type: str) -> bool:
 def _sig_sqldump(text: str, content_type: str) -> bool:
     # Dump SQL : marqueurs de structure/contenu typiques d'un export de base.
     low = text.lower()
-    return any(m in low for m in (
-        "create table", "insert into", "drop table",
-        "mysql dump", "postgresql database dump"))
+    return any(
+        m in low
+        for m in (
+            "create table",
+            "insert into",
+            "drop table",
+            "mysql dump",
+            "postgresql database dump",
+        )
+    )
 
 
 def _sig_php(text: str, content_type: str) -> bool:
@@ -194,9 +202,11 @@ async def exposed(ctx):
         if snippet is not None:
             # Détection pure : le chemin part en `params`, le snippet en `evidence` ;
             # titre/détail/reco sont rendus par le catalogue via (check_id, "found").
-            findings.append(Finding(
-                cid, C, severity, code="found",
-                params={"path": path}, evidence=snippet or None))
+            findings.append(
+                Finding(
+                    cid, C, severity, code="found", params={"path": path}, evidence=snippet or None
+                )
+            )
 
     if not findings:
         return [Finding("exposed", C, Severity.PASS, code="clean")]
