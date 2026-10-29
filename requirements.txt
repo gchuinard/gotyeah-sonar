@@ -12,4 +12,4 @@ PyJWT>=2.9          # validation OIDC id_token (RS256 via cryptography ci-dessus
 # (requirements-mcp.txt), il tourne SUR le serveur Sonar (Pi/Docker) : sa dépendance va
 # dans l'image. Inerte tant que SONAR_MCP_REMOTE n'est pas activé (import paresseux).
 # `fastmcp` est le paquet AUTONOME (≠ mcp.server.fastmcp du SDK) ; il tire mcp 1.27.x.
-fastmcp==3.4.2
+fastmcp==3.4.10
